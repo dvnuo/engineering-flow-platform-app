@@ -342,3 +342,54 @@ def test_the_probe_explains_a_root_that_may_not_use_its_capabilities(tmp_path):
     # Any other failure is reported as it is.
     status, _ = _detect(tmp_path, ProbeRunner({BACKEND_LANDLOCK: 0}))
     assert "AppArmor" not in status.attempts[BACKEND_BWRAP]
+
+
+def test_every_directory_above_a_mount_is_made_open_before_the_mount():
+    """bubblewrap would make them itself, but for its own user only: run as root,
+    the app (another user by then) could not reach its own directory."""
+
+    spec = _spec(BACKEND_BWRAP, ro_paths=[RELEASE], rw_paths=[RELEASE + "/venv", DATA])
+    argv = build_exec_plan(spec, LAYOUT).argv
+    made = [argv[index + 1] for index, value in enumerate(argv) if value == "--dir"]
+    assert made == [
+        "/opt",
+        "/sys",
+        "/sys/devices",
+        "/sys/devices/system",
+        "/run",
+        "/var",
+        "/srv",
+        "/srv/efp-apps",
+        "/srv/efp-apps/app-1",
+        "/var/lib",
+        "/var/lib/efp-host",
+        "/var/lib/efp-host/store",
+        "/var/lib/efp-host/store/apps",
+        "/var/lib/efp-host/store/apps/app-1",
+        "/var/lib/efp-host/store/apps/app-1/releases",
+    ]
+    assert len(made) == len(set(made))
+
+    def position(option: str, target: str) -> int:
+        return next(index for index, value in enumerate(argv) if value == option and argv[index + 2] == target)
+
+    def made_before(directory: str, mount: int) -> bool:
+        return any(argv[index] == "--dir" and argv[index + 1] == directory for index in range(mount))
+
+    for option, target in (("--ro-bind-try", "/opt/efp"), ("--ro-bind-try", "/sys/devices/system/cpu"), ("--bind", TMP), ("--ro-bind", RELEASE), ("--bind", DATA)):
+        mount = position(option, target)
+        parts = target.strip("/").split("/")
+        for count in range(1, len(parts)):
+            assert made_before("/" + "/".join(parts[:count]), mount), (target, parts[:count])
+    # A directory inside something already mounted comes from there: nothing is made in it.
+    assert RELEASE not in made and not any(directory.startswith(RELEASE + "/") for directory in made)
+    assert position("--ro-bind", RELEASE) < position("--bind", RELEASE + "/venv")
+    # Places directly below the root need nothing.
+    assert "/usr" not in made and "/etc" not in made and "/tmp" not in made
+
+
+def test_the_directories_above_a_mount_are_the_same_in_a_user_namespace():
+    root = build_exec_plan(_spec(BACKEND_BWRAP), LAYOUT).argv
+    userns = build_exec_plan(_spec(BACKEND_BWRAP_USERNS), LAYOUT).argv
+    dirs = lambda argv: [argv[index + 1] for index, value in enumerate(argv) if value == "--dir"]  # noqa: E731
+    assert dirs(root) == dirs(userns) and "/var/lib/efp-host/store/apps/app-1" in dirs(userns)

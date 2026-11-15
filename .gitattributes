@@ -13,3 +13,4 @@
 *.tf text eol=lf
 Dockerfile text eol=lf
 host/bin/* text eol=lf
+deploy/apparmor/* text eol=lf

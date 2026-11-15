@@ -175,6 +175,13 @@ def _restore_signals(layout: SystemLayout) -> list[str]:
     return [layout.env, f"--default-signal={DEFAULT_SIGNALS}", "--"]
 
 
+def _ancestors(path: str) -> list[str]:
+    """Every directory above ``path``, from the top down, without ``/``."""
+
+    parts = [part for part in path.split("/") if part]
+    return ["/" + "/".join(parts[:count]) for count in range(1, len(parts))]
+
+
 def _bwrap(spec: LaunchSpec, layout: SystemLayout, *, user_namespace: bool) -> list[str]:
     args = [layout.bwrap, "--die-with-parent", "--unshare-ipc"]
     if user_namespace:
@@ -189,24 +196,54 @@ def _bwrap(spec: LaunchSpec, layout: SystemLayout, *, user_namespace: bool) -> l
     # the app when bubblewrap runs as root, unbounded when it runs as the app.
     # A tmpfs of its own, open like the usual one and with a ceiling.
     args += ["--dev", "/dev", "--perms", "1777", "--size", str(SHM_BYTES), "--tmpfs", "/dev/shm"]
+
+    made: set[str] = set()  # directories of the view that exist by now
+    mounted: list[str] = []  # places whose content comes from outside the view
+
+    def lead_to(path: str) -> list[str]:
+        """``--dir`` for every directory above ``path`` that the view lacks.
+
+        bubblewrap makes the missing parents of a mount point by itself, but
+        closed to everybody except its own user (mode 0700 for a bind mount).
+        That user is root when bubblewrap runs as root: the app, which is
+        somebody else by then, could not walk down to its own directory.
+        ``--dir`` makes them 0755.
+        """
+
+        out: list[str] = []
+        for directory in _ancestors(path):
+            if directory in made or any(directory == mount or directory.startswith(mount + "/") for mount in mounted):
+                continue
+            made.add(directory)
+            out += ["--dir", directory]
+        return out
+
+    def bind(option: str, source: str, target: str) -> list[str]:
+        out = lead_to(target) + [option, source, target]
+        mounted.append(target)
+        return out
+
     for path in layout.dirs:
-        args += ["--ro-bind", path, path]
+        args += bind("--ro-bind", path, path)
     for path, target in layout.links:
-        args += ["--symlink", target, path]
-    args += ["--ro-bind", "/etc", "/etc"]
+        args += lead_to(path) + ["--symlink", target, path]
+    args += bind("--ro-bind", "/etc", "/etc")
     for path in layout.etc_masks:
         args += ["--tmpfs", path]
     for path in layout.optional:
-        args += ["--ro-bind-try", path, path]
-    args += ["--dir", "/run", "--dir", "/var"]
+        args += bind("--ro-bind-try", path, path)
+    for path in ("/run", "/var"):
+        if path not in made:
+            made.add(path)
+            args += ["--dir", path]
     if spec.tmp_dir:
-        args += ["--bind", spec.tmp_dir, "/tmp", "--bind", spec.tmp_dir, spec.tmp_dir]
+        args += bind("--bind", spec.tmp_dir, "/tmp") + bind("--bind", spec.tmp_dir, spec.tmp_dir)
     else:
         args += ["--perms", "1777", "--tmpfs", "/tmp"]
     for path in spec.ro_paths:
-        args += ["--ro-bind", path, path]
+        args += bind("--ro-bind", path, path)
     for path in spec.rw_paths:
-        args += ["--bind", path, path]
+        args += bind("--bind", path, path)
     # Everything is in place: close what bubblewrap made itself. The root of
     # the view, the directories that lead to the app's own and /dev are
     # tmpfs that belong to whoever runs bubblewrap - in a user namespace that
