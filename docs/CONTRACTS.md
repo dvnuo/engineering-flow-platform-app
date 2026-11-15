@@ -78,6 +78,7 @@ Unknown keys are ignored. Paths may not be absolute or contain `..`.
 | `EFP_HOST_STORE_DIR` | `/var/lib/efp-host/store` | the persistent volume |
 | `EFP_HOST_RUNTIME_DIR` | `/srv/efp-apps` | container-local run directory (hidden mode) |
 | `EFP_HOST_RUN_DIR` | `/run/efp-host` | sockets and generated config |
+| `EFP_HOST_RESOURCE_DIR` | `/opt/efp` in the image | holds `nginx/` (the gateway template) and `pages/` |
 | `EFP_HOST_ADMIN_PORT` | `9000` | manager API |
 | `EFP_HOST_GATEWAY_PORT` | `8080` | nginx |
 | `EFP_HOST_PORT_RANGE_START` | `20000` | first loopback port given to an app |
@@ -300,8 +301,9 @@ their UTC day, so a repeated or late post is harmless.
   `fastapi`, `gradio`, `static`; kept for `flask`, `streamlit`, `command`.
   `strip_prefix` in the manifest overrides it.
 - `Cookie` without the gateway session cookie.
-- Every `X-EFP-*` header the client sent is removed; then `X-EFP-Visitor`
-  (6.4) is added when the visitor is signed in.
+- A request in which the client itself sent an `X-EFP-*` header is refused
+  with `400`; `X-EFP-Visitor` (6.4) is added by the gateway when the visitor
+  is signed in, so an app can trust it.
 - `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host`,
   `X-Forwarded-Prefix: /{slug}`.
 - WebSocket upgrades and streaming responses pass through unbuffered; read
@@ -482,11 +484,16 @@ An app may pass the `X-EFP-Visitor` value it received as the request header
   "model": null,
   "max_output_tokens": 1024,
   "temperature": null,
+  "reasoning_effort": null,
   "stream": false
 }
 ```
 
-`role` is `user` or `assistant`; `content` is a string. Not streaming:
+`role` is `user` or `assistant`; `content` is a string. `reasoning_effort` is
+`low`, `medium` or `high`; left out it is `low` (an app call does not inherit
+the level the owner chose for their assistants), and the Portal lowers it to
+what the model supports. `temperature` is accepted and may be ignored by the
+provider. Not streaming:
 
 ```json
 {"text": "...", "model": "gpt-5.4", "finish_reason": "stop|length",

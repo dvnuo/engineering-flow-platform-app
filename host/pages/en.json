@@ -1,0 +1,75 @@
+{
+  "labels": {
+    "product": "EFP Apps",
+    "this_app": "This app",
+    "retry": "Try again",
+    "app": "Back to the app",
+    "portal": "Open the Portal"
+  },
+  "pages": {
+    "home": {
+      "title": "EFP Apps",
+      "heading": "Apps are opened from the Portal",
+      "message": "Find the app you are looking for in the Portal and open it from there.",
+      "actions": ["portal"]
+    },
+    "starting": {
+      "title": "Starting {app}",
+      "heading": "{app} is starting",
+      "message": "This usually takes a few seconds. The page reloads by itself.",
+      "actions": []
+    },
+    "unavailable": {
+      "title": "{app} is not available",
+      "heading": "{app} is not available right now",
+      "message": "The app is stopped or cannot be reached at the moment. Try again shortly.",
+      "actions": ["retry", "portal"]
+    },
+    "not_deployed": {
+      "title": "{app} is not deployed",
+      "heading": "{app} has not been deployed yet",
+      "message": "Its owner, {owner}, has not deployed it yet. Come back later.",
+      "message_no_owner": "Its owner has not deployed it yet. Come back later.",
+      "actions": ["portal"]
+    },
+    "crashed": {
+      "title": "{app} stopped",
+      "heading": "{app} stopped unexpectedly",
+      "message": "The app ran into an error and is not running. Its owner, {owner}, can find the cause in the app's logs in the Portal.",
+      "message_no_owner": "The app ran into an error and is not running. Its owner can find the cause in the app's logs in the Portal.",
+      "actions": ["retry", "portal"]
+    },
+    "no_access": {
+      "title": "No access",
+      "heading": "You do not have access to {app}",
+      "message": "Ask its owner, {owner}, to share it with you.",
+      "message_no_owner": "Ask its owner to share it with you.",
+      "actions": ["portal"]
+    },
+    "disabled": {
+      "title": "{app} was taken down",
+      "heading": "{app} has been taken down",
+      "message": "This app cannot be opened any more.",
+      "detail": "Reason: {reason}",
+      "actions": ["portal"]
+    },
+    "not_found": {
+      "title": "App not found",
+      "heading": "There is no app at this address",
+      "message": "Check the link, or look for the app in the Portal.",
+      "actions": ["portal"]
+    },
+    "signin_failed": {
+      "title": "Sign-in did not finish",
+      "heading": "Sign-in did not finish",
+      "message": "The sign-in link has expired or was already used. Open the app again to sign in.",
+      "actions": ["app", "portal"]
+    },
+    "rate_limited": {
+      "title": "Too many requests",
+      "heading": "Too many requests",
+      "message": "Wait a moment and try again.",
+      "actions": ["retry"]
+    }
+  }
+}

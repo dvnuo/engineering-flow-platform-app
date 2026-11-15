@@ -1,0 +1,75 @@
+{
+  "labels": {
+    "product": "EFP 應用程式",
+    "this_app": "此應用程式",
+    "retry": "重試",
+    "app": "返回應用程式",
+    "portal": "開啟 Portal"
+  },
+  "pages": {
+    "home": {
+      "title": "EFP 應用程式",
+      "heading": "請從 Portal 開啟應用程式",
+      "message": "在 Portal 找出你要使用的應用程式，再從那裏開啟。",
+      "actions": ["portal"]
+    },
+    "starting": {
+      "title": "正在啟動 {app}",
+      "heading": "{app} 正在啟動",
+      "message": "通常只需數秒，頁面會自動重新載入。",
+      "actions": []
+    },
+    "unavailable": {
+      "title": "{app} 暫時無法使用",
+      "heading": "{app} 暫時無法使用",
+      "message": "應用程式已停止，或暫時無法連線。請稍後重試。",
+      "actions": ["retry", "portal"]
+    },
+    "not_deployed": {
+      "title": "{app} 尚未部署",
+      "heading": "{app} 尚未部署",
+      "message": "擁有者 {owner} 尚未部署此應用程式，請稍後再來。",
+      "message_no_owner": "擁有者尚未部署此應用程式，請稍後再來。",
+      "actions": ["portal"]
+    },
+    "crashed": {
+      "title": "{app} 已停止",
+      "heading": "{app} 意外停止",
+      "message": "應用程式執行時出錯，目前並未運行。擁有者 {owner} 可在 Portal 的應用程式記錄中查看原因。",
+      "message_no_owner": "應用程式執行時出錯，目前並未運行。擁有者可在 Portal 的應用程式記錄中查看原因。",
+      "actions": ["retry", "portal"]
+    },
+    "no_access": {
+      "title": "無權存取",
+      "heading": "你無權存取 {app}",
+      "message": "請聯絡擁有者 {owner}，請對方與你共用此應用程式。",
+      "message_no_owner": "請聯絡擁有者，請對方與你共用此應用程式。",
+      "actions": ["portal"]
+    },
+    "disabled": {
+      "title": "{app} 已下架",
+      "heading": "{app} 已下架",
+      "message": "此應用程式已不能再開啟。",
+      "detail": "原因：{reason}",
+      "actions": ["portal"]
+    },
+    "not_found": {
+      "title": "找不到應用程式",
+      "heading": "此網址沒有應用程式",
+      "message": "請檢查連結，或到 Portal 尋找此應用程式。",
+      "actions": ["portal"]
+    },
+    "signin_failed": {
+      "title": "登入未能完成",
+      "heading": "登入未能完成",
+      "message": "登入連結已過期或已被使用。請重新開啟應用程式再登入一次。",
+      "actions": ["app", "portal"]
+    },
+    "rate_limited": {
+      "title": "要求過於頻繁",
+      "heading": "要求過於頻繁",
+      "message": "請稍候片刻再試。",
+      "actions": ["retry"]
+    }
+  }
+}

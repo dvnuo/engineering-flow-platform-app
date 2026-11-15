@@ -93,7 +93,17 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings = Settings.from_env()
-    uvicorn.run(create_app(settings), host="0.0.0.0", port=settings.admin_port, log_level="info", access_log=False)
+    uvicorn.run(
+        create_app(settings),
+        host="0.0.0.0",
+        port=settings.admin_port,
+        log_level="info",
+        access_log=False,
+        # The gateway's access check carries the visitor's cookies and the
+        # original URI: nginx accepts request heads up to 32 KiB, the default
+        # here is 16 KiB, and a refused check would turn into a 503.
+        h11_max_incomplete_event_size=64 * 1024,
+    )
 
 
 if __name__ == "__main__":
