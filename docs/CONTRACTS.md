@@ -391,8 +391,9 @@ response: 4-byte big-endian header length, JSON header, body bytes
 | `{"op":"list","prefix":"a/"}` | | `{"ok":true,"keys":[{"key":"a/b.json","size":N,"modified_at":"..."}]}` | |
 
 Failure: `{"ok":false,"error":{"code":"not_found|invalid_key|too_large|quota_exceeded|bad_request","message":"..."}}`.
-A key is 1-512 characters of `A-Z a-z 0-9 . _ - /`, no leading `/`, no empty
-or `..` segment. One object is at most 64 MiB.
+A key is 1-512 characters of `A-Z a-z 0-9 . _ - /`, no leading `/`, no empty,
+`.` or `..` segment, and no segment longer than 255 characters. One object is
+at most 64 MiB.
 
 The SDK's `storage` module offers the same four operations in all three
 places: files under `EFP_APP_DATA_DIR/objects/` (sandbox), this socket
