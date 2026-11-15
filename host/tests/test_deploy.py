@@ -517,3 +517,27 @@ def test_the_gateway_can_reach_a_static_site_in_hidden_mode_without_the_volume(t
     for path, mode in below.items():
         assert mode & 0o005 == 0o005, f"{path} is {oct(mode)}"
     assert stat.S_IMODE(os.stat(root + "/index.html").st_mode) & 0o004
+
+
+def test_the_bundled_sdk_is_added_when_the_image_has_it(tmp_path):
+    async def scenario():
+        harness = Harness(tmp_path)
+        wheels = harness.runtime.bundled_wheels_dir
+        wheels.mkdir(parents=True)
+        (wheels / "efp_app_sdk-0.1.0-py3-none-any.whl").write_bytes(b"wheel")
+        await harness.register()
+        job = await harness.deploy()
+        named = dict(FASTAPI_FILES)
+        named["requirements.txt"] = "fastapi\nuvicorn\nefp-app-sdk==0.1.0\n"
+        again = await harness.deploy(sha=SHA_B, files=named)
+        return harness, job, again
+
+    harness, job, again = asyncio.run(scenario())
+    assert job.status == "succeeded" and again.status == "succeeded"
+    installs = [command for command in harness.runner.commands() if " install " in command]
+    wheels = harness.runtime.bundled_wheels_dir.as_posix()
+    # Not named by the app: the host adds the runner and the SDK, the SDK from the image's own wheel.
+    assert installs[0].endswith(" uvicorn efp-app-sdk") and f"--find-links {wheels} " in installs[0]
+    assert "adding the bundled efp-app-sdk (efp_app_sdk-0.1.0-py3-none-any.whl)" in _log(harness, job)
+    # Named by the app: its requirements decide, nothing is added.
+    assert installs[1].endswith("/code/requirements.txt") and "--find-links" not in installs[1]

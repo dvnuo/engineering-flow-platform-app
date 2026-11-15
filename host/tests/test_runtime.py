@@ -677,3 +677,26 @@ def test_logs_are_read_with_secrets_blanked(tmp_path):
     lines, truncated, seen = asyncio.run(scenario())
     assert lines == ["line 300", "token ***"] and truncated is True
     assert [line for line in seen if line is not None] == ["token ***", "fresh ***"]
+
+
+def test_a_backend_that_was_passed_over_is_logged(tmp_path, monkeypatch, caplog):
+    import logging
+
+    import efp_app_host.runtime as runtime_module
+
+    def fake_detect(settings, paths):
+        return IsolationStatus(
+            mode="sandbox",
+            backend="bwrap-userns",
+            options={"proc": "bind"},
+            attempts={"bwrap": "setpriv: setresuid failed: Operation not permitted", "bwrap-userns": "ok"},
+        )
+
+    monkeypatch.setattr(runtime_module, "detect", fake_detect)
+    harness = Harness(tmp_path)
+    with caplog.at_level(logging.INFO, logger="efp_app_host.runtime"):
+        status = asyncio.run(harness.runtime.detect_isolation())
+    assert status.backend == "bwrap-userns"
+    warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
+    assert warnings == ["isolation: bwrap does not work here: setpriv: setresuid failed: Operation not permitted"]
+    assert any("backend bwrap-userns" in record.getMessage() for record in caplog.records if record.levelno == logging.INFO)

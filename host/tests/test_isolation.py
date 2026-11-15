@@ -61,9 +61,23 @@ def test_bwrap_as_root_builds_the_view_then_drops_privileges():
     assert ("/usr", "/usr") in ro and ("/etc", "/etc") in ro and (RELEASE, RELEASE) in ro
     assert _pairs(argv, "--symlink") == [("usr/bin", "/bin"), ("usr/lib", "/lib")]
     assert _pairs(argv, "--bind") == [(TMP, "/tmp"), (TMP, TMP), (DATA, DATA)]
-    # The host's own configuration is hidden.
+    # The host's own configuration is hidden; /dev/shm is a tmpfs of its own,
+    # open to the app (bubblewrap's is a directory of root) and with a ceiling.
     masked = [argv[index + 1] for index, value in enumerate(argv) if value == "--tmpfs"]
-    assert masked == ["/etc/nginx", "/etc/supervisor"]
+    assert masked == ["/dev/shm", "/etc/nginx", "/etc/supervisor"]
+    shm = argv.index("/dev/shm")
+    assert argv[shm - 5 : shm] == ["--perms", "1777", "--size", str(64 * 1024 * 1024), "--tmpfs"]
+    assert argv.index("--dev") < shm
+    # What bubblewrap made itself is closed at the very end, the root last:
+    # after it no mount point could be created any more.
+    closed = [argv[index + 1] for index, value in enumerate(argv) if value == "--remount-ro"]
+    assert closed == ["/etc/nginx", "/etc/supervisor", "/dev", "/"]
+    last_mount = max(index for index, value in enumerate(argv) if value in ("--bind", "--ro-bind", "--tmpfs", "--dir", "--symlink", "--ro-bind-try"))
+    first_close = argv.index("--remount-ro")
+    assert last_mount < first_close < argv.index("--chdir")
+    assert argv[argv.index("--chdir") - 2 : argv.index("--chdir")] == ["--remount-ro", "/"]
+    # The app's data and tmp are mounts of their own: closing the root does not close them.
+    assert DATA not in closed and TMP not in closed and "/dev/shm" not in closed and "/tmp" not in closed
     # Nothing of the volume besides the app's own two directories.
     volume = [source for source, _ in ro + _pairs(argv, "--bind") if source.startswith("/var/lib/efp-host")]
     assert volume == [RELEASE, DATA]
@@ -288,3 +302,43 @@ def test_the_probe_tries_every_isolation_on_the_given_volume(tmp_path, monkeypat
     assert all(item[2] == tmp_path / "volume" / "store" for item in seen)
     only = probe_module.probe(tmp_path / "volume" / "store", tmp_path / "local", tmp_path / "run", only="hidden")
     assert [(mode, backend) for mode, backend, _, _ in only] == [("hidden", "plain")]
+
+
+def test_a_user_namespace_view_is_closed_the_same_way():
+    """In a user namespace bubblewrap's own tmpfs belong to the app: without this
+    the app could write to the root of its view and to the directories above its own."""
+
+    for options in ({"proc": "new"}, {"proc": "bind"}):
+        argv = build_exec_plan(_spec(BACKEND_BWRAP_USERNS, options=options), LAYOUT).argv
+        closed = [argv[index + 1] for index, value in enumerate(argv) if value == "--remount-ro"]
+        assert closed == ["/etc/nginx", "/etc/supervisor", "/dev", "/"]
+        assert argv[argv.index("--chdir") - 2 : argv.index("--chdir")] == ["--remount-ro", "/"]
+
+
+def test_a_view_without_a_private_tmp_still_has_a_usable_one():
+    argv = build_exec_plan(_spec(BACKEND_BWRAP, tmp_dir=""), LAYOUT).argv
+    tmp = argv.index("/tmp")
+    assert argv[tmp - 3 : tmp] == ["--perms", "1777", "--tmpfs"]
+
+
+def test_the_probe_explains_a_root_that_may_not_use_its_capabilities(tmp_path):
+    """bwrap as root keeps its capabilities; when setpriv inside still may not
+    switch users, the cause is outside the container and the message says where to look."""
+
+    class Refused:
+        def __init__(self):
+            self.specs = []
+
+        def __call__(self, spec, timeout):
+            self.specs.append(spec)
+            if spec.backend == BACKEND_BWRAP:
+                return 1, "setpriv: setresuid failed: Operation not permitted\n"
+            return 0, "probe ok\n"
+
+    status, _ = _detect(tmp_path, Refused())
+    assert status.ok and status.backend == BACKEND_BWRAP_USERNS
+    assert "setresuid failed" in status.attempts[BACKEND_BWRAP]
+    assert "AppArmor" in status.attempts[BACKEND_BWRAP] and "deploy/apparmor/efp-app-host" in status.attempts[BACKEND_BWRAP]
+    # Any other failure is reported as it is.
+    status, _ = _detect(tmp_path, ProbeRunner({BACKEND_LANDLOCK: 0}))
+    assert "AppArmor" not in status.attempts[BACKEND_BWRAP]

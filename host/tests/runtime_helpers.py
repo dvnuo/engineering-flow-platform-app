@@ -189,6 +189,9 @@ class Harness:
         self.runtime.candidate_grace = 0.0
         # Even when the tests run as root: never touch the machine's /etc/passwd.
         self.runtime.manage_os_users = False
+        # Whatever the machine has in /opt/efp/wheels (the image has the SDK
+        # there): a test decides itself whether a bundled SDK exists.
+        self.runtime.bundled_wheels_dir = tmp_path / "bundled-wheels"
         self.paths = self.runtime.paths
 
     async def register(self, app_id: str = "app-1", slug: str = "mindmap", **fields: Any):

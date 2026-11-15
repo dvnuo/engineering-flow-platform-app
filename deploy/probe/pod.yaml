@@ -19,12 +19,15 @@ metadata:
   namespace: efp-apps
   labels:
     app: efp-isolation-probe
-  # Nodes with AppArmor (Ubuntu): probe without its default profile too, by
-  # uncommenting these and running again.
+  # Nodes with AppArmor (Ubuntu): the runtime's default profile forbids mount,
+  # so the two bwrap containers fail under it. Load deploy/apparmor/efp-app-host
+  # on the nodes and probe again with these (Kubernetes 1.30+ takes
+  # securityContext.appArmorProfile {type: Localhost, localhostProfile: efp-app-host}):
   # annotations:
-  #   container.apparmor.security.beta.kubernetes.io/bwrap-default-seccomp: unconfined
-  #   container.apparmor.security.beta.kubernetes.io/bwrap: unconfined
-  #   container.apparmor.security.beta.kubernetes.io/userns: unconfined
+  #   container.apparmor.security.beta.kubernetes.io/bwrap-default-seccomp: localhost/efp-app-host
+  #   container.apparmor.security.beta.kubernetes.io/bwrap: localhost/efp-app-host
+  # "unconfined" instead is enough on nodes whose AppArmor policy has no
+  # profile for /usr/bin/bwrap; the output of each container says which it is.
 spec:
   restartPolicy: Never
   automountServiceAccountToken: false

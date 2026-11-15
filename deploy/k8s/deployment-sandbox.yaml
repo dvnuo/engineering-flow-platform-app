@@ -32,11 +32,12 @@ spec:
     metadata:
       labels:
         app: efp-app-host
-      # Nodes with AppArmor (Ubuntu): its default profile forbids mount, which
-      # the bwrap backend needs. Kubernetes 1.30+ takes the field
-      # securityContext.appArmorProfile {type: Unconfined} instead.
-      # annotations:
-      #   container.apparmor.security.beta.kubernetes.io/host: unconfined
+      # Nodes with AppArmor (Ubuntu) and the "bwrap" backend: load the profile
+      # deploy/apparmor/efp-app-host on the nodes and name it below
+      # (securityContext.appArmorProfile). The runtime's default profile
+      # forbids mount; "Unconfined" is not enough on Ubuntu 24.04 and later,
+      # where the node's own profile for /usr/bin/bwrap then takes every
+      # capability from what bubblewrap starts (docs/OPERATIONS.md, section 4).
     spec:
       # Member code runs in this pod: it gets no Kubernetes credentials.
       automountServiceAccountToken: false
@@ -105,6 +106,10 @@ spec:
             # deploy/probe tells (its container "bwrap-default-seccomp").
             seccompProfile:
               type: Unconfined
+            # Nodes with AppArmor only (see the top of this file):
+            # appArmorProfile:
+            #   type: Localhost
+            #   localhostProfile: efp-app-host
           resources:
             requests:
               cpu: "1"

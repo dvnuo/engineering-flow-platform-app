@@ -217,6 +217,9 @@ def test_the_probe_app_reports_reads_and_writes_truthfully(probe, tmp_path):
     assert refused["ok"] is False and refused["error"] == "FileNotFoundError"
     no_socket = smoke.request(base, "POST", "/probe-x/storage", body=json.dumps({"op": "list", "prefix": ""}).encode()).json()
     assert no_socket["ok"] is False and no_socket["error"]["code"] == "no_socket"
+    if hasattr(module.socket, "AF_UNIX"):
+        refused = smoke.request(base, "POST", "/probe-x/connect", body=json.dumps({"paths": [str(tmp_path / "no.sock")]}).encode()).json()["results"]
+        assert refused == [{"path": str(tmp_path / "no.sock"), "ok": False, "error": "FileNotFoundError"}]
 
 
 def test_the_websocket_client_and_the_probe_apps_echo_understand_each_other(probe):

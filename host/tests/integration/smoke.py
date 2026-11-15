@@ -490,7 +490,6 @@ class Smoke:
             f"{runtime}/probe-aaaa/releases/{victim_sha}/code/server.py",
             "/run/efp-host/launch",
             "/run/efp-host/gateway.secret",
-            "/run/efp-host/supervisor.sock",
             "/etc/nginx/nginx.conf",
             "/proc/1/environ",
         ]
@@ -503,9 +502,32 @@ class Smoke:
         apps_listing = by_path[f"{store}/apps"]
         self.check("the attacker cannot see which other apps exist", not apps_listing["ok"] or "probe-aaaa" not in (apps_listing["sample"] or []), apps_listing)
 
-        for target in (f"{victim_dir}/data/planted.txt", f"{victim_dir}/env.json", f"{own_code}/planted.py", f"{store}/planted.txt", "/etc/planted"):
+        # Nothing but its own data and tmp can be written. The directories
+        # above its own and the root of its view are part of that: in a
+        # sandbox they are not the real ones, but they are not scratch space.
+        for target in (
+            f"{victim_dir}/data/planted.txt",
+            f"{victim_dir}/env.json",
+            f"{own_code}/planted.py",
+            f"{store}/planted.txt",
+            f"{store}/apps/planted.txt",
+            f"{store}/apps/probe-bbbb/planted.txt",
+            "/etc/planted",
+            "/var/planted",
+            "/run/planted",
+            "/dev/planted",
+            "/planted",
+        ):
             wrote = self.app_json("probe-b", "/write", {"path": target})
             self.check(f"the attacker cannot write {target}", not wrote["ok"], wrote)
+        shared = self.app_json("probe-b", "/write", {"path": "/dev/shm/efp-smoke.txt"})
+        self.check("shared memory (/dev/shm) is usable", shared["ok"], shared)
+        own_tmp = self.app_json("probe-b", "/write", {"path": f"{attacker['tmpdir']}/scratch.txt"})
+        self.check("and so is the app's private tmp", own_tmp["ok"], own_tmp)
+
+        # The supervisor's control socket would let an app start and stop the others.
+        sockets = self.app_json("probe-b", "/connect", {"paths": ["/run/efp-host/supervisor.sock"]})["results"]
+        self.check("the attacker cannot connect to the supervisor", not sockets[0]["ok"], sockets[0])
 
         scan = self.app_json("probe-b", "/environ-scan", {"needles": [canary, self.args.token, self.state["apps"]["probe-aaaa"]["env"]["EFP_APP_TOKEN"]]})
         self.check("no other process's environment gives the attacker a secret", scan["found"] == [], scan)

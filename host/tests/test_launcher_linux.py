@@ -142,6 +142,14 @@ if touch "$1/code/new.txt" 2>/dev/null; then fail "can write its release"; fi
 if cat "$3/env.json" >/dev/null 2>&1; then fail "can read another app's environment"; fi
 if ls "$3" >/dev/null 2>&1; then fail "can list another app's directory"; fi
 if ls "$1/../../../other" >/dev/null 2>&1; then fail "can reach another app through its own path"; fi
+# Nothing but its data and its tmp can be written: not the directories that
+# lead to its own, not the root of its view, not /dev.
+if touch "$1/../../../planted" 2>/dev/null; then fail "can write the directory above its own"; fi
+if touch /planted 2>/dev/null; then fail "can write the root of its view"; fi
+if touch /dev/planted 2>/dev/null; then fail "can write /dev"; fi
+# Shared memory works (Python's multiprocessing needs it).
+touch "/dev/shm/efp-check-$$" || fail "cannot use /dev/shm"
+rm -f "/dev/shm/efp-check-$$"
 echo "sandbox checks passed"
 """
 
@@ -212,6 +220,9 @@ def test_bwrap_as_root_shows_the_app_only_its_own_directories(area):
 [ "$(ls "$1/../../.." | tr '\n' ' ')" = "mine " ] || fail "the apps directory shows: $(ls "$1/../../.." | tr '\n' ' ')"
 [ -z "$(ls /etc/nginx 2>/dev/null)" ] || fail "the gateway's configuration is visible"
 [ -z "$(ls /run 2>/dev/null)" ] || fail "the run directory is visible"
+for target in /var/planted /run/planted /etc/planted /etc/nginx/planted; do
+    if touch "$target" 2>/dev/null; then fail "can write $target"; fi
+done
 tr '\0' ' ' < /proc/1/cmdline | grep -q bwrap || fail "process 1 is not the sandbox's own: $(tr '\0' ' ' < /proc/1/cmdline)"
 echo "view checks passed"
 """
@@ -233,6 +244,11 @@ def test_bwrap_in_a_user_namespace_shows_the_app_only_its_own_directories(area):
         _bwrap_or_skip(area, BACKEND_BWRAP_USERNS, options)
     extra = r"""
 [ ! -e "$3" ] || fail "another app's directory exists in the view"
+# In a user namespace the tmpfs bubblewrap makes belong to the app itself:
+# they must be closed all the same.
+for target in /var/planted /run/planted /etc/planted; do
+    if touch "$target" 2>/dev/null; then fail "can write $target"; fi
+done
 echo "view checks passed"
 """
     spec = _spec(area, BACKEND_BWRAP_USERNS, SANDBOX_CHECKS + extra, options=options, env={"WANT_UID": str(_target_uid())})

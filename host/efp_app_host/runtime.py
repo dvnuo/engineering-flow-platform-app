@@ -55,6 +55,7 @@ from .models import (
 )
 from .osusers import sync_os_users
 from .procstats import CpuMeter, ProcessSampler, PsutilSampler, dir_size, free_bytes, host_numbers
+from .pyenv import BUNDLED_WHEELS_DIR
 from .registry import Registry
 from .runner import CommandRunner, LauncherRunner
 from .storage_service import ObjectStore
@@ -164,6 +165,8 @@ class HostRuntime:
         self.builder = ReleaseBuilder(self)
         self.deployer = Deployer(self)
         self.launcher_bin = LAUNCHER_BIN
+        # Where the image keeps the SDK wheel that deployments add by themselves.
+        self.bundled_wheels_dir = BUNDLED_WHEELS_DIR
         self.manage_os_users = sys.platform == "linux" and getattr(os, "geteuid", lambda: 1)() == 0
         # Seconds between health probes / before a candidate counts as started;
         # ``None`` means the defaults. Tests shorten them.
@@ -249,6 +252,11 @@ class HostRuntime:
     async def detect_isolation(self) -> IsolationStatus:
         self.isolation = await asyncio.to_thread(detect, self.settings, self.paths)
         if self.isolation.ok:
+            # A backend that was tried first and did not work is worth a line:
+            # the host runs, but not with the isolation that was expected.
+            for backend, message in self.isolation.attempts.items():
+                if backend != self.isolation.backend:
+                    logger.warning("isolation: %s does not work here: %s", backend, message)
             logger.info("isolation: mode %s, backend %s %s", self.isolation.mode, self.isolation.backend, self.isolation.options or "")
         else:
             logger.error("isolation: mode %s is NOT available, apps will not be started: %s", self.isolation.mode, self.isolation.error)

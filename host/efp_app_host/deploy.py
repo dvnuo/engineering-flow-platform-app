@@ -204,7 +204,7 @@ class ReleaseBuilder:
         """Install the release's dependencies and write its lock file."""
 
         dirs = run_dirs(self.settings, self.paths, record.id, sha)
-        plan = await asyncio.to_thread(pyenv.plan_install, dirs.code, manifest)
+        plan = await asyncio.to_thread(lambda: pyenv.plan_install(dirs.code, manifest, wheels_dir=self.runtime.bundled_wheels_dir))
         for note in plan.notes:
             log(note + "\n")
         allow_sdist = self.settings.pip_allow_sdist

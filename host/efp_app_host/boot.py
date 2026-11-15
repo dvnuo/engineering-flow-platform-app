@@ -152,6 +152,10 @@ async def _reconcile_until_done(state: HostState) -> None:
 async def startup(state: HostState) -> None:
     runtime = state.runtime
     settings, paths = state.settings, state.paths
+    # httpx logs one line per request at INFO: every health probe of a
+    # starting app, every access check, every metrics push.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     for problem in await asyncio.to_thread(prepare_directories, settings, paths):
         logger.warning("%s", problem)
     tasks: list[asyncio.Task] = []

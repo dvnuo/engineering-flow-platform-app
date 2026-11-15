@@ -17,6 +17,7 @@ echo "capabilities:  $(grep '^CapEff' /proc/self/status | tr -s '\t ' ' ')"
 echo "seccomp:       $(grep '^Seccomp:' /proc/self/status | tr -s '\t ' ' ') (0 = off, 2 = filter)"
 echo "no_new_privs:  $(grep '^NoNewPrivs' /proc/self/status | tr -s '\t ' ' ')"
 echo "LSMs:          $(cat /sys/kernel/security/lsm 2>/dev/null || echo 'not readable')"
+echo "AppArmor:      $(cat /proc/self/attr/current 2>/dev/null || echo 'no label (AppArmor is not in use)')"
 echo "volume mount:  $(grep " $store " /proc/mounts || echo "NOT A MOUNT POINT: $store")"
 echo
 
@@ -40,6 +41,17 @@ fi
 if bwrap --version >/dev/null 2>&1; then
     if bwrap --ro-bind / / true 2>"$scratch/err"; then
         echo "bubblewrap as root: ok"
+        # The "bwrap" backend then switches to the app's user inside the view.
+        # bubblewrap run by root keeps root's capabilities; when the switch is
+        # refused all the same, the node's AppArmor policy took them away
+        # (Ubuntu 24.04 and later do this to what an unconfined /usr/bin/bwrap
+        # starts): the container then needs deploy/apparmor/efp-app-host.
+        if bwrap --ro-bind / / --proc /proc --dev /dev setpriv --reuid 19999 --regid 19999 --clear-groups true 2>"$scratch/err"; then
+            echo "bubblewrap as root, then switching user inside it: ok"
+        else
+            inside="$(bwrap --ro-bind / / --proc /proc --dev /dev cat /proc/self/attr/current 2>/dev/null || echo unknown)"
+            echo "bubblewrap as root, then switching user inside it: FAILED: $(tr '\n' ' ' <"$scratch/err")(AppArmor label inside bubblewrap: $inside)"
+        fi
     else
         echo "bubblewrap as root: FAILED: $(tr '\n' ' ' <"$scratch/err")"
     fi

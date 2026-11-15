@@ -62,6 +62,18 @@ def try_write(path: str, content: str) -> dict:
         return {"path": path, "ok": False, "error": exc.__class__.__name__}
 
 
+def try_connect(path: str) -> dict:
+    """Can this app open a connection to the unix socket at ``path``?"""
+
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(5)
+            client.connect(path)
+        return {"path": path, "ok": True, "error": None}
+    except OSError as exc:
+        return {"path": path, "ok": False, "error": exc.__class__.__name__}
+
+
 def scan_environments(needles: list) -> dict:
     """Look for the given strings in the environment of every process this app can open."""
 
@@ -190,6 +202,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"results": [try_read(item) for item in body.get("paths", [])]})
         elif path == "/write":
             self._send(200, try_write(body["path"], body.get("content", "written by the probe\n")))
+        elif path == "/connect":
+            self._send(200, {"results": [try_connect(item) for item in body.get("paths", [])]})
         elif path == "/environ-scan":
             self._send(200, scan_environments(body.get("needles", [])))
         elif path == "/storage":

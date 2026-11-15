@@ -18,7 +18,7 @@ WORKDIR /src
 # setup.py of the SDK copies the starters from ../templates into the wheel.
 COPY sdk/ /src/sdk/
 COPY templates/ /src/templates/
-RUN pip install --no-cache-dir build \
+RUN PIP_ROOT_USER_ACTION=ignore pip install --no-cache-dir build \
     && python -m build --wheel --outdir /wheels /src/sdk \
     && ls -l /wheels/efp_app_sdk-*.whl
 
@@ -50,7 +50,7 @@ RUN apt-get update \
 
 COPY host/pyproject.toml /opt/efp/src/pyproject.toml
 COPY host/efp_app_host/ /opt/efp/src/efp_app_host/
-RUN pip install --no-cache-dir /opt/efp/src \
+RUN PIP_ROOT_USER_ACTION=ignore pip install --no-cache-dir /opt/efp/src \
     && rm -rf /opt/efp/src \
     && python3 -m compileall -q /usr/local/lib/python3.11/site-packages/efp_app_host
 

@@ -55,6 +55,8 @@ PROBE_TIMEOUT_SECONDS = 30
 # Signals the wrapper processes of bubblewrap ignore so that the app, which
 # gets the same signal through its process group, can shut down by itself.
 DEFAULT_SIGNALS = "TERM"
+# Size of /dev/shm in a bubblewrap view (what Docker gives a container).
+SHM_BYTES = 64 * 1024 * 1024
 
 # Directories below /etc that hold the host's own configuration: an app sees
 # them empty (bubblewrap) or not at all (Landlock).
@@ -183,7 +185,10 @@ def _bwrap(spec: LaunchSpec, layout: SystemLayout, *, user_namespace: bool) -> l
         # A fresh /proc cannot be mounted from a user namespace when the
         # container's own /proc is partly masked; show the existing one.
         args += ["--ro-bind", "/proc", "/proc"]
-    args += ["--dev", "/dev"]
+    # bubblewrap's /dev/shm is a plain directory of its own user: unusable for
+    # the app when bubblewrap runs as root, unbounded when it runs as the app.
+    # A tmpfs of its own, open like the usual one and with a ceiling.
+    args += ["--dev", "/dev", "--perms", "1777", "--size", str(SHM_BYTES), "--tmpfs", "/dev/shm"]
     for path in layout.dirs:
         args += ["--ro-bind", path, path]
     for path, target in layout.links:
@@ -197,11 +202,19 @@ def _bwrap(spec: LaunchSpec, layout: SystemLayout, *, user_namespace: bool) -> l
     if spec.tmp_dir:
         args += ["--bind", spec.tmp_dir, "/tmp", "--bind", spec.tmp_dir, spec.tmp_dir]
     else:
-        args += ["--tmpfs", "/tmp"]
+        args += ["--perms", "1777", "--tmpfs", "/tmp"]
     for path in spec.ro_paths:
         args += ["--ro-bind", path, path]
     for path in spec.rw_paths:
         args += ["--bind", path, path]
+    # Everything is in place: close what bubblewrap made itself. The root of
+    # the view, the directories that lead to the app's own and /dev are
+    # tmpfs that belong to whoever runs bubblewrap - in a user namespace that
+    # is the app, which could otherwise write there (into memory nobody
+    # counts). Not recursive: data, tmp and /dev/shm stay writable.
+    for path in layout.etc_masks:
+        args += ["--remount-ro", path]
+    args += ["--remount-ro", "/dev", "--remount-ro", "/"]
     args += ["--chdir", spec.cwd, "--"]
     return args
 
@@ -277,6 +290,17 @@ echo "probe ok"
 """
 
 Runner = Callable[[LaunchSpec, float], "tuple[int, str]"]
+
+# bubblewrap run by root keeps root's capabilities for what it starts, and
+# setpriv inside the view needs CAP_SETUID to become the app's user. Where
+# that fails although the container has the capability, something outside
+# the container took it away: on Ubuntu 24.04 and later the node's AppArmor
+# policy attaches a profile to /usr/bin/bwrap whose children may use no
+# capability at all (docs/OPERATIONS.md, "Nodes with AppArmor").
+APPARMOR_HINT = (
+    " (root in the view may not use its capabilities: on nodes with AppArmor the node's own profile for"
+    " bwrap does this to an unconfined container; give the container the profile deploy/apparmor/efp-app-host)"
+)
 
 
 def launcher_command(spec_file: str) -> list[str]:
@@ -386,7 +410,10 @@ def detect(settings: Settings, paths: HostPaths, *, runner: Runner | None = None
                 label="probe",
             )
             code, output = runner(spec, PROBE_TIMEOUT_SECONDS)
-            return code == 0, _summary(output) if code else "ok"
+            message = _summary(output) if code else "ok"
+            if code and backend == BACKEND_BWRAP and "setresuid failed" in output:
+                message += APPARMOR_HINT
+            return code == 0, message
 
         if mode == ISOLATION_HIDDEN:
             ok, message = attempt(BACKEND_PLAIN, {})

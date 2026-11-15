@@ -124,7 +124,7 @@ Sandbox backends, in the order `auto` tries them:
 
 | Backend | How | Needs |
 |---|---|---|
-| `bwrap` | bubblewrap as root builds a mount namespace that holds the system directories and the app's own directory; inside it `setpriv` drops to the app's user | capability `SYS_ADMIN` (plus `SYS_CHROOT`); no seccomp or AppArmor profile that forbids `mount` |
+| `bwrap` | bubblewrap as root builds a mount namespace that holds the system directories and the app's own directory; inside it `setpriv` drops to the app's user | capability `SYS_ADMIN` (plus `SYS_CHROOT`); no seccomp profile that forbids `mount`; on nodes with AppArmor the profile `deploy/apparmor/efp-app-host` (below) |
 | `bwrap-userns` | drop to the app's user first, then bubblewrap in a user namespace | unprivileged user namespaces on the node; seccomp `Unconfined` |
 | `landlock` | drop to the app's user, then give up filesystem access with Landlock | a kernel with Landlock (5.13+, `lsm=landlock`) |
 
@@ -135,6 +135,43 @@ Landlock the rest of the volume exists but cannot be opened or listed (file
 `TMPDIR` is), and the app sees the container's other processes in `/proc`,
 though not their environment. Hidden mode is like Landlock in that last
 respect.
+
+In a bubblewrap view the app can write its data directory, its private tmp
+(also mounted as `/tmp`) and `/dev/shm` (64 MiB), and nothing else: the root
+of the view, the directories that lead to the app's own and `/dev` are
+read-only.
+
+#### Nodes with AppArmor
+
+AppArmor matters for the `bwrap` backend only. Two things get in its way:
+
+- The container runtime's default profile (`docker-default`,
+  `cri-containerd.apparmor.d`) forbids `mount`. bubblewrap cannot build a
+  view under it.
+- Running the container `Unconfined` is not the answer on Ubuntu 24.04 and
+  later. The node's own AppArmor policy has a profile for `/usr/bin/bwrap`
+  that attaches by the program's path, also to a process of an unconfined
+  container, and what bubblewrap starts under it may use no capability at
+  all. bubblewrap run by root otherwise keeps root's capabilities for what it
+  starts, and `setpriv` inside the view needs one of them (`CAP_SETUID`) to
+  become the app's user: it fails with `setpriv: setresuid failed: Operation
+  not permitted`. With `EFP_HOST_SANDBOX_BACKEND=auto` the host then uses
+  `bwrap-userns` (which that same node profile permits) and says so in its
+  log; with `bwrap` named, no app is started.
+
+The way out is a profile of the container's own: `deploy/apparmor/efp-app-host`
+is the runtime's default profile plus `mount` and `pivot_root`. A container
+that runs under it keeps it across every exec, so the node's bwrap profile
+never applies. Load it on every node that may run the app host
+(`sudo apparmor_parser --replace deploy/apparmor/efp-app-host`, and copy it
+to `/etc/apparmor.d/` to survive a reboot), then set
+`securityContext.appArmorProfile: {type: Localhost, localhostProfile: efp-app-host}`
+in `deployment-sandbox.yaml`. CI starts the image this way.
+
+Nodes without AppArmor (Amazon Linux, Bottlerocket) need none of this.
+`bwrap-userns`, `landlock` and hidden mode run under the runtime's default
+profile; `bwrap-userns` additionally needs the node to allow unprivileged
+user namespaces to the container.
 
 **Run the probe; do not guess.** Whether a backend works depends on the
 node's kernel, the container runtime's seccomp and LSM profiles and the
@@ -293,6 +330,7 @@ gone.
 
 | What you see | Where to look |
 |---|---|
+| The log says `isolation: bwrap does not work here: setpriv: setresuid failed` | The node's AppArmor policy: section 4, "Nodes with AppArmor". The host fell back to the next backend (or starts nothing when `bwrap` was named). |
 | Every app with a process is `failed` / `isolation_unavailable` | `isolation_error` in `GET /v1/host`. Run `deploy/probe/run.sh`; a node pool or runtime change is the usual cause. |
 | A deployment fails at `dependencies` | The job log has pip's own output. No wheel for a package: build one for the index, or set `EFP_HOST_PIP_ALLOW_SDIST`. Cannot reach the index: `PIP_INDEX_URL`, proxy, `PIP_CERT`. |
 | A deployment fails at `start` or `health` | The job log holds the candidate's output. The app must listen on `127.0.0.1:$PORT` and answer `health_path` with a status below 500 within `startup_timeout`. |

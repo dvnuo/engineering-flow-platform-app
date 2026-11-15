@@ -8,18 +8,24 @@
 #     ci.sh smoke PHASE VARIANT     smoke.py (PHASE: first | after-recreate)
 #     ci.sh recreate-host VARIANT   a new container on the same volume (the local disk is lost)
 #     ci.sh diagnostics             everything worth reading after a failure
+#     ci.sh host-info               what this machine is: kernel, Docker, AppArmor and what it denied
 #     ci.sh image-tests             the Linux-only unit tests, as root inside the image
 #     ci.sh clean                   remove containers, network and volume
 #
 # Variants (isolation mode / privileges):
 #     hidden            hidden mode, Docker's defaults
-#     sandbox           sandbox mode, bubblewrap as root: SYS_ADMIN, no seccomp or AppArmor profile
+#     sandbox           sandbox mode, bubblewrap as root: SYS_ADMIN, no seccomp profile
 #     hidden-k8s        hidden mode with exactly the capabilities of deploy/k8s/deployment-hidden.yaml
 #     sandbox-k8s       sandbox mode with exactly the capabilities of deploy/k8s/deployment-sandbox.yaml
 #     sandbox-landlock  sandbox mode, Landlock backend, the capabilities of deployment-hidden.yaml
 #     sandbox-userns    sandbox mode, bubblewrap in a user namespace, no SYS_ADMIN
 #
 # The two "-k8s" variants and the last two need PyYAML on this machine (pip install pyyaml).
+#
+# AppArmor: the variants that run bubblewrap as root start the container under
+# the profile deploy/apparmor/efp-app-host (loaded here with sudo) instead of
+# "unconfined". The comment in that file says why an unconfined container
+# cannot use that backend on Ubuntu 24.04 and later.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -35,6 +41,28 @@ k8s_flags() {
     "$PYTHON" "$ROOT/deploy/check_manifests.py" docker-flags "$ROOT/deploy/k8s/$1"
 }
 
+# The docker option for the container's AppArmor profile, for the variants
+# that run bubblewrap as root. Loads deploy/apparmor/efp-app-host where
+# AppArmor is in use and the profile can be loaded; "unconfined" otherwise.
+apparmor_option() {
+    if [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = "Y" ] && command -v apparmor_parser >/dev/null 2>&1; then
+        if sudo -n apparmor_parser --replace "$ROOT/deploy/apparmor/efp-app-host" >&2; then
+            echo "--security-opt apparmor=efp-app-host"
+            return
+        fi
+        echo "the AppArmor profile deploy/apparmor/efp-app-host could not be loaded; the container runs unconfined" >&2
+    fi
+    echo "--security-opt apparmor=unconfined"
+}
+
+# Can bubblewrap, run as root in a container with these flags, start
+# something that drops to another user? The answer is the exit code; what
+# was seen goes to stderr.
+bwrap_root_works() {
+    # shellcheck disable=SC2086
+    docker run --rm $1 -v "$HERE:/it:ro" --entrypoint sh "$IMAGE" /it/check_bwrap_root.sh >&2
+}
+
 # Sets MODE, BACKEND (what the host must choose, empty for hidden) and FLAGS.
 variant() {
     BACKEND=""
@@ -47,7 +75,7 @@ variant() {
         sandbox)
             MODE=sandbox
             BACKEND=bwrap
-            FLAGS="--cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined"
+            FLAGS="--cap-add SYS_ADMIN --security-opt seccomp=unconfined $(apparmor_option)"
             ;;
         hidden-k8s)
             MODE=hidden
@@ -56,7 +84,7 @@ variant() {
         sandbox-k8s)
             MODE=sandbox
             BACKEND=bwrap
-            FLAGS="$(k8s_flags deployment-sandbox.yaml) --security-opt apparmor=unconfined"
+            FLAGS="$(k8s_flags deployment-sandbox.yaml) $(apparmor_option)"
             ;;
         sandbox-landlock)
             MODE=sandbox
@@ -77,12 +105,22 @@ variant() {
     esac
 }
 
-# Landlock and user namespaces depend on the kernel and its settings: a
-# machine without them cannot run those two variants, which is not a defect
-# of the host. Everything else must work everywhere.
+# Landlock, user namespaces and bubblewrap as root depend on the kernel and
+# on the machine's security policy: a machine that cannot do one of them
+# cannot run that variant, which is not a defect of the host. Hidden mode
+# must work everywhere.
 available() {
     variant "$1"
     case "$1" in
+        sandbox | sandbox-k8s)
+            if bwrap_root_works "$FLAGS"; then
+                echo "available=true"
+            else
+                echo "this machine does not let bubblewrap run as root in a container and then drop to another user: the variant cannot run here" >&2
+                host_info >&2
+                echo "available=false"
+            fi
+            ;;
         sandbox-landlock)
             # shellcheck disable=SC2086
             abi="$(docker run --rm $FLAGS --entrypoint python3 "$IMAGE" -c 'from efp_app_host import landlock; print(landlock.abi_version())' 2>/dev/null || echo 0)"
@@ -112,7 +150,7 @@ available() {
 start_portal() {
     docker network create "$NETWORK" >/dev/null 2>&1 || true
     docker rm -f efp-portal >/dev/null 2>&1 || true
-    docker run -d --name efp-portal --network "$NETWORK" --network-alias portal.test -p 18000:8000 \
+    docker run -d --name efp-portal --no-healthcheck --network "$NETWORK" --network-alias portal.test -p 18000:8000 \
         -v "$HERE:/it:ro" --entrypoint python3 "$IMAGE" \
         /it/stub_portal.py --port 8000 --token "$TOKEN" --apps /it/seed_apps.json >/dev/null
     echo "stub Portal started (http://127.0.0.1:18000, in the network: http://portal.test:8000)"
@@ -138,8 +176,23 @@ start_host() {
 
 smoke() {
     variant "$2"
+    result=0
     "$PYTHON" "$HERE/smoke.py" --phase "$1" --mode "$MODE" --expect-backend "$BACKEND" \
-        --token "$TOKEN" --templates "$ROOT/templates" --state "$STATE"
+        --token "$TOKEN" --templates "$ROOT/templates" --state "$STATE" || result=1
+    if [ "$1" = "first" ]; then
+        # The probe app was told to write "planted" files where no app may
+        # write, and reported that it could not. Seen from outside every
+        # sandbox: none of them exists, neither on the volume nor in the container.
+        planted="$(docker exec efp-host sh -c 'find /var/lib/efp-host/store /srv/efp-apps /etc /run /var /dev -xdev -name "planted*" 2>/dev/null; ls /planted 2>/dev/null' || true)"
+        if [ -n "$planted" ]; then
+            echo "  FAIL  an app wrote where it must not; found in the container:"
+            echo "$planted" | sed 's/^/        /'
+            result=1
+        else
+            echo "  ok    nothing was planted on the volume or in the container (seen from outside the apps)"
+        fi
+    fi
+    return "$result"
 }
 
 group() {
@@ -147,7 +200,25 @@ group() {
     echo "::group::$1"
 }
 
+# What this machine is. The isolation backends depend on it.
+host_info() {
+    echo "kernel: $(uname -r)"
+    echo "docker: $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo unknown)"
+    echo "AppArmor enabled: $(cat /sys/module/apparmor/parameters/enabled 2>/dev/null || echo no)"
+    echo "kernel.apparmor_restrict_unprivileged_userns: $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 'not present')"
+    echo "kernel.unprivileged_userns_clone: $(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo 'not present')"
+    echo "LSMs: $(cat /sys/kernel/security/lsm 2>/dev/null || echo unknown)"
+    echo "AppArmor profiles that name bwrap or the app host:"
+    (sudo -n aa-status 2>/dev/null || true) | grep -i -E "bwrap|efp-app-host" | sed 's/^/    /' || true
+    ls /etc/apparmor.d 2>/dev/null | grep -i bwrap | sed 's|^|    /etc/apparmor.d/|' || true
+    echo "what AppArmor denied lately:"
+    (sudo -n dmesg 2>/dev/null || true) | grep 'apparmor="DENIED"' | tail -n 25 | sed 's/^/    /' || true
+}
+
 diagnostics() {
+    group "this machine"
+    host_info || true
+    echo "::endgroup::"
     group "containers"
     docker ps -a || true
     echo "::endgroup::"
@@ -182,9 +253,19 @@ diagnostics() {
 image_tests() {
     # As root, with what the sandbox variant is given: dropping to another
     # user, bubblewrap, the probe of both modes, a real supervisord.
+    flags="--cap-add SYS_ADMIN --security-opt seccomp=unconfined $(apparmor_option)"
+    require=1
+    if ! bwrap_root_works "$flags"; then
+        # The tests of bubblewrap as root skip themselves then; say so loudly.
+        require=0
+        host_info >&2
+        echo "::warning title=bubblewrap as root not tested::this machine does not let bubblewrap run as root in a container and then drop to another user; the tests of the bwrap backend were skipped"
+    fi
+    echo "container flags: $flags (bubblewrap as root must work: $require)"
+    # shellcheck disable=SC2086
     docker run --rm --init \
-        --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
-        -e EFP_TEST_REQUIRE_BWRAP=1 -e PYTHONDONTWRITEBYTECODE=1 \
+        $flags \
+        -e EFP_TEST_REQUIRE_BWRAP="$require" -e PYTHONDONTWRITEBYTECODE=1 \
         -v "$ROOT/host:/src:ro" -w /src --entrypoint sh "$IMAGE" -c \
         'pip install --no-cache-dir --quiet --root-user-action=ignore pytest && python3 -m pytest -rs -p no:cacheprovider tests/test_launcher_linux.py tests/test_controller.py tests/test_bundle.py tests/test_boot.py tests/test_deploy.py tests/test_runtime.py tests/test_isolation.py tests/test_small_parts.py'
 }
@@ -207,6 +288,7 @@ case "$command" in
         ;;
     smoke) smoke "$2" "$3" ;;
     diagnostics) diagnostics ;;
+    host-info) host_info ;;
     image-tests) image_tests ;;
     clean) clean ;;
     all)
@@ -223,7 +305,7 @@ case "$command" in
         exit "$status"
         ;;
     *)
-        sed -n '2,24p' "$0"
+        sed -n '2,30p' "$0"
         exit 2
         ;;
 esac

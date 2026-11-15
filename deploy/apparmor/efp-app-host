@@ -1,0 +1,75 @@
+# AppArmor profile for the app host container, for nodes that use AppArmor
+# (Ubuntu). Only needed for the sandbox backend "bwrap"; the other backends
+# and hidden mode run under the container runtime's default profile.
+#
+# Why it exists: the "bwrap" backend runs bubblewrap as root, and what
+# bubblewrap starts must switch to the app's user (setpriv). On Ubuntu 24.04
+# and later the node's AppArmor policy attaches a profile to /usr/bin/bwrap
+# whose children may use no capability at all - also inside a container that
+# runs "unconfined", because that profile attaches by the program's path. The
+# switch then fails ("setpriv: setresuid failed: Operation not permitted")
+# and the host falls back to another backend, or starts no app when "bwrap"
+# was asked for by name. A container that runs under a profile of its own
+# keeps that profile across the exec, so the node's bwrap profile never
+# comes into play.
+#
+# This is the container runtime's default profile (docker-default /
+# cri-containerd.apparmor.d) with one change: mount and pivot_root are
+# allowed, which bubblewrap needs to build an app's view. What the container
+# can do with them is still limited by its capabilities (SYS_ADMIN is needed
+# for either) and applies to its own mount namespace only.
+#
+# Load it on every node that may run the app host:
+#
+#     sudo apparmor_parser --replace deploy/apparmor/efp-app-host
+#
+# (to survive a reboot: copy it to /etc/apparmor.d/ as well), then name it in
+# the Deployment:
+#
+#     securityContext:
+#       appArmorProfile:
+#         type: Localhost
+#         localhostProfile: efp-app-host
+#
+# With Docker: --security-opt apparmor=efp-app-host. CI starts the image this
+# way (host/tests/integration/ci.sh).
+
+#include <tunables/global>
+
+profile efp-app-host flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  network,
+  capability,
+  file,
+  umount,
+
+  # bubblewrap: bind mounts, a fresh /proc, tmpfs, pivot_root into the view.
+  mount,
+  pivot_root,
+
+  # Signals from the container runtime, and among the container's own processes.
+  signal (receive) peer=unconfined,
+  signal (receive) peer=runc,
+  signal (receive) peer=crun,
+  signal (send, receive) peer=efp-app-host,
+
+  ptrace (trace, read, tracedby, readby) peer=efp-app-host,
+
+  # As in the runtime's default profile: no writes to the kernel's knobs.
+  deny @{PROC}/* w,
+  deny @{PROC}/{[^1-9],[^1-9][^0-9],[^1-9s][^0-9y][^0-9s],[^1-9][^0-9][^0-9][^0-9/]*}/** w,
+  deny @{PROC}/sys/[^k]** w,
+  deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,
+  deny @{PROC}/sysrq-trigger rwklx,
+  deny @{PROC}/kcore rwklx,
+
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+}
