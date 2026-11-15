@@ -1,0 +1,9 @@
+{
+  "name": "My Gradio app",
+  "description": "Starter: a chat with the model that greets the visitor, and a saved note.",
+  "type": "gradio",
+  "entry": "app.py",
+  "requirements": "requirements.txt",
+  "health_path": "/",
+  "owners": ["your-portal-username"]
+}

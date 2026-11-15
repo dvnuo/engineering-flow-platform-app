@@ -1,0 +1,9 @@
+{
+  "name": "My Flask app",
+  "description": "Starter: who is visiting, a question for the model, a saved note.",
+  "type": "flask",
+  "entry": "app:app",
+  "requirements": "requirements.txt",
+  "health_path": "/",
+  "owners": ["your-portal-username"]
+}

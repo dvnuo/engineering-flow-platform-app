@@ -1,0 +1,9 @@
+{
+  "name": "My FastAPI app",
+  "description": "Starter: who is visiting, a question for the model, a saved note.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/",
+  "owners": ["your-portal-username"]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "My Streamlit app",
+  "description": "Starter: a greeting for the visitor, a chat with the model, a saved note.",
+  "type": "streamlit",
+  "entry": "app.py",
+  "requirements": "requirements.txt",
+  "health_path": "/",
+  "owners": ["your-portal-username"]
+}

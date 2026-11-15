@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My static app</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>My static app</h1>
+    <p>
+      This page and the files next to it are served as they are. A static app
+      has no backend: no Python runs, so there is no SDK, no language model,
+      no connectors and nothing is saved on the server. When you need one of
+      those, start from the FastAPI or Flask starter instead.
+    </p>
+
+    <h2>Data loaded by the page</h2>
+    <p class="muted">The list below comes from <code>data.json</code>, fetched with a relative URL.</p>
+    <ul id="items"></ul>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
