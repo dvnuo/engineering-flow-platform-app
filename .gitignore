@@ -8,3 +8,4 @@ dist/
 .efp-data/
 .env
 *.log
+smoke-state.json

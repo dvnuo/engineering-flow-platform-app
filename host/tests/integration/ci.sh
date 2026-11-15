@@ -35,6 +35,7 @@ TOKEN="${EFP_HOST_API_TOKEN:-ci-token}"
 NETWORK="efp-smoke"
 VOLUME="efp-smoke-store"
 STATE="${SMOKE_STATE:-$ROOT/smoke-state.json}"
+FIRST_LOG="${SMOKE_FIRST_LOG:-$ROOT/smoke-first-container.log}"
 PYTHON="${PYTHON:-python3}"
 
 k8s_flags() {
@@ -222,6 +223,11 @@ diagnostics() {
     group "containers"
     docker ps -a || true
     echo "::endgroup::"
+    if [ -s "$FIRST_LOG" ]; then
+        group "the log of the first host container (before it was replaced)"
+        tail -n 600 "$FIRST_LOG" || true
+        echo "::endgroup::"
+    fi
     group "the host container's log (entrypoint, supervisord, nginx, manager)"
     docker logs --tail 800 efp-host 2>&1 || true
     echo "::endgroup::"
@@ -274,7 +280,7 @@ clean() {
     docker rm -f efp-host efp-portal >/dev/null 2>&1 || true
     docker volume rm "$VOLUME" >/dev/null 2>&1 || true
     docker network rm "$NETWORK" >/dev/null 2>&1 || true
-    rm -f "$STATE"
+    rm -f "$STATE" "$FIRST_LOG"
 }
 
 command="${1:-}"
@@ -284,6 +290,8 @@ case "$command" in
     start-host) start_host "$2" ;;
     recreate-host)
         echo "removing the host container; its own disk is lost, the volume stays"
+        # Its log goes with it: keep it for "diagnostics".
+        docker logs efp-host >"$FIRST_LOG" 2>&1 || true
         start_host "$2"
         ;;
     smoke) smoke "$2" "$3" ;;

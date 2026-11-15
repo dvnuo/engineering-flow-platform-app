@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 MAX_OBJECT_BYTES = 64 * 1024 * 1024
 MAX_HEADER_BYTES = 64 * 1024
 MAX_KEY_LENGTH = 512
+MAX_SEGMENT_LENGTH = 255  # as the SDK checks before it sends a key
 MAX_LIST_KEYS = 10_000
 IO_TIMEOUT_SECONDS = 120.0
 _CHUNK = 1024 * 1024
@@ -60,6 +61,9 @@ def validate_key(key: Any) -> str:
     for segment in key.split("/"):
         if segment in ("", ".", ".."):
             raise StorageError("invalid_key", "a key may not hold an empty, '.' or '..' segment")
+        if len(segment) > MAX_SEGMENT_LENGTH:
+            # A segment is a file or directory name on the volume.
+            raise StorageError("invalid_key", f"one segment of a key (the text between two '/') is at most {MAX_SEGMENT_LENGTH} characters")
     return key
 
 

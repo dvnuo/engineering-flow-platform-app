@@ -60,6 +60,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e "sdk[dev]"
+          # The tests of the FastAPI and Flask helpers and of the starter
+          # apps skip themselves when the framework is missing: have them run.
+          python -m pip install fastapi flask
       - name: Test
         working-directory: sdk
         run: python -m pytest -rs

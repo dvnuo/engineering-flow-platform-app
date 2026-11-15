@@ -16,12 +16,12 @@ from efp_app_host.storage_service import ObjectStore, StorageError, StorageServi
 MIB = 1024 * 1024
 
 
-@pytest.mark.parametrize("key", ["a", "a/b.json", "A-Z_0.9/x", "x" * 512, "notes/2026-11-15.txt"])
+@pytest.mark.parametrize("key", ["a", "a/b.json", "A-Z_0.9/x", "x" * 255, "/".join(["x" * 127, "y" * 127, "z" * 127, "w" * 128]), "notes/2026-11-15.txt", ".hidden", "a.b..c", "..."])
 def test_valid_keys(key):
     assert validate_key(key) == key
 
 
-@pytest.mark.parametrize("key", ["", "/a", "a//b", "a/", "../a", "a/../b", "a/./b", ".", "a b", "a\\b", "caf\u00e9", "x" * 513, None, 5, "a\x00b"])
+@pytest.mark.parametrize("key", ["", "/a", "a//b", "a/", "../a", "a/../b", "a/./b", ".", "a b", "a\\b", "caf\u00e9", "x" * 513, "x" * 256, "a/" + "y" * 256 + "/b", None, 5, "a\x00b"])
 def test_invalid_keys(key):
     with pytest.raises(StorageError) as caught:
         validate_key(key)
