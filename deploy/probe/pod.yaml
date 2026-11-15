@@ -1,0 +1,116 @@
+# A throwaway pod that finds out which isolation the app host can use on this
+# cluster, on the real EFS volume. Run it with deploy/probe/run.sh, which
+# also reads the answer; delete it afterwards.
+#
+# Four containers, each with the privileges of one deployment variant and its
+# own directory on the volume:
+#
+#   bwrap-default-seccomp  SYS_ADMIN, seccomp RuntimeDefault
+#   bwrap                  SYS_ADMIN, seccomp Unconfined   (deployment-sandbox.yaml as it is)
+#   userns                 no SYS_ADMIN, seccomp Unconfined
+#   plain                  no SYS_ADMIN, seccomp RuntimeDefault (deployment-hidden.yaml)
+#
+# The image is the app host's own (it holds bubblewrap, setpriv and the
+# host's probe). IMAGE_PLACEHOLDER is filled in by run.sh.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: efp-isolation-probe
+  namespace: efp-apps
+  labels:
+    app: efp-isolation-probe
+  # Nodes with AppArmor (Ubuntu): probe without its default profile too, by
+  # uncommenting these and running again.
+  # annotations:
+  #   container.apparmor.security.beta.kubernetes.io/bwrap-default-seccomp: unconfined
+  #   container.apparmor.security.beta.kubernetes.io/bwrap: unconfined
+  #   container.apparmor.security.beta.kubernetes.io/userns: unconfined
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  terminationGracePeriodSeconds: 5
+  containers:
+    - name: bwrap-default-seccomp
+      image: IMAGE_PLACEHOLDER
+      imagePullPolicy: Always
+      command: ["/bin/sh", "/probe/probe.sh", "bwrap-default-seccomp"]
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        allowPrivilegeEscalation: true
+        capabilities:
+          drop: ["ALL"]
+          add: ["SYS_ADMIN", "SYS_CHROOT", "SETUID", "SETGID", "SETPCAP", "CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL"]
+        seccompProfile:
+          type: RuntimeDefault
+      volumeMounts:
+        - name: store
+          mountPath: /var/lib/efp-host/store
+          subPath: probe-bwrap-default-seccomp
+        - name: script
+          mountPath: /probe
+    - name: bwrap
+      image: IMAGE_PLACEHOLDER
+      imagePullPolicy: Always
+      command: ["/bin/sh", "/probe/probe.sh", "bwrap"]
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        allowPrivilegeEscalation: true
+        capabilities:
+          drop: ["ALL"]
+          add: ["SYS_ADMIN", "SYS_CHROOT", "SETUID", "SETGID", "SETPCAP", "CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL"]
+        seccompProfile:
+          type: Unconfined
+      volumeMounts:
+        - name: store
+          mountPath: /var/lib/efp-host/store
+          subPath: probe-bwrap
+        - name: script
+          mountPath: /probe
+    - name: userns
+      image: IMAGE_PLACEHOLDER
+      imagePullPolicy: Always
+      command: ["/bin/sh", "/probe/probe.sh", "userns"]
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+          add: ["SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL"]
+        seccompProfile:
+          type: Unconfined
+      volumeMounts:
+        - name: store
+          mountPath: /var/lib/efp-host/store
+          subPath: probe-userns
+        - name: script
+          mountPath: /probe
+    - name: plain
+      image: IMAGE_PLACEHOLDER
+      imagePullPolicy: Always
+      command: ["/bin/sh", "/probe/probe.sh", "plain"]
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+          add: ["SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL"]
+        seccompProfile:
+          type: RuntimeDefault
+      volumeMounts:
+        - name: store
+          mountPath: /var/lib/efp-host/store
+          subPath: probe-plain
+        - name: script
+          mountPath: /probe
+  volumes:
+    - name: store
+      persistentVolumeClaim:
+        claimName: efp-apps-store
+    - name: script
+      configMap:
+        name: efp-isolation-probe

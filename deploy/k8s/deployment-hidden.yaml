@@ -1,0 +1,131 @@
+# The app host in isolation mode "hidden" (the fallback).
+#
+# The volume sits below a directory only root can enter: apps never see it.
+# Code and virtual environments run from the pod's own disk and are rebuilt
+# from the volume after a restart; apps keep data through the SDK's storage
+# only (no files, no SQLite). Needs no capability beyond a root container.
+#
+# The same securityContext also serves sandbox mode with the "landlock"
+# backend: set EFP_HOST_ISOLATION_MODE to "sandbox" and
+# EFP_HOST_SANDBOX_BACKEND to "landlock" when deploy/probe says so.
+#
+# One replica, strategy Recreate: two hosts must never write the same volume.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: efp-app-host
+  namespace: efp-apps
+  labels:
+    app: efp-app-host
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: efp-app-host
+  template:
+    metadata:
+      labels:
+        app: efp-app-host
+    spec:
+      # Member code runs in this pod: it gets no Kubernetes credentials.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: host
+          image: ghcr.io/dvnuo/engineering-flow-platform-app:latest
+          imagePullPolicy: Always
+          ports:
+            - name: gateway
+              containerPort: 8080
+            - name: admin
+              containerPort: 9000
+          env:
+            - name: EFP_HOST_ISOLATION_MODE
+              value: "hidden"
+            - name: EFP_HOST_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: efp-app-host
+                  key: EFP_HOST_API_TOKEN
+            - name: EFP_PORTAL_INTERNAL_URL
+              value: "http://efp-portal-service.default.svc.cluster.local"
+            - name: EFP_PORTAL_PUBLIC_URL
+              value: "https://efp.example.com"
+            - name: EFP_APPS_PUBLIC_URL
+              value: "https://app.example.com"
+            # The private package index deployments install from.
+            - name: PIP_INDEX_URL
+              valueFrom:
+                secretKeyRef:
+                  name: efp-app-host
+                  key: PIP_INDEX_URL
+                  optional: true
+            # - name: PIP_CERT
+            #   value: /etc/ssl/certs/corporate-ca.pem
+            # - name: HTTPS_PROXY
+            #   value: "http://proxy.example.com:3128"
+            # - name: NO_PROXY
+            #   value: ".svc,.cluster.local,127.0.0.1,localhost"
+          securityContext:
+            runAsUser: 0 # the host gives each app its own user; apps never run as root
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add:
+                - SETUID # switch to the app's user; nginx workers
+                - SETGID
+                - CHOWN # give an app its tmp and its files on the local disk
+                - DAC_OVERRIDE # root reads and removes files of the app users
+                - FOWNER
+                - KILL # stop processes of the app users
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          startupProbe:
+            httpGet:
+              path: /_efp/health
+              port: gateway
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /_efp/health
+              port: gateway
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            tcpSocket:
+              port: admin
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
+          volumeMounts:
+            - name: store
+              mountPath: /var/lib/efp-host/store
+            - name: local
+              mountPath: /srv/efp-apps
+            - name: run
+              mountPath: /run/efp-host
+      volumes:
+        - name: store
+          persistentVolumeClaim:
+            claimName: efp-apps-store
+        # Code, virtual environments and private tmp of every app. Sized for
+        # all of them: a virtual environment is easily 200-500 MiB.
+        - name: local
+          emptyDir:
+            sizeLimit: 50Gi
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi

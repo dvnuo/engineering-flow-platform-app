@@ -1,0 +1,38 @@
+# The apps hostname: a sibling of the Portal's (efp.example.com -> app.example.com).
+# Everything goes to the gateway on 8080; the manager API on 9000 has no route.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: efp-app-host
+  namespace: efp-apps
+  labels:
+    app: efp-app-host
+  annotations:
+    # Apps stream (server-sent events, WebSocket, Streamlit, Gradio): the
+    # gateway keeps such connections for an hour, so must the ingress.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Uploads to apps. Keep it equal to the gateway's own limit (100m), so
+    # that an oversized upload is refused in one place only.
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # Streaming answers must not be collected by the ingress.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - app.example.com
+      secretName: efp-apps-tls
+  rules:
+    - host: app.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: efp-app-host
+                port:
+                  number: 8080

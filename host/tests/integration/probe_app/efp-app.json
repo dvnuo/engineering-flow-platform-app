@@ -1,0 +1,9 @@
+{
+  "name": "Isolation probe",
+  "description": "Used by the container smoke test only: reports what an app can see and reach.",
+  "type": "command",
+  "command": "python server.py",
+  "health_path": "/healthz",
+  "startup_timeout": 60,
+  "owners": ["ci"]
+}

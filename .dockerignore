@@ -1,0 +1,15 @@
+# The image is built from the repository root (host/Dockerfile).
+.git
+.github
+.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/*.egg-info
+**/build
+**/dist
+**/.efp-data
+**/.env
+deploy
+docs
+host/tests

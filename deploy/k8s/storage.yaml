@@ -1,0 +1,41 @@
+# The volume of the app host: Amazon EFS through an access point, statically
+# provisioned with the EFS CSI driver (efs.csi.aws.com).
+#
+# Replace the volumeHandle with "<file system id>::<access point id>" from
+# deploy/terraform/efs_access_point.tf (terraform output efp_apps_volume_handle).
+#
+# The access point performs every file operation as one user, whatever user a
+# process in the pod is. File ownership on this volume therefore separates
+# nothing: the host's isolation mode does (docs/OPERATIONS.md).
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: efp-apps-store
+spec:
+  capacity:
+    storage: 100Gi # EFS is elastic; Kubernetes only wants a number here
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: efp-apps
+    name: efp-apps-store
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: "fs-0123456789abcdef0::fsap-0123456789abcdef0"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: efp-apps-store
+  namespace: efp-apps
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  volumeName: efp-apps-store
+  resources:
+    requests:
+      storage: 100Gi
