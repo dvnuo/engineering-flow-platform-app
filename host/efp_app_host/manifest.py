@@ -161,7 +161,9 @@ def load_manifest(code_dir: Path) -> dict[str, Any]:
     if size > MAX_MANIFEST_BYTES:
         raise ManifestError(f"{MANIFEST_NAME} is larger than {MAX_MANIFEST_BYTES // 1024} KiB")
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        # utf-8-sig: an editor on Windows may have put a byte-order mark in
+        # front; the Portal and the SDK accept it, so the host must too.
+        with open(path, "r", encoding="utf-8-sig") as handle:
             data = json.load(handle)
     except (ValueError, UnicodeDecodeError) as exc:
         raise ManifestError(f"{MANIFEST_NAME} is not valid JSON: {exc}") from None

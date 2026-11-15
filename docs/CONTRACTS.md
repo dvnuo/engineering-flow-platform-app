@@ -261,7 +261,10 @@ their UTC day, so a repeated or late post is harmless.
 }
 ```
 
-`200 {"ok": true}`.
+`visitors` is the number of distinct signed-in members that day; anonymous
+visitors of an `anyone` app are counted in `requests` only. Within one day the
+Portal keeps the larger value of each counter, so a host whose counters
+started afresh cannot lower them. `200 {"ok": true}`.
 
 ### 5.5 `POST /events`
 

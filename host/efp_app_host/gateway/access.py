@@ -56,6 +56,19 @@ class AccessCache:
         self._entries[(app_id, int(user_id))] = decision
         return decision
 
+    def forget_app(self, app_id: str) -> int:
+        """Drop what is remembered about one app: its audience or state changed.
+
+        Returns how many decisions were dropped. The next request of each
+        visitor asks the Portal again, so that a narrowed audience takes
+        effect at once and not after ``access_cache_seconds``.
+        """
+
+        keys = [key for key in self._entries if key[0] == app_id]
+        for key in keys:
+            del self._entries[key]
+        return len(keys)
+
     def _prune(self) -> None:
         horizon = self._clock() - STALE_SECONDS
         self._entries = {key: value for key, value in self._entries.items() if value.at >= horizon}

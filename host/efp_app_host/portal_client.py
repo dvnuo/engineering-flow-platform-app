@@ -45,6 +45,12 @@ class PortalClient:
 
     async def redeem_handoff(self, code: str) -> dict[str, Any] | None:
         response = await self._request("POST", "/handoff/redeem", json={"code": code})
+        if response.status_code in (401, 403, 404):
+            # The Portal refuses this host (a wrong API token) or does not
+            # serve the API (Apps switched off): the host's problem, not a bad
+            # code of the visitor's.
+            logger.error("the Portal refused the hand-off call with %s: check EFP_HOST_API_TOKEN and APPS_ENABLED", response.status_code)
+            raise PortalUnavailable(f"the Portal refused the host ({response.status_code})")
         if response.status_code != 200:
             return None
         data = response.json()
@@ -74,6 +80,8 @@ class PortalClient:
         except PortalUnavailable as exc:
             logger.warning("metrics push failed: %s", exc)
             return False
+        if response.status_code != 200:
+            logger.warning("the Portal refused the metrics push with %s", response.status_code)
         return response.status_code == 200
 
     async def post_event(self, app_id: str, kind: str, detail: dict[str, Any] | None = None) -> bool:
@@ -83,4 +91,6 @@ class PortalClient:
         except PortalUnavailable as exc:
             logger.warning("event %s for %s not delivered: %s", kind, app_id, exc)
             return False
+        if response.status_code != 200:
+            logger.warning("the Portal refused event %s for %s with %s", kind, app_id, response.status_code)
         return response.status_code == 200

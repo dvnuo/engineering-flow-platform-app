@@ -197,6 +197,11 @@ async def put_app(app_id: str, request: Request) -> dict[str, Any]:
         )
     except SlugTaken:
         raise ApiError(409, "slug_taken", f"another app already uses the slug {slug!r}") from None
+    # The Portal sends this when the audience, the owner or the enabled flag
+    # changed: what the gateway remembered about who may open the app is stale.
+    access = getattr(getattr(request.app.state.host, "gateway", None), "access", None)
+    if access is not None:
+        access.forget_app(app_id)
     return status.to_dict()
 
 
