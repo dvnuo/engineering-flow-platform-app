@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Team links</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Team links</h1>
+    <p class="muted">Where things are. Press <kbd>/</kbd> to search.</p>
+    <input id="filter" type="search" placeholder="Filter by name, note or tag" autocomplete="off" aria-label="Filter the links">
+    <p id="status" class="muted" role="status">Loading...</p>
+    <div id="groups"></div>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

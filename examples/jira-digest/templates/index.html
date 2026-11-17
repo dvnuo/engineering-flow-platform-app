@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jira digest</title>
+  {# Every URL comes from url_for(): it adds the /{slug} prefix once deployed. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main data-issues-url="{{ url_for('issues') }}" data-digest-url="{{ url_for('digest') }}">
+    <h1>Jira digest</h1>
+    <p class="muted">What moved in a project lately. Jira is read with the app owner's connector.</p>
+
+    <form id="search-form">
+      <div class="row">
+        <div>
+          <label for="project">Project key</label>
+          <input type="text" id="project" placeholder="ABC" maxlength="20" required>
+        </div>
+        <div>
+          <label for="days">Days back</label>
+          <input type="number" id="days" min="1" max="30" value="7" required>
+        </div>
+        <div>
+          <label for="assignee">Assignee (optional)</label>
+          <input type="text" id="assignee" placeholder="everybody" maxlength="64">
+        </div>
+      </div>
+      <button type="submit" id="search-button">Show issues</button>
+      {% if visitor %}
+        {# The visitor by name: the connector is the owner's account, so JQL's currentUser() would be the owner. #}
+        <button type="button" id="mine-button" data-username="{{ visitor.username }}">Only mine ({{ visitor.username }})</button>
+      {% endif %}
+      <button type="button" id="digest-button" disabled>Write a digest</button>
+    </form>
+
+    <p id="status" class="muted" role="status"></p>
+    <pre id="digest" aria-live="polite"></pre>
+    <table id="issues" hidden>
+      <thead>
+        <tr><th>Key</th><th>Summary</th><th>Status</th><th>Assignee</th><th>Updated</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </main>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

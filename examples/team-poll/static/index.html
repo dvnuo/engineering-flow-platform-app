@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Team poll</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <h1>Team poll</h1>
+    <p id="who" class="muted"></p>
+    <form id="poll">
+      <h2 id="question">Loading...</h2>
+      <div id="options"></div>
+      <button type="submit" id="vote" disabled>Vote</button>
+      <button type="button" id="withdraw" hidden>Withdraw my vote</button>
+      <button type="button" id="refresh">Refresh</button>
+      <p id="status" class="muted" role="status"></p>
+    </form>
+  </main>
+  <script src="static/app.js"></script>
+</body>
+</html>

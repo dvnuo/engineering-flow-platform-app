@@ -1,0 +1,64 @@
+{
+  "groups": [
+    {
+      "name": "Build and release",
+      "links": [
+        {
+          "title": "CI dashboard",
+          "url": "https://jenkins.example.com/view/team/",
+          "note": "every pipeline of the team",
+          "tags": ["jenkins", "ci"]
+        },
+        {
+          "title": "Release calendar",
+          "url": "https://wiki.example.com/display/TEAM/Release+calendar",
+          "note": "freeze dates and who is on duty",
+          "tags": ["release"]
+        },
+        {
+          "title": "Artifact repository",
+          "url": "https://nexus.example.com/#browse/browse:releases",
+          "tags": ["nexus"]
+        }
+      ]
+    },
+    {
+      "name": "Run and watch",
+      "links": [
+        {
+          "title": "Production dashboard",
+          "url": "https://grafana.example.com/d/team-overview",
+          "note": "latency, errors, saturation",
+          "tags": ["monitoring"]
+        },
+        {
+          "title": "Log search",
+          "url": "https://splunk.example.com/app/search",
+          "tags": ["splunk", "logs"]
+        },
+        {
+          "title": "On-call runbook",
+          "url": "https://wiki.example.com/display/TEAM/Runbook",
+          "note": "start here when the pager rings",
+          "tags": ["on-call"]
+        }
+      ]
+    },
+    {
+      "name": "Plan",
+      "links": [
+        {
+          "title": "Team board",
+          "url": "https://jira.example.com/secure/RapidBoard.jspa?rapidView=1",
+          "tags": ["jira"]
+        },
+        {
+          "title": "How we work",
+          "url": "https://wiki.example.com/display/TEAM/How+we+work",
+          "note": "branching, reviews, definition of done",
+          "tags": ["onboarding"]
+        }
+      ]
+    }
+  ]
+}

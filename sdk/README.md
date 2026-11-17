@@ -53,6 +53,15 @@ python sync_templates.py --check    exit 1 when it is out of date
 `tests/test_templates.py` fails when the two differ, and a wheel built from a
 checkout always takes the top-level directory (`setup.py`).
 
+## The example apps
+
+`examples/` at the repository root holds seven complete small apps, from a
+static page of links to a Streamlit app that answers from Confluence
+([what each one shows](../examples/README.md)). They are not part of the
+package: a member copies one into a repository of their own.
+`tests/test_examples.py` runs every one of them against the fake Portal, so
+an example cannot fall behind the SDK without a test failing.
+
 ## Tests
 
 ```

@@ -1,0 +1,11 @@
+{
+  "name": "Release notes",
+  "description": "Example: draft release notes from the commits between two tags of a GitHub repository.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/",
+  "owners": [
+    "your-portal-username"
+  ]
+}

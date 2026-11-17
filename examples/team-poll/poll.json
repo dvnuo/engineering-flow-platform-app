@@ -1,0 +1,9 @@
+{
+  "id": "team-day-2026",
+  "question": "What should we do on the team day?",
+  "options": [
+    {"id": "hike", "label": "A hike and a picnic"},
+    {"id": "cook", "label": "A cooking class"},
+    {"id": "escape", "label": "An escape room"}
+  ]
+}

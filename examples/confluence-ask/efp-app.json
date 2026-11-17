@@ -1,0 +1,11 @@
+{
+  "name": "Ask the wiki",
+  "description": "Example: ask a question and get an answer from your Confluence pages, with its sources.",
+  "type": "streamlit",
+  "entry": "app.py",
+  "requirements": "requirements.txt",
+  "health_path": "/",
+  "owners": [
+    "your-portal-username"
+  ]
+}

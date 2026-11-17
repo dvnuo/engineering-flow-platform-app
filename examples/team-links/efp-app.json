@@ -1,0 +1,9 @@
+{
+  "name": "Team links",
+  "description": "Example: a searchable page of your team's links, kept in a JSON file. No backend.",
+  "type": "static",
+  "entry": "public",
+  "owners": [
+    "your-portal-username"
+  ]
+}

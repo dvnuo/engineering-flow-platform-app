@@ -1,0 +1,11 @@
+{
+  "name": "Log explainer",
+  "description": "Example: paste a failing build or test log and the model says what went wrong.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/",
+  "owners": [
+    "your-portal-username"
+  ]
+}

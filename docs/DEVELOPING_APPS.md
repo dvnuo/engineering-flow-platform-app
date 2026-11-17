@@ -11,6 +11,11 @@ This guide covers the Python SDK (`efp-app-sdk`, imported as `efp_app`), the
 `efp-app` command and the rules an app has to follow. The wire contracts
 behind it are in [CONTRACTS.md](CONTRACTS.md).
 
+Looking for something to copy? [`examples/`](../examples/README.md) holds
+seven small apps (a page of links, a poll, a log explainer, a Jira digest,
+release notes from commits, questions answered from Confluence, a setup
+check), each built around one of the habits this guide describes.
+
 Contents: [Quick start](#quick-start) - [The manifest](#the-manifest) -
 [App types and the path prefix](#app-types-and-the-path-prefix) -
 [What reaches your app](#what-reaches-your-app) -

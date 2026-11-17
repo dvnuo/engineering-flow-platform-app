@@ -1,0 +1,11 @@
+{
+  "name": "Team poll",
+  "description": "Example: a poll in which every member has one vote.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/",
+  "owners": [
+    "your-portal-username"
+  ]
+}

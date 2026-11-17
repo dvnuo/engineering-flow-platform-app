@@ -1,0 +1,11 @@
+{
+  "name": "Jira digest",
+  "description": "Example: what moved in a Jira project lately, with a digest written by the model.",
+  "type": "flask",
+  "entry": "app:app",
+  "requirements": "requirements.txt",
+  "health_path": "/",
+  "owners": [
+    "your-portal-username"
+  ]
+}
