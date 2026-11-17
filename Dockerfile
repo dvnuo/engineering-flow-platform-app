@@ -2,7 +2,7 @@
 #
 # Build from the repository root (the image needs host/, sdk/ and templates/):
 #
-#     docker build -f host/Dockerfile -t efp-app-host .
+#     docker build -t efp-app-host .
 #
 # Inside: tini -> supervisord -> nginx (the gateway, port 8080), the manager
 # (port 9000) and one supervised process per app. See docs/OPERATIONS.md.

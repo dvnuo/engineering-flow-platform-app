@@ -14,7 +14,7 @@ Standard library only, so it runs on a bare CI machine. Every check prints
 one line; a failed check prints what it saw. The exit code is the number of
 failed checks (capped at 1).
 
-``host/tests/integration/ci.sh`` starts the containers and calls this.
+``integration/ci.sh`` starts the containers and calls this.
 """
 
 from __future__ import annotations
@@ -818,8 +818,8 @@ def main(argv: list | None = None) -> int:
     parser.add_argument("--portal", default="http://127.0.0.1:18000", help="the stub Portal as this script reaches it")
     parser.add_argument("--portal-public", default="http://portal.test", help="EFP_PORTAL_PUBLIC_URL of the host")
     parser.add_argument("--token", default=os.environ.get("EFP_HOST_API_TOKEN", "ci-token"))
-    parser.add_argument("--templates", default=str(HERE.parents[2] / "templates"))
-    parser.add_argument("--examples", default=str(HERE.parents[2] / "examples"))
+    parser.add_argument("--templates", default=str(HERE.parent / "templates"))
+    parser.add_argument("--examples", default=str(HERE.parent / "examples"))
     parser.add_argument("--state", default="smoke-state.json")
     parser.add_argument("--store-dir", default="/var/lib/efp-host/store")
     parser.add_argument("--runtime-dir", default="/srv/efp-apps")

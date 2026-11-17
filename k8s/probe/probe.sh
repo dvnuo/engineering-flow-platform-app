@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs inside one container of the probe pod (deploy/probe/pod.yaml):
+# Runs inside one container of the probe pod (k8s/probe/pod.yaml):
 #
 #     probe.sh NAME
 #
@@ -45,7 +45,7 @@ if bwrap --version >/dev/null 2>&1; then
         # bubblewrap run by root keeps root's capabilities; when the switch is
         # refused all the same, the node's AppArmor policy took them away
         # (Ubuntu 24.04 and later do this to what an unconfined /usr/bin/bwrap
-        # starts): the container then needs deploy/apparmor/efp-app-host.
+        # starts): the container then needs k8s/apparmor/efp-app-host.
         if bwrap --ro-bind / / --proc /proc --dev /dev setpriv --reuid 19999 --regid 19999 --clear-groups true 2>"$scratch/err"; then
             echo "bubblewrap as root, then switching user inside it: ok"
         else

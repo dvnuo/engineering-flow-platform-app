@@ -9,7 +9,7 @@ every way of isolating apps, and prints what to put into the deployment:
     EFP_HOST_SANDBOX_BACKEND=bwrap
 
 Meant for a throwaway pod on the real cluster with the real EFS volume
-mounted (``deploy/probe``), because the answer depends on the node's kernel,
+mounted (``k8s/probe``), because the answer depends on the node's kernel,
 the container runtime's seccomp and LSM profiles and the capabilities the
 pod is given - none of which a build machine can tell.
 

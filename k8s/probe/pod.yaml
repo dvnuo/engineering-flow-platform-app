@@ -1,5 +1,5 @@
 # A throwaway pod that finds out which isolation the app host can use on this
-# cluster, on the real EFS volume. Run it with deploy/probe/run.sh, which
+# cluster, on the real EFS volume. Run it with k8s/probe/run.sh, which
 # also reads the answer; delete it afterwards.
 #
 # Four containers, each with the privileges of one deployment variant and its
@@ -20,7 +20,7 @@ metadata:
   labels:
     app: efp-isolation-probe
   # Nodes with AppArmor (Ubuntu): the runtime's default profile forbids mount,
-  # so the two bwrap containers fail under it. Load deploy/apparmor/efp-app-host
+  # so the two bwrap containers fail under it. Load k8s/apparmor/efp-app-host
   # on the nodes and probe again with these (Kubernetes 1.30+ takes
   # securityContext.appArmorProfile {type: Localhost, localhostProfile: efp-app-host}):
   # annotations:

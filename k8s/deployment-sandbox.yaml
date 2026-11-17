@@ -1,13 +1,17 @@
-# The app host in isolation mode "hidden" (the fallback).
+# The app host in isolation mode "sandbox" (the preferred mode).
 #
-# The volume sits below a directory only root can enter: apps never see it.
-# Code and virtual environments run from the pod's own disk and are rebuilt
-# from the volume after a restart; apps keep data through the SDK's storage
-# only (no files, no SQLite). Needs no capability beyond a root container.
+# Every app process gets a filesystem view that holds only its own directory
+# of the volume. Which mechanism builds that view depends on what the cluster
+# allows; run k8s/probe first and take the variant it names:
 #
-# The same securityContext also serves sandbox mode with the "landlock"
-# backend: set EFP_HOST_ISOLATION_MODE to "sandbox" and
-# EFP_HOST_SANDBOX_BACKEND to "landlock" when deploy/probe says so.
+#   bwrap         this file as it is: the capability SYS_ADMIN.
+#   bwrap-userns  remove SYS_ADMIN and SYS_CHROOT from "add", keep
+#                 seccompProfile Unconfined, set EFP_HOST_SANDBOX_BACKEND to
+#                 "bwrap-userns".
+#   landlock      use the securityContext of deployment-hidden.yaml and set
+#                 EFP_HOST_SANDBOX_BACKEND to "landlock".
+#
+# When none works, deploy deployment-hidden.yaml instead.
 #
 # One replica, strategy Recreate: two hosts must never write the same volume.
 apiVersion: apps/v1
@@ -28,6 +32,12 @@ spec:
     metadata:
       labels:
         app: efp-app-host
+      # Nodes with AppArmor (Ubuntu) and the "bwrap" backend: load the profile
+      # k8s/apparmor/efp-app-host on the nodes and name it below
+      # (securityContext.appArmorProfile). The runtime's default profile
+      # forbids mount; "Unconfined" is not enough on Ubuntu 24.04 and later,
+      # where the node's own profile for /usr/bin/bwrap then takes every
+      # capability from what bubblewrap starts (docs/OPERATIONS.md, section 4).
     spec:
       # Member code runs in this pod: it gets no Kubernetes credentials.
       automountServiceAccountToken: false
@@ -44,7 +54,9 @@ spec:
               containerPort: 9000
           env:
             - name: EFP_HOST_ISOLATION_MODE
-              value: "hidden"
+              value: "sandbox"
+            - name: EFP_HOST_SANDBOX_BACKEND
+              value: "bwrap" # what k8s/probe printed; "auto" tries bwrap, bwrap-userns, landlock
             - name: EFP_HOST_API_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -65,6 +77,7 @@ spec:
                   optional: true
             # - name: PIP_CERT
             #   value: /etc/ssl/certs/corporate-ca.pem
+            # The Portal is a cluster service: never send its calls to a proxy.
             # - name: HTTPS_PROXY
             #   value: "http://proxy.example.com:3128"
             # - name: NO_PROXY
@@ -72,18 +85,31 @@ spec:
           securityContext:
             runAsUser: 0 # the host gives each app its own user; apps never run as root
             runAsGroup: 0
-            allowPrivilegeEscalation: false
+            # Kubernetes refuses "false" together with SYS_ADMIN. Every app
+            # process is started with no_new_privs and the image holds no
+            # setuid program.
+            allowPrivilegeEscalation: true
             capabilities:
               drop: ["ALL"]
               add:
+                - SYS_ADMIN # bubblewrap: mount namespace, bind mounts, pivot_root
+                - SYS_CHROOT # bubblewrap
                 - SETUID # switch to the app's user; nginx workers
                 - SETGID
-                - CHOWN # give an app its tmp and its files on the local disk
+                - SETPCAP
+                - CHOWN # give an app its data and tmp directories
                 - DAC_OVERRIDE # root reads and removes files of the app users
                 - FOWNER
                 - KILL # stop processes of the app users
+            # Unconfined is what the image is tested with. Most runtimes allow
+            # the mount calls under RuntimeDefault once SYS_ADMIN is granted:
+            # k8s/probe tells (its container "bwrap-default-seccomp").
             seccompProfile:
-              type: RuntimeDefault
+              type: Unconfined
+            # Nodes with AppArmor only (see the top of this file):
+            # appArmorProfile:
+            #   type: Localhost
+            #   localhostProfile: efp-app-host
           resources:
             requests:
               cpu: "1"
@@ -120,11 +146,10 @@ spec:
         - name: store
           persistentVolumeClaim:
             claimName: efp-apps-store
-        # Code, virtual environments and private tmp of every app. Sized for
-        # all of them: a virtual environment is easily 200-500 MiB.
+        # Private tmp of every app, build scratch space.
         - name: local
           emptyDir:
-            sizeLimit: 50Gi
+            sizeLimit: 20Gi
         - name: run
           emptyDir:
             medium: Memory

@@ -15,21 +15,21 @@
 # Variants (isolation mode / privileges):
 #     hidden            hidden mode, Docker's defaults
 #     sandbox           sandbox mode, bubblewrap as root: SYS_ADMIN, no seccomp profile
-#     hidden-k8s        hidden mode with exactly the capabilities of deploy/k8s/deployment-hidden.yaml
-#     sandbox-k8s       sandbox mode with exactly the capabilities of deploy/k8s/deployment-sandbox.yaml
+#     hidden-k8s        hidden mode with exactly the capabilities of k8s/deployment-hidden.yaml
+#     sandbox-k8s       sandbox mode with exactly the capabilities of k8s/deployment-sandbox.yaml
 #     sandbox-landlock  sandbox mode, Landlock backend, the capabilities of deployment-hidden.yaml
 #     sandbox-userns    sandbox mode, bubblewrap in a user namespace, no SYS_ADMIN
 #
 # The two "-k8s" variants and the last two need PyYAML on this machine (pip install pyyaml).
 #
 # AppArmor: the variants that run bubblewrap as root start the container under
-# the profile deploy/apparmor/efp-app-host (loaded here with sudo) instead of
+# the profile k8s/apparmor/efp-app-host (loaded here with sudo) instead of
 # "unconfined". The comment in that file says why an unconfined container
 # cannot use that backend on Ubuntu 24.04 and later.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../../.." && pwd)"
+ROOT="$(cd "$HERE/.." && pwd)"
 IMAGE="${IMAGE:-efp-app-host:ci}"
 TOKEN="${EFP_HOST_API_TOKEN:-ci-token}"
 NETWORK="efp-smoke"
@@ -39,19 +39,19 @@ FIRST_LOG="${SMOKE_FIRST_LOG:-$ROOT/smoke-first-container.log}"
 PYTHON="${PYTHON:-python3}"
 
 k8s_flags() {
-    "$PYTHON" "$ROOT/deploy/check_manifests.py" docker-flags "$ROOT/deploy/k8s/$1"
+    "$PYTHON" "$ROOT/scripts/check_manifests.py" docker-flags "$ROOT/k8s/$1"
 }
 
 # The docker option for the container's AppArmor profile, for the variants
-# that run bubblewrap as root. Loads deploy/apparmor/efp-app-host where
+# that run bubblewrap as root. Loads k8s/apparmor/efp-app-host where
 # AppArmor is in use and the profile can be loaded; "unconfined" otherwise.
 apparmor_option() {
     if [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = "Y" ] && command -v apparmor_parser >/dev/null 2>&1; then
-        if sudo -n apparmor_parser --replace "$ROOT/deploy/apparmor/efp-app-host" >&2; then
+        if sudo -n apparmor_parser --replace "$ROOT/k8s/apparmor/efp-app-host" >&2; then
             echo "--security-opt apparmor=efp-app-host"
             return
         fi
-        echo "the AppArmor profile deploy/apparmor/efp-app-host could not be loaded; the container runs unconfined" >&2
+        echo "the AppArmor profile k8s/apparmor/efp-app-host could not be loaded; the container runs unconfined" >&2
     fi
     echo "--security-opt apparmor=unconfined"
 }

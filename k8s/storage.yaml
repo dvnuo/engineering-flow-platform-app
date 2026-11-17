@@ -2,7 +2,7 @@
 # provisioned with the EFS CSI driver (efs.csi.aws.com).
 #
 # Replace the volumeHandle with "<file system id>::<access point id>" from
-# deploy/terraform/efs_access_point.tf (terraform output efp_apps_volume_handle).
+# terraform/efs_access_point.tf (terraform output efp_apps_volume_handle).
 #
 # The access point performs every file operation as one user, whatever user a
 # process in the pod is. File ownership on this volume therefore separates

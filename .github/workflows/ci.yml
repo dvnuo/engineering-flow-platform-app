@@ -4,7 +4,7 @@ name: CI
 #
 #   host-unit, sdk-unit   pure logic, on the runner (Python 3.11)
 #   manifests             the Kubernetes manifests parse and say what the docs say
-#   image                 builds host/Dockerfile (which runs "nginx -t" on the rendered gateway config)
+#   image                 builds the Dockerfile (which runs "nginx -t" on the rendered gateway config)
 #   image-tests           the Linux-only unit tests as root inside the image:
 #                         dropping privileges, bubblewrap, Landlock, supervisord
 #   smoke                 the real container next to a stub Portal, once per
@@ -79,10 +79,10 @@ jobs:
       - name: Kubernetes manifests
         run: |
           python -m pip install pyyaml
-          python deploy/check_manifests.py
+          python scripts/check_manifests.py
       - name: Shell scripts
         run: |
-          for script in host/bin/entrypoint.sh host/bin/efp-app-launch host/tests/integration/ci.sh host/tests/integration/check_bwrap_root.sh deploy/probe/run.sh deploy/probe/probe.sh; do
+          for script in host/bin/entrypoint.sh host/bin/efp-app-launch integration/ci.sh integration/check_bwrap_root.sh k8s/probe/run.sh k8s/probe/probe.sh; do
             sh -n "$script"
             if grep -q "$(printf '\r')" "$script"; then echo "$script has CRLF line endings"; exit 1; fi
           done
@@ -94,7 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Build
-        run: docker build -f host/Dockerfile -t "$IMAGE" .
+        run: docker build -t "$IMAGE" .
       - name: What is in it
         run: |
           docker run --rm --entrypoint sh "$IMAGE" -c 'python3 --version; nginx -v; bwrap --version; setpriv --version; supervisord --version; ls -l /opt/efp/wheels /opt/efp/bin'
@@ -118,10 +118,10 @@ jobs:
       - name: Load the image
         run: gunzip -c efp-app-host.tar.gz | docker load
       - name: Linux-only tests, as root, with the privileges of the sandbox variant
-        run: sh host/tests/integration/ci.sh image-tests
+        run: sh integration/ci.sh image-tests
       - name: This machine
         if: always()
-        run: sh host/tests/integration/ci.sh host-info
+        run: sh integration/ci.sh host-info
 
   smoke:
     name: smoke (${{ matrix.variant }})
@@ -131,7 +131,7 @@ jobs:
       fail-fast: false
       matrix:
         # hidden / sandbox: the two isolation modes, started the plain way.
-        # *-k8s: the same with exactly the capabilities of deploy/k8s/*.yaml.
+        # *-k8s: the same with exactly the capabilities of k8s/*.yaml.
         # sandbox-landlock / sandbox-userns: the other two sandbox backends.
         # A sandbox variant is skipped, with a warning, on a runner whose
         # kernel or security policy cannot do its backend (the step "Can this
@@ -151,7 +151,7 @@ jobs:
       - name: Can this runner do the variant?
         id: can
         run: |
-          result="$(sh host/tests/integration/ci.sh available "${{ matrix.variant }}")"
+          result="$(sh integration/ci.sh available "${{ matrix.variant }}")"
           echo "$result" >> "$GITHUB_OUTPUT"
           if [ "$result" != "available=true" ]; then
             echo "::warning title=smoke (${{ matrix.variant }}) not run::this runner cannot do this isolation (see the output of this step); the variant was skipped, not tested"
@@ -159,17 +159,17 @@ jobs:
       - name: Start the stub Portal and the host
         if: steps.can.outputs.available == 'true'
         run: |
-          sh host/tests/integration/ci.sh start-portal
-          sh host/tests/integration/ci.sh start-host "${{ matrix.variant }}"
+          sh integration/ci.sh start-portal
+          sh integration/ci.sh start-host "${{ matrix.variant }}"
       - name: "Smoke test: deploy, isolation, gateway, rollback"
         if: steps.can.outputs.available == 'true'
-        run: sh host/tests/integration/ci.sh smoke first "${{ matrix.variant }}"
+        run: sh integration/ci.sh smoke first "${{ matrix.variant }}"
       - name: A new container on the same volume
         if: steps.can.outputs.available == 'true'
-        run: sh host/tests/integration/ci.sh recreate-host "${{ matrix.variant }}"
+        run: sh integration/ci.sh recreate-host "${{ matrix.variant }}"
       - name: "Smoke test: everything comes back"
         if: steps.can.outputs.available == 'true'
-        run: sh host/tests/integration/ci.sh smoke after-recreate "${{ matrix.variant }}"
+        run: sh integration/ci.sh smoke after-recreate "${{ matrix.variant }}"
       - name: What happened
         if: always() && steps.can.outputs.available == 'true'
-        run: sh host/tests/integration/ci.sh diagnostics
+        run: sh integration/ci.sh diagnostics

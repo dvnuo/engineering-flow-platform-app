@@ -21,7 +21,7 @@
 #
 # Load it on every node that may run the app host:
 #
-#     sudo apparmor_parser --replace deploy/apparmor/efp-app-host
+#     sudo apparmor_parser --replace k8s/apparmor/efp-app-host
 #
 # (to survive a reboot: copy it to /etc/apparmor.d/ as well), then name it in
 # the Deployment:
@@ -32,7 +32,7 @@
 #         localhostProfile: efp-app-host
 #
 # With Docker: --security-opt apparmor=efp-app-host. CI starts the image this
-# way (host/tests/integration/ci.sh).
+# way (integration/ci.sh).
 
 #include <tunables/global>
 

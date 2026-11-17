@@ -338,7 +338,7 @@ def test_the_probe_explains_a_root_that_may_not_use_its_capabilities(tmp_path):
     status, _ = _detect(tmp_path, Refused())
     assert status.ok and status.backend == BACKEND_BWRAP_USERNS
     assert "setresuid failed" in status.attempts[BACKEND_BWRAP]
-    assert "AppArmor" in status.attempts[BACKEND_BWRAP] and "deploy/apparmor/efp-app-host" in status.attempts[BACKEND_BWRAP]
+    assert "AppArmor" in status.attempts[BACKEND_BWRAP] and "k8s/apparmor/efp-app-host" in status.attempts[BACKEND_BWRAP]
     # Any other failure is reported as it is.
     status, _ = _detect(tmp_path, ProbeRunner({BACKEND_LANDLOCK: 0}))
     assert "AppArmor" not in status.attempts[BACKEND_BWRAP]

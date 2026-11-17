@@ -1,6 +1,6 @@
 """The tools of the container smoke test, checked where they can be: here.
 
-The smoke test itself (``tests/integration/smoke.py``) only runs in CI, with
+The smoke test itself (``integration/smoke.py``) only runs in CI, with
 the real image. Its stub Portal, its probe app and its hand-written HTTP,
 multipart and WebSocket helpers are plain Python, so that a mistake in them
 is found on a developer's machine and not as a red CI run that says nothing
@@ -27,7 +27,7 @@ from efp_app_host.bundle import unpack_bundle
 from efp_app_host.manifest import load_manifest
 from efp_app_host.portal_client import PortalClient
 
-INTEGRATION = Path(__file__).resolve().parent / "integration"
+INTEGRATION = Path(__file__).resolve().parents[2] / "integration"
 
 
 def _load(name: str, path: Path):

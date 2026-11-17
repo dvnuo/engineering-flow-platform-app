@@ -1,7 +1,7 @@
 """Checks of the Kubernetes manifests, and their privileges as ``docker run`` flags.
 
-    python deploy/check_manifests.py                      check every manifest
-    python deploy/check_manifests.py docker-flags FILE    print the flags of a Deployment
+    python scripts/check_manifests.py                      check every manifest
+    python scripts/check_manifests.py docker-flags FILE    print the flags of a Deployment
 
 CI uses the second form to start the image with exactly the capabilities a
 Deployment file grants, so that what is shipped is what was tested.
@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+K8S = Path(__file__).resolve().parents[1] / "k8s"
 NAMESPACE = "efp-apps"
 
 
@@ -86,8 +86,10 @@ def check_deployment(path: Path, *, mode: str) -> None:
 
 
 def check_all() -> None:
-    k8s = HERE / "k8s"
-    for path in sorted(HERE.rglob("*.yaml")):
+    k8s = K8S
+    manifests = sorted(K8S.rglob("*.yaml"))
+    assert manifests, f"no manifest under {K8S}"
+    for path in manifests:
         documents = load(path)
         assert documents, f"{path} is empty"
         for document in documents:
@@ -115,7 +117,7 @@ def check_all() -> None:
     (secret,) = load(k8s / "secret.example.yaml")
     assert "EFP_HOST_API_TOKEN" in secret["stringData"]
 
-    (pod,) = load(HERE / "probe" / "pod.yaml")
+    (pod,) = load(K8S / "probe" / "pod.yaml")
     assert pod["spec"]["restartPolicy"] == "Never" and pod["spec"]["automountServiceAccountToken"] is False
     names = [container["name"] for container in pod["spec"]["containers"]]
     assert names == ["bwrap-default-seccomp", "bwrap", "userns", "plain"]
@@ -127,7 +129,7 @@ def check_all() -> None:
     assert by_name["plain"] == hidden and by_name["userns"] == hidden
     sub_paths = [mount["subPath"] for container in pod["spec"]["containers"] for mount in container["volumeMounts"] if mount["name"] == "store"]
     assert len(set(sub_paths)) == 4, "each probe container works in its own directory of the volume"
-    print(f"manifests ok: {len(list(HERE.rglob('*.yaml')))} files")
+    print(f"manifests ok: {len(manifests)} files")
 
 
 def main(argv: list[str]) -> int:

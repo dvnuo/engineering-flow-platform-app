@@ -336,7 +336,7 @@ Runner = Callable[[LaunchSpec, float], "tuple[int, str]"]
 # capability at all (docs/OPERATIONS.md, "Nodes with AppArmor").
 APPARMOR_HINT = (
     " (root in the view may not use its capabilities: on nodes with AppArmor the node's own profile for"
-    " bwrap does this to an unconfined container; give the container the profile deploy/apparmor/efp-app-host)"
+    " bwrap does this to an unconfined container; give the container the profile k8s/apparmor/efp-app-host)"
 )
 
 

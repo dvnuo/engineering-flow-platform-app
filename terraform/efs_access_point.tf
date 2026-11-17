@@ -53,7 +53,7 @@ output "efp_apps_access_point_id" {
   value       = aws_efs_access_point.apps.id
 }
 
-# What deploy/k8s/storage.yaml wants as spec.csi.volumeHandle.
+# What k8s/storage.yaml wants as spec.csi.volumeHandle.
 output "efp_apps_volume_handle" {
   description = "volumeHandle for the PersistentVolume of the app host."
   value       = "${var.efp_efs_file_system_id}::${aws_efs_access_point.apps.id}"

@@ -1,10 +1,10 @@
 #!/bin/sh
 # Checklist item M0-1: which isolation can the app host use on this cluster?
 #
-#     deploy/probe/run.sh [IMAGE]
+#     k8s/probe/run.sh [IMAGE]
 #
 # Needs kubectl pointing at the cluster, the namespace efp-apps and the
-# volume claim efp-apps-store (deploy/k8s/namespace.yaml, storage.yaml), and
+# volume claim efp-apps-store (k8s/namespace.yaml, storage.yaml), and
 # the app host image in a registry the cluster can pull from.
 #
 # Starts a throwaway pod (pod.yaml), prints what each of its containers found
@@ -55,27 +55,27 @@ worked() {
 
 echo "=========================== RESULT ==========================="
 if worked bwrap-default-seccomp sandbox bwrap; then
-    echo "Deploy deploy/k8s/deployment-sandbox.yaml; its seccompProfile may be RuntimeDefault."
+    echo "Deploy k8s/deployment-sandbox.yaml; its seccompProfile may be RuntimeDefault."
     echo "  EFP_HOST_ISOLATION_MODE=sandbox"
     echo "  EFP_HOST_SANDBOX_BACKEND=bwrap"
 elif worked bwrap sandbox bwrap; then
-    echo "Deploy deploy/k8s/deployment-sandbox.yaml as it is (SYS_ADMIN, seccomp Unconfined)."
+    echo "Deploy k8s/deployment-sandbox.yaml as it is (SYS_ADMIN, seccomp Unconfined)."
     echo "  EFP_HOST_ISOLATION_MODE=sandbox"
     echo "  EFP_HOST_SANDBOX_BACKEND=bwrap"
 elif worked userns sandbox bwrap-userns; then
-    echo "Deploy deploy/k8s/deployment-sandbox.yaml without SYS_ADMIN and SYS_CHROOT (keep seccomp Unconfined)."
+    echo "Deploy k8s/deployment-sandbox.yaml without SYS_ADMIN and SYS_CHROOT (keep seccomp Unconfined)."
     echo "  EFP_HOST_ISOLATION_MODE=sandbox"
     echo "  EFP_HOST_SANDBOX_BACKEND=bwrap-userns"
 elif worked plain sandbox landlock; then
-    echo "Deploy deploy/k8s/deployment-hidden.yaml with these two settings (its securityContext is enough for Landlock)."
+    echo "Deploy k8s/deployment-hidden.yaml with these two settings (its securityContext is enough for Landlock)."
     echo "  EFP_HOST_ISOLATION_MODE=sandbox"
     echo "  EFP_HOST_SANDBOX_BACKEND=landlock"
 elif worked userns sandbox landlock; then
-    echo "Deploy deploy/k8s/deployment-hidden.yaml with seccompProfile Unconfined and these two settings."
+    echo "Deploy k8s/deployment-hidden.yaml with seccompProfile Unconfined and these two settings."
     echo "  EFP_HOST_ISOLATION_MODE=sandbox"
     echo "  EFP_HOST_SANDBOX_BACKEND=landlock"
 elif worked plain hidden plain; then
-    echo "No sandbox works on this cluster. Deploy deploy/k8s/deployment-hidden.yaml."
+    echo "No sandbox works on this cluster. Deploy k8s/deployment-hidden.yaml."
     echo "  EFP_HOST_ISOLATION_MODE=hidden"
 else
     echo "Neither mode works: apps cannot be kept apart on this cluster as it is."

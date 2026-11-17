@@ -25,20 +25,21 @@ tini
 
 ## 2. Deploying
 
-All files are under `deploy/`.
+The manifests are in `k8s/` ([what each file is](../k8s/README.md)), the
+`Dockerfile` is at the repository root, and the EFS access point is in
+`terraform/`. Run the commands from the repository root.
 
-1. **Image.** `docker build -f host/Dockerfile -t <registry>/engineering-flow-platform-app:<tag> .`
-   from the repository root (the build needs `host/`, `sdk/` and
-   `templates/`). `--build-arg PIP_INDEX_URL=...` points the build at a
+1. **Image.** `docker build -t <registry>/engineering-flow-platform-app:<tag> .`
+   (the build needs `host/`, `sdk/` and `templates/`). `--build-arg PIP_INDEX_URL=...` points the build at a
    private index. Do not pass credentials that way: build arguments stay in
    the image history.
-2. **Volume.** Create the EFS access point (`deploy/terraform/efs_access_point.tf`),
-   put its handle into `deploy/k8s/storage.yaml`, then
-   `kubectl apply -f deploy/k8s/namespace.yaml -f deploy/k8s/storage.yaml`.
+2. **Volume.** Create the EFS access point (`terraform/efs_access_point.tf`),
+   put its handle into `k8s/storage.yaml`, then
+   `kubectl apply -f k8s/namespace.yaml -f k8s/storage.yaml`.
 3. **Find out which isolation the cluster allows** (section 4):
-   `deploy/probe/run.sh <image>`. It ends with the Deployment file to use and
+   `k8s/probe/run.sh <image>`. It ends with the Deployment file to use and
    the two settings to put into it.
-4. **Secret.** Copy `deploy/k8s/secret.example.yaml`, fill it in, apply it.
+4. **Secret.** Copy `k8s/secret.example.yaml`, fill it in, apply it.
    The Portal needs the same token as `APPS_HOST_API_TOKEN`.
 5. **Deployment.** Edit the one the probe named (`deployment-sandbox.yaml` or
    `deployment-hidden.yaml`): image, the three URLs, the package index. Apply
@@ -46,17 +47,18 @@ All files are under `deploy/`.
 6. **Ingress.** Edit host name and TLS secret in `ingress.yaml`, apply it.
    The apps host name must be a sibling of the Portal's
    (`efp.example.com` / `app.example.com`).
-7. **Portal.** `APPS_HOST_INTERNAL_URL=http://efp-app-host.efp-apps.svc.cluster.local:9000`,
+7. **Portal.** `APPS_ENABLED=true`,
+   `APPS_HOST_INTERNAL_URL=http://efp-app-host.efp-apps.svc.cluster.local:9000`,
    `APPS_PUBLIC_BASE_URL=https://app.example.com`.
 
-`python deploy/check_manifests.py` (needs PyYAML) checks the manifests; CI
+`python scripts/check_manifests.py` (needs PyYAML) checks the manifests; CI
 runs it.
 
 ### Not through the Ingress
 
 The Ingress routes only to 8080. Keep it that way, and keep the Portal's
 `/api/app-host/` and `/api/app-sdk/` rules as its own documentation says.
-`deploy/k8s/networkpolicy.example.yaml` restricts 9000 to the Portal on
+`k8s/networkpolicy.example.yaml` restricts 9000 to the Portal on
 clusters that enforce NetworkPolicy.
 
 ## 3. Settings
@@ -124,7 +126,7 @@ Sandbox backends, in the order `auto` tries them:
 
 | Backend | How | Needs |
 |---|---|---|
-| `bwrap` | bubblewrap as root builds a mount namespace that holds the system directories and the app's own directory; inside it `setpriv` drops to the app's user | capability `SYS_ADMIN` (plus `SYS_CHROOT`); no seccomp profile that forbids `mount`; on nodes with AppArmor the profile `deploy/apparmor/efp-app-host` (below) |
+| `bwrap` | bubblewrap as root builds a mount namespace that holds the system directories and the app's own directory; inside it `setpriv` drops to the app's user | capability `SYS_ADMIN` (plus `SYS_CHROOT`); no seccomp profile that forbids `mount`; on nodes with AppArmor the profile `k8s/apparmor/efp-app-host` (below) |
 | `bwrap-userns` | drop to the app's user first, then bubblewrap in a user namespace | unprivileged user namespaces on the node; seccomp `Unconfined` |
 | `landlock` | drop to the app's user, then give up filesystem access with Landlock | a kernel with Landlock (5.13+, `lsm=landlock`) |
 
@@ -159,11 +161,11 @@ AppArmor matters for the `bwrap` backend only. Two things get in its way:
   `bwrap-userns` (which that same node profile permits) and says so in its
   log; with `bwrap` named, no app is started.
 
-The way out is a profile of the container's own: `deploy/apparmor/efp-app-host`
+The way out is a profile of the container's own: `k8s/apparmor/efp-app-host`
 is the runtime's default profile plus `mount` and `pivot_root`. A container
 that runs under it keeps it across every exec, so the node's bwrap profile
 never applies. Load it on every node that may run the app host
-(`sudo apparmor_parser --replace deploy/apparmor/efp-app-host`, and copy it
+(`sudo apparmor_parser --replace k8s/apparmor/efp-app-host`, and copy it
 to `/etc/apparmor.d/` to survive a reboot), then set
 `securityContext.appArmorProfile: {type: Localhost, localhostProfile: efp-app-host}`
 in `deployment-sandbox.yaml`. CI starts the image this way.
@@ -175,13 +177,13 @@ user namespaces to the container.
 
 **Run the probe; do not guess.** Whether a backend works depends on the
 node's kernel, the container runtime's seccomp and LSM profiles and the
-admission policy of the cluster. `deploy/probe/run.sh <image>` starts a
+admission policy of the cluster. `k8s/probe/run.sh <image>` starts a
 throwaway pod with four containers, one per set of privileges, on the real
 volume, runs the same probe the manager runs at every boot, and prints for
 example:
 
 ```
-Deploy deploy/k8s/deployment-sandbox.yaml as it is (SYS_ADMIN, seccomp Unconfined).
+Deploy k8s/deployment-sandbox.yaml as it is (SYS_ADMIN, seccomp Unconfined).
   EFP_HOST_ISOLATION_MODE=sandbox
   EFP_HOST_SANDBOX_BACKEND=bwrap
 ```
@@ -238,7 +240,7 @@ ones are removed at the next deployment.
 
 - **Must be backed up:** `apps/*/data/`. It is the only copy of what apps
   stored. Use AWS Backup on the file system (see the note in
-  `deploy/terraform/efs_access_point.tf`).
+  `terraform/efs_access_point.tf`).
 - **Good to have:** `registry.json`, `apps/*/env.json`, `keys/`. Without them
   the Portal can register every app again (it keeps slug, token and
   environment) and visitors sign in once more.
@@ -331,7 +333,7 @@ gone.
 | What you see | Where to look |
 |---|---|
 | The log says `isolation: bwrap does not work here: setpriv: setresuid failed` | The node's AppArmor policy: section 4, "Nodes with AppArmor". The host fell back to the next backend (or starts nothing when `bwrap` was named). |
-| Every app with a process is `failed` / `isolation_unavailable` | `isolation_error` in `GET /v1/host`. Run `deploy/probe/run.sh`; a node pool or runtime change is the usual cause. |
+| Every app with a process is `failed` / `isolation_unavailable` | `isolation_error` in `GET /v1/host`. Run `k8s/probe/run.sh`; a node pool or runtime change is the usual cause. |
 | A deployment fails at `dependencies` | The job log has pip's own output. No wheel for a package: build one for the index, or set `EFP_HOST_PIP_ALLOW_SDIST`. Cannot reach the index: `PIP_INDEX_URL`, proxy, `PIP_CERT`. |
 | A deployment fails at `start` or `health` | The job log holds the candidate's output. The app must listen on `127.0.0.1:$PORT` and answer `health_path` with a status below 500 within `startup_timeout`. |
 | An app is `killed` / `memory` | It went over its ceiling; raise the app's limit in the Portal or `EFP_HOST_APP_MEMORY_MB`. |
@@ -345,10 +347,10 @@ gone.
 itself renders the gateway configuration and runs `nginx -t` on it), runs the
 Linux-only tests as root inside the image, and then starts the real
 container next to a stub Portal once per isolation variant
-(`host/tests/integration/ci.sh`): it deploys the starter templates, one of
+(`integration/ci.sh`): it deploys the starter templates, one of
 the example apps (`examples/team-poll`, with a member signing in and voting)
 and a probe app, checks them through the gateway, checks that one app cannot read
 another's files, environment or stored objects, and that redeploy, rollback
 and a new container on the same volume work. On a Linux machine with Docker
-the same runs with `sh host/tests/integration/ci.sh all hidden` (or
+the same runs with `sh integration/ci.sh all hidden` (or
 `sandbox`).
