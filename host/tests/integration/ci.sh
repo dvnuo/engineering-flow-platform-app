@@ -179,7 +179,7 @@ smoke() {
     variant "$2"
     result=0
     "$PYTHON" "$HERE/smoke.py" --phase "$1" --mode "$MODE" --expect-backend "$BACKEND" \
-        --token "$TOKEN" --templates "$ROOT/templates" --state "$STATE" || result=1
+        --token "$TOKEN" --templates "$ROOT/templates" --examples "$ROOT/examples" --state "$STATE" || result=1
     if [ "$1" = "first" ]; then
         # The probe app was told to write "planted" files where no app may
         # write, and reported that it could not. Seen from outside every

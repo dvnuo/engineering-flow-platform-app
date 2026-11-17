@@ -3,7 +3,8 @@
     python smoke.py --phase first          --mode sandbox|hidden [options]
     python smoke.py --phase after-recreate --mode sandbox|hidden [options]
 
-``first`` registers and deploys the starter templates and a probe app,
+``first`` registers and deploys the starter templates, an example app
+(``examples/team-poll``: a member signs in and votes) and a probe app,
 checks them through the gateway, checks that one app cannot reach another,
 that sign-in, refusals, cookies, WebSocket and static files behave behind the
 real nginx, and that redeploy and rollback work. ``after-recreate`` runs
@@ -398,6 +399,25 @@ class Smoke:
         status = self.wait_state("tpl-fastapi", ("running",))
         self.check("the app reports running with a port and an uptime", status["port"] >= 20000 and status["type"] == "fastapi", status)
 
+        # ---- an example app, the way a member would publish it ---------------
+        self.section("example app: team-poll (visitor identity and storage, through the gateway)")
+        self.register("ex-poll", "ex-poll")  # audience "anyone": a guest may look
+        self.deploy("ex-poll", tar_bundle(Path(self.args.examples) / "team-poll"))
+        self.wait_page("/ex-poll/", contains="Team poll")
+        guest = self.app_json("ex-poll", "/api/poll")
+        self.check("a guest sees the poll, without a vote", guest["signed_in"] is False and guest["total"] == 0 and guest["your_vote"] is None, guest)
+        refused = self.page("/ex-poll/api/vote", headers=FETCH, method="POST", payload={"option": "hike"})
+        self.check("a guest cannot vote", refused.status == 401, refused)
+        entered = self.page("/_efp/callback?code=ok.ex-poll.ex-poll.13&next=" + quote("/ex-poll/", safe=""))
+        carol = next((value.split(";", 1)[0] for value in entered.all("Set-Cookie") if value.startswith(SESSION_COOKIE + "=")), "")
+        self.check("a member signs in", entered.status == 302 and bool(carol), entered)
+        voted = self.page("/ex-poll/api/vote", headers={**FETCH, "Cookie": carol}, method="POST", payload={"option": "hike"})
+        self.check("and votes: the app trusts the visitor the gateway signed", voted.status == 200 and voted.json()["your_vote"] == "hike" and voted.json()["total"] == 1, voted)
+        changed = self.page("/ex-poll/api/vote", headers={**FETCH, "Cookie": carol}, method="POST", payload={"option": "cook"})
+        self.check("a second vote replaces the first", changed.status == 200 and changed.json()["your_vote"] == "cook" and changed.json()["total"] == 1, changed)
+        counted = self.app_json("ex-poll", "/api/poll")
+        self.check("everybody sees the count", {option["id"]: option["votes"] for option in counted["options"]} == {"hike": 0, "cook": 1, "escape": 0}, counted)
+
         # ---- a static site of our own: nested files, traversal, dot files ----
         self.section("static files behind the real nginx")
         site = {
@@ -743,6 +763,9 @@ class Smoke:
         self.check("static site, at the release rolled back to", "release one" in self.wait_page("/smoke-site/", contains="release one").text)
         self.check("nested static file", self.page("/smoke-site/sub/dir/nested.txt").text == "nested file\n")
         self.check("FastAPI starter", self.wait_page("/tpl-fastapi/").status == 200)
+        self.wait_page("/ex-poll/", contains="Team poll")
+        poll = self.app_json("ex-poll", "/api/poll")
+        self.check("example app: the vote it stored is still counted", poll["total"] == 1 and poll["signed_in"] is False, poll)
         self.check("probe app, at the release rolled back to", "version one" in self.wait_page("/probe-b/", contains="version one").text)
         self.wait_page("/probe-a/", contains="version one")
 
@@ -796,6 +819,7 @@ def main(argv: list | None = None) -> int:
     parser.add_argument("--portal-public", default="http://portal.test", help="EFP_PORTAL_PUBLIC_URL of the host")
     parser.add_argument("--token", default=os.environ.get("EFP_HOST_API_TOKEN", "ci-token"))
     parser.add_argument("--templates", default=str(HERE.parents[2] / "templates"))
+    parser.add_argument("--examples", default=str(HERE.parents[2] / "examples"))
     parser.add_argument("--state", default="smoke-state.json")
     parser.add_argument("--store-dir", default="/var/lib/efp-host/store")
     parser.add_argument("--runtime-dir", default="/srv/efp-apps")

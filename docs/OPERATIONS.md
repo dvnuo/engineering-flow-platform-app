@@ -345,8 +345,9 @@ gone.
 itself renders the gateway configuration and runs `nginx -t` on it), runs the
 Linux-only tests as root inside the image, and then starts the real
 container next to a stub Portal once per isolation variant
-(`host/tests/integration/ci.sh`): it deploys the starter templates and a
-probe app, checks them through the gateway, checks that one app cannot read
+(`host/tests/integration/ci.sh`): it deploys the starter templates, one of
+the example apps (`examples/team-poll`, with a member signing in and voting)
+and a probe app, checks them through the gateway, checks that one app cannot read
 another's files, environment or stored objects, and that redeploy, rollback
 and a new container on the same volume work. On a Linux machine with Docker
 the same runs with `sh host/tests/integration/ci.sh all hidden` (or

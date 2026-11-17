@@ -8,8 +8,9 @@ name: CI
 #   image-tests           the Linux-only unit tests as root inside the image:
 #                         dropping privileges, bubblewrap, Landlock, supervisord
 #   smoke                 the real container next to a stub Portal, once per
-#                         isolation variant: deploys the starter templates and a
-#                         probe app, and checks them through the gateway
+#                         isolation variant: deploys the starter templates, an
+#                         example app (examples/team-poll) and a probe app,
+#                         and checks them through the gateway
 #
 # The smoke job is the only place where the Linux parts of the host run for
 # real. When it fails, open its last step ("What happened"): container log,
