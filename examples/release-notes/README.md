@@ -28,8 +28,7 @@ drafts are files under `.efp-data/`.
 
 ## Make it yours
 
-1. Copy this directory into your own repository and put your Portal username
-   in `"owners"` of `efp-app.json`.
+1. Copy this directory into your own repository.
 2. Change `SYSTEM_PROMPT` in `main.py` to your house style: your headings,
    your language, how you name contributors.
 3. `efp-app check`, push, register the directory as an app in the Portal,

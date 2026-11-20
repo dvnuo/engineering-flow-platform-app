@@ -27,8 +27,7 @@ Confluence and the model.
 
 ## Make it yours
 
-1. Copy this directory into your own repository and put your Portal username
-   in `"owners"` of `efp-app.json`.
+1. Copy this directory into your own repository.
 2. Set `SPACES` at the top of `app.py` to the spaces the app should answer
    from, and tune `MAX_PAGES` and `MAX_CHARS_PER_PAGE`: more text means
    better answers and a higher cost per question.

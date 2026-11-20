@@ -36,8 +36,6 @@ DEFAULT_STARTUP_TIMEOUT = 60
 MAX_STARTUP_TIMEOUT = 300
 MAX_NAME = 80
 MAX_DESCRIPTION = 500
-#: What the starter templates put in "owners"; it has to be replaced.
-OWNER_PLACEHOLDER = "your-portal-username"
 
 KNOWN_KEYS = (
     "name",
@@ -122,7 +120,7 @@ def validate(data: Any, *, for_launch: bool = False) -> List[Problem]:
     """What is wrong with a decoded manifest, by the rules of section 2.
 
     ``for_launch`` leaves out what only matters for registering the app
-    ("owners"), so a fresh starter can be run before it is filled in.
+    ("owners"): a slip there does not keep the app from running locally.
     """
     problems: List[Problem] = []
 
@@ -213,15 +211,12 @@ def validate(data: Any, *, for_launch: bool = False) -> List[Problem]:
     if strip_prefix is not None and not isinstance(strip_prefix, bool):
         error('"strip_prefix" must be true, false or null')
 
+    # Optional: without it any member may register the app; with it, only the members it lists.
     owners = data.get("owners")
-    if for_launch:
+    if for_launch or owners is None:
         pass
-    elif not isinstance(owners, list) or not owners:
-        error('"owners" must list at least one Portal username: only they can register this app')
-    elif not all(isinstance(owner, str) and owner.strip() for owner in owners):
-        error('"owners" must be a list of Portal usernames')
-    elif OWNER_PLACEHOLDER in owners:
-        error('"owners" still has the placeholder "%s": replace it with your Portal username' % OWNER_PLACEHOLDER)
+    elif not isinstance(owners, list) or not all(isinstance(owner, str) and owner.strip() for owner in owners):
+        error('"owners" must be a list of Portal usernames; leave it out to let any member register this app')
 
     for key in data:
         if key not in KNOWN_KEYS and not str(key).startswith(("_", "$")):

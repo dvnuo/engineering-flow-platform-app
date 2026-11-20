@@ -135,9 +135,6 @@ def cmd_init(args: argparse.Namespace) -> int:
         step += 1
     _say("  %d. efp-app dev" % step)
     step += 1
-    if not args.owner:
-        _say('  %d. put your Portal username in "owners" of %s' % (step, _manifest.FILE_NAME))
-        step += 1
     _say("  %d. efp-app check, then push the code and register the app in the Portal" % step)
     return 0
 
@@ -379,7 +376,12 @@ def build_parser() -> argparse.ArgumentParser:
     init = commands.add_parser("init", help="copy a starter app", description="Copy a starter app into a directory.")
     init.add_argument("type", choices=TEMPLATE_TYPES, help="the kind of app")
     init.add_argument("directory", nargs="?", default=None, help="where to put it (default: the current directory)")
-    init.add_argument("--owner", action="append", metavar="USERNAME", help='your Portal username, for "owners"')
+    init.add_argument(
+        "--owner",
+        action="append",
+        metavar="USERNAME",
+        help='a Portal username for "owners": only the members listed may register the app (repeat for more; default: any member)',
+    )
     init.add_argument("--name", help="the app's name")
     init.add_argument("--force", action="store_true", help="overwrite files that already exist")
     init.set_defaults(handler=cmd_init)

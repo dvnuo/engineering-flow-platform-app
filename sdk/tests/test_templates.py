@@ -104,13 +104,10 @@ def test_a_starter_is_complete_and_valid(app_type):
     assert (directory / "README.md").is_file()
     data = json.loads((directory / "efp-app.json").read_text(encoding="utf-8"))
     assert data["type"] == app_type
-    assert data["owners"] == [sdk_manifest.OWNER_PLACEHOLDER]
+    assert "owners" not in data  # a starter limits nobody: any member may register it
 
-    problems = _check.check_directory(directory)
-    assert [problem.level for problem in problems] == ["error"], [problem.render() for problem in problems]
-    assert "placeholder" in problems[0].message  # the one thing the member has to fill in
-
-    data["owners"] = ["alice"]
+    # Nothing is left to fill in before it can be registered.
+    assert [problem.render() for problem in _check.check_directory(directory)] == []
     assert sdk_manifest.validate(data) == []
     assert _check.check_files(directory, data) == []
     assert _check.scan_urls(directory, app_type) == []  # correct under a path prefix

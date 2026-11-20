@@ -61,7 +61,7 @@ Lives in the app's entry directory.
 | `health_path` | optional, default `/`; relative to the app's own root |
 | `startup_timeout` | optional seconds, default 60, maximum 300 |
 | `strip_prefix` | optional override of the per-type default (section 6.2) |
-| `owners` | Portal usernames allowed to register this directory as an app |
+| `owners` | optional list of Portal usernames. Absent or empty: any member may register and deploy this directory. Otherwise only the listed members may (the Portal checks the app owner's username when registering and at every deployment; an app created from a published template is exempt) |
 
 Unknown keys are ignored. Paths may not be absolute or contain `..`.
 

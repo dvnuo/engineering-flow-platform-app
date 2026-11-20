@@ -17,9 +17,8 @@ model call answers with an error message.
 
 ## Deploy it
 
-1. Put your Portal username in `"owners"` of `efp-app.json`.
-2. `efp-app check`
-3. Push the code to GitHub, register the repository as an app in the Portal
+1. `efp-app check`
+2. Push the code to GitHub, register the repository as an app in the Portal
    and press Deploy.
 
 ## The path prefix

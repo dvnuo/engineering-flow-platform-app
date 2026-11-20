@@ -30,8 +30,7 @@ it shows comes from the Portal. Locally you are the owner; start it with
 
 ## Make it yours
 
-1. Copy this directory into your own repository and put your Portal username
-   in `"owners"` of `efp-app.json`.
+1. Copy this directory into your own repository.
 2. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy. The audience can stay "only me".
 

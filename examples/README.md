@@ -60,9 +60,8 @@ provider, count against the app's budget and reach your real Jira.
 
 1. Copy the example's directory into a GitHub repository of your own that
    EFP can read.
-2. Put your Portal username in `"owners"` of `efp-app.json`.
-3. `efp-app check <directory>`
-4. In the Portal: Apps, New app; give the repository, the branch, the
+2. `efp-app check <directory>`
+3. In the Portal: Apps, New app; give the repository, the branch, the
    directory and a name. On the app's page turn on what the table above
    lists, then press Deploy.
 

@@ -138,13 +138,10 @@ def test_an_example_is_complete_and_valid(name):
     data = json.loads((directory / "efp-app.json").read_text(encoding="utf-8"))
     assert data["type"] == TYPES[name]
     assert data["description"].startswith("Example: ")
-    assert data["owners"] == [sdk_manifest.OWNER_PLACEHOLDER]
+    assert "owners" not in data  # an example limits nobody: any member may register a copy
 
-    problems = _check.check_directory(directory)
-    assert [problem.level for problem in problems] == ["error"], [problem.render() for problem in problems]
-    assert "placeholder" in problems[0].message  # the one thing the member has to fill in
-
-    data["owners"] = ["alice"]
+    # Nothing is left to fill in before it can be registered.
+    assert [problem.render() for problem in _check.check_directory(directory)] == []
     assert sdk_manifest.validate(data) == []
     assert _check.check_files(directory, data) == []
     assert _check.scan_urls(directory, TYPES[name]) == []  # correct under a path prefix

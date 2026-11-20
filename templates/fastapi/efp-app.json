@@ -4,6 +4,5 @@
   "type": "fastapi",
   "entry": "main:app",
   "requirements": "requirements.txt",
-  "health_path": "/",
-  "owners": ["your-portal-username"]
+  "health_path": "/"
 }

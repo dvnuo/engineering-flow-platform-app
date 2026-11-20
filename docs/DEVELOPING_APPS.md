@@ -39,7 +39,7 @@ Contents: [Quick start](#quick-start) - [The manifest](#the-manifest) -
    `streamlit`, `gradio`, `static`.
 
    ```
-   efp-app init fastapi my-app --owner <your Portal username>
+   efp-app init fastapi my-app
    cd my-app
    pip install -r requirements.txt
    ```
@@ -55,9 +55,9 @@ Contents: [Quick start](#quick-start) - [The manifest](#the-manifest) -
 
 4. Push the directory to a GitHub repository that EFP can read, then register
    it in the Portal (Apps, New app): the repository address, a branch or tag,
-   the directory that holds `efp-app.json`, and a name. Your Portal username
-   must be listed in `"owners"` of the manifest; that is how the Portal knows
-   you may publish this code.
+   the directory that holds `efp-app.json`, and a name. Any member may
+   register a directory, unless its manifest limits that with `"owners"`
+   (see "Who may publish the app" below).
 
 5. Copy the app token from the app's page in the Portal into `.env` (see
    `.env.example`), together with the Portal's address, and run `efp-app dev`
@@ -97,8 +97,7 @@ it on the app's page.
   "entry": "main:app",
   "requirements": "requirements.txt",
   "health_path": "/",
-  "startup_timeout": 60,
-  "owners": ["alice"]
+  "startup_timeout": 60
 }
 ```
 
@@ -114,10 +113,30 @@ it on the app's page.
 | `health_path` | optional, default `/`; the app is healthy when a `GET` of it answers with a status below 500 |
 | `startup_timeout` | optional, whole seconds, default 60, at most 300 |
 | `strip_prefix` | optional; overrides whether the gateway removes the path prefix (next section) |
-| `owners` | the Portal usernames that may register this directory as an app |
+| `owners` | optional; the Portal usernames that may register this directory as an app (default: any member) |
 
 Paths are relative to the entry directory, use forward slashes and may not
 contain `..`. Unknown keys are ignored.
+
+### Who may publish the app
+
+Without `"owners"`, any member of the Portal may register the directory as
+an app of their own and deploy it. To limit that, list Portal usernames:
+
+```json
+  "owners": ["alice", "bob"]
+```
+
+Then only those members may register and deploy it (`efp-app init --owner
+alice` writes the line for you). The Portal checks the list when an app is
+registered and again at every deployment, against the username of the app's
+owner.
+
+Why the list exists: the Portal reads every repository with one service
+account, and that account may reach repositories that some members cannot
+open on GitHub. A member who registers such a directory does not get to read
+the code, but they do get a running copy of it under their own name, with
+its logs. List `"owners"` when that should not be possible for everyone.
 
 ## App types and the path prefix
 
@@ -530,8 +549,7 @@ Differences from the host to keep in mind:
 
 - errors (exit code 1): a manifest that breaks a rule of the table above; a
   missing entry module, script or directory; a missing requirements file or
-  icon that the manifest names; an empty `"owners"` or one that still holds
-  the starter's placeholder;
+  icon that the manifest names;
 - warnings (exit code 0, or 1 with `--strict`): root-absolute URLs in pages,
   scripts, style sheets and templates (`src="/..."`, `href="/..."`,
   `action="/..."`, `fetch("/...")`, `url(/...)`), each with the relative form

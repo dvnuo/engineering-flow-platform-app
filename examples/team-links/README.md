@@ -23,10 +23,9 @@ on the host no process runs at all.)
 ## Make it yours
 
 1. Copy this directory into your own repository.
-2. Put your Portal username in `"owners"` of `efp-app.json`.
-3. Replace the links in `public/links.json`. A link has a `title`, a `url`,
+2. Replace the links in `public/links.json`. A link has a `title`, a `url`,
    and optionally a `note` and `tags`.
-4. `efp-app check`, push, register the directory as an app in the Portal and
+3. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy. To change the links later: edit the file, push, Deploy.
 
 ## Things to notice

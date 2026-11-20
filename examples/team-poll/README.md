@@ -29,8 +29,7 @@ are the owner of the app without that line.) Local votes are files under
 
 ## Make it yours
 
-1. Copy this directory into your own repository and put your Portal username
-   in `"owners"` of `efp-app.json`.
+1. Copy this directory into your own repository.
 2. Write your question into `poll.json`. Give it a new `"id"` whenever you
    ask something new: the votes are kept per id, so the count starts at zero.
 3. `efp-app check`, push, register the directory as an app in the Portal and

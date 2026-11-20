@@ -27,8 +27,7 @@ they run on your model provider and count against the app's budget.
 
 ## Make it yours
 
-1. Copy this directory into your own repository and put your Portal username
-   in `"owners"` of `efp-app.json`.
+1. Copy this directory into your own repository.
 2. Change `SYSTEM_PROMPT` in `main.py` to your stack: name your build tool,
    your test framework, the mistakes your team makes most.
 3. `efp-app check`, push, register the directory as an app in the Portal,

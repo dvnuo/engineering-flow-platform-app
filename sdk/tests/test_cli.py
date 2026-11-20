@@ -85,10 +85,10 @@ def test_the_example_of_the_contract_is_valid():
     assert sdk_manifest.validate(GOOD) == []
 
 
-def test_only_name_type_entry_and_owners_are_needed():
-    assert sdk_manifest.validate({"name": "x", "type": "streamlit", "entry": "app.py", "owners": ["alice"]}) == []
-    assert sdk_manifest.validate({"name": "x", "type": "static", "owners": ["alice"]}) == []
-    assert sdk_manifest.validate({"name": "x", "type": "command", "command": "python run.py --port $PORT", "owners": ["a"]}) == []
+def test_only_name_type_and_entry_are_needed():
+    assert sdk_manifest.validate({"name": "x", "type": "streamlit", "entry": "app.py"}) == []
+    assert sdk_manifest.validate({"name": "x", "type": "static"}) == []
+    assert sdk_manifest.validate({"name": "x", "type": "command", "command": "python run.py --port $PORT"}) == []
 
 
 @pytest.mark.parametrize(
@@ -129,12 +129,10 @@ def test_only_name_type_entry_and_owners_are_needed():
         ({"startup_timeout": True}, '"startup_timeout" must be a whole number'),
         ({"startup_timeout": 1.5}, '"startup_timeout" must be a whole number'),
         ({"strip_prefix": "yes"}, '"strip_prefix" must be true, false or null'),
-        ({"owners": ...}, '"owners" must list at least one'),
-        ({"owners": []}, '"owners" must list at least one'),
-        ({"owners": "alice"}, '"owners" must list at least one'),
+        ({"owners": "alice"}, '"owners" must be a list of Portal usernames'),
         ({"owners": ["alice", ""]}, '"owners" must be a list of Portal usernames'),
+        ({"owners": ["alice", "  "]}, '"owners" must be a list of Portal usernames'),
         ({"owners": ["alice", 5]}, '"owners" must be a list of Portal usernames'),
-        ({"owners": ["your-portal-username"]}, "placeholder"),
     ],
 )
 def test_each_rule_of_section_2(changes, fragment):
@@ -159,6 +157,10 @@ def test_each_rule_of_section_2(changes, fragment):
         {"strip_prefix": False},
         {"icon": None, "description": None, "requirements": None, "health_path": None, "startup_timeout": None},
         {"owners": ["alice", "bob"]},
+        # Optional: without the list any member may register the app.
+        {"owners": ...},
+        {"owners": None},
+        {"owners": []},
     ],
 )
 def test_values_the_contract_allows(changes):
@@ -175,9 +177,9 @@ def test_a_manifest_that_is_not_an_object():
     assert errors_of(["name"]) == ["the manifest must be a JSON object"]
 
 
-def test_owners_are_not_needed_to_launch():
-    assert errors_of(manifest_of(owners=["your-portal-username"]), for_launch=True) == []
-    assert errors_of(manifest_of(owners=...), for_launch=True) == []
+def test_a_slip_in_owners_does_not_stop_a_launch():
+    assert errors_of(manifest_of(owners="alice")) != []
+    assert errors_of(manifest_of(owners="alice"), for_launch=True) == []
     assert errors_of(manifest_of(entry=...), for_launch=True) != []
 
 
@@ -248,16 +250,17 @@ def test_check_on_a_missing_directory(tmp_path, capsys):
     assert code == 1 and "is not a directory" in err
 
 
-def test_check_flags_the_owner_placeholder(tmp_path, capsys):
-    code, out, _err = run_cli(capsys, "check", str(good_app(tmp_path / "app", owners=["your-portal-username"])))
+@pytest.mark.parametrize("owners", [..., []])
+def test_check_passes_an_app_without_owners(tmp_path, capsys, owners):
+    code, out, _err = run_cli(capsys, "check", str(good_app(tmp_path / "app", owners=owners)))
+    assert code == 0 and "no problems found" in out
+
+
+def test_check_flags_owners_that_are_not_a_list(tmp_path, capsys):
+    code, out, _err = run_cli(capsys, "check", str(good_app(tmp_path / "app", owners="alice")))
     assert code == 1
-    assert 'error   efp-app.json: "owners" still has the placeholder "your-portal-username"' in out
-    assert "replace it with your Portal username" in out
-
-
-def test_check_flags_empty_owners(tmp_path, capsys):
-    code, out, _err = run_cli(capsys, "check", str(good_app(tmp_path / "app", owners=[])))
-    assert code == 1 and '"owners" must list at least one Portal username' in out
+    assert 'error   efp-app.json: "owners" must be a list of Portal usernames' in out
+    assert "leave it out to let any member register this app" in out
 
 
 def test_check_needs_the_entry_module(tmp_path, capsys):
@@ -457,7 +460,7 @@ def test_check_caps_the_findings_of_one_file(tmp_path, capsys):
 
 
 def test_errors_are_printed_before_warnings(tmp_path, capsys):
-    app = write_app(good_app(tmp_path / "app", owners=[]), None, {"static/app.js": 'fetch("/api/items");\n'})
+    app = write_app(good_app(tmp_path / "app", owners="alice"), None, {"static/app.js": 'fetch("/api/items");\n'})
     code, out, _err = run_cli(capsys, "check", str(app))
     assert code == 1
     assert out.index("error ") < out.index("warning ")
@@ -477,18 +480,17 @@ def test_init_creates_a_starter(tmp_path, capsys, app_type):
     assert "efp-app.json" in created and "README.md" in created
     data = json.loads((target / "efp-app.json").read_text(encoding="utf-8"))
     assert data["type"] == app_type
-    assert data["owners"] == ["your-portal-username"]
+    # Any member may register a fresh starter: it limits nobody.
+    assert "owners" not in data
     assert "Created a %s app" % app_type in out
-    assert "efp-app dev" in out and '"owners"' in out
+    assert "efp-app dev" in out and '"owners"' not in out
     if app_type != "static":
         assert ".env.example" in created and ".gitignore" in created and "requirements.txt" in created
         assert "pip install -r requirements.txt" in out
 
-    # A fresh starter has exactly one thing left to do: name the owner.
+    # A fresh starter has nothing left to fill in before it can be registered.
     code, out, _err = run_cli(capsys, "check", str(target))
-    assert code == 1
-    assert "placeholder" in out
-    assert "1 error, 0 warnings" in out
+    assert code == 0 and "no problems found" in out
 
 
 def test_init_fills_in_owner_and_name(tmp_path, capsys):
@@ -696,7 +698,7 @@ def launched(monkeypatch):
 
 
 def test_dev_starts_the_app_with_the_token_from_dot_env(tmp_path, capsys, launched):
-    app = good_app(tmp_path / "app", owners=["your-portal-username"])
+    app = good_app(tmp_path / "app", owners=...)
     (app / ".env").write_text("EFP_APP_TOKEN=%s\nEFP_PORTAL_URL=https://efp.example.com\n" % TOKEN, encoding="utf-8")
     code, out, err = run_cli(capsys, "dev", str(app), "--port", "8123")
     assert code == 0 and err == ""

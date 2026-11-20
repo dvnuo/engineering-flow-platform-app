@@ -28,8 +28,7 @@ Jira; without it the page loads and the search answers with a message.
 
 ## Make it yours
 
-1. Copy this directory into your own repository and put your Portal username
-   in `"owners"` of `efp-app.json`.
+1. Copy this directory into your own repository.
 2. Adapt `jql()` and `FIELDS` in `app.py` to what your team looks at: a
    component, a sprint, a status. Adapt `SYSTEM_PROMPT` to the digest you
    want to read.
