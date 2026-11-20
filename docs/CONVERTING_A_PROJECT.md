@@ -358,7 +358,8 @@ from a visitor and becomes part of a key is validated first.
 
 **The data the project already has.** Nothing can be copied into a deployed
 app's storage from outside: there is no shell, no upload and no shared disk.
-Two ways bring existing data along, and both are code of the app:
+Two ways bring existing data along, and both are code of the app; the third
+is to leave it behind:
 
 - Reference data that may be read by everyone who can read the repository
   and that changes with the code (a catalogue, a glossary): commit it as a
@@ -369,8 +370,17 @@ Two ways bring existing data along, and both are code of the app:
   each record and saves it as objects, reporting how many it took and which
   it refused. Make the import safe to run twice (the same record gives the
   same key). Never commit the export.
+- Leave it behind, when it cannot be matched to the people who will use the
+  app. Records keyed by the names of the project's own login belong to
+  accounts that no longer exist: an import needs a table from each old name
+  to a Portal username, which only the owner can supply (as a column of the
+  export, or a field of the import page). Without one the app starts empty.
 
-Say in the hand-over which of the two applies, and that old data is not in
+A data file that is already committed stays in the repository's history
+whatever you do. Take it out of the app's directory when the app no longer
+reads it, and say so when it holds anything personal.
+
+Say in the hand-over which of the three applies, and that old data is not in
 the app until the owner has imported it.
 
 ## 9. Model calls
@@ -481,8 +491,41 @@ the error as a sentence; when there is no copy yet, the sentence alone. Do
 not save a failed fetch over a good copy, and do not try again on every
 request of the next minute: remember the time of the failure too. Keep the
 copy in storage, not only in memory, or every start of the app begins with a
-fetch ([`examples/build-health`](../examples/build-health/) keeps every
-answer in storage with the time it was fetched).
+fetch. No example of this repository shows all three cases
+([`examples/build-health`](../examples/build-health/) keeps each answer in
+storage with its time, and keeps a refusal in place of the old answer), so
+here they are in one function:
+
+```python
+MAX_AGE = 600        # seconds a copy counts as fresh
+RETRY_AFTER = 60     # seconds to leave the other system alone after a failed fetch
+
+
+def jobs(who=None):
+    """The kept copy: ``items`` and ``fetched_at``, and ``problem`` when the last fetch failed."""
+    kept = storage.load_json("jobs.json", default=None) or {}
+    now = time.time()
+    if now - kept.get("fetched_at", 0) < MAX_AGE or now - kept.get("failed_at", 0) < RETRY_AFTER:
+        return kept                                              # fresh, or a fetch has just failed
+    problem = None
+    try:
+        answer = connectors.get("jenkins", "/api/json", visitor=who, tree="jobs[name,color]")
+        if answer.ok and isinstance(answer.json, dict):
+            kept = {"items": answer.json.get("jobs", []), "fetched_at": now}    # a new copy; the old problem is gone
+        else:
+            problem = "Jenkins answered with status %d." % answer.status
+    except EfpError as exc:
+        log.warning("%s", exc)
+        problem = exc.user_message
+    if problem:
+        kept = dict(kept, failed_at=now, problem=problem)        # the old copy stays, with the sentence
+    storage.save_json("jobs.json", kept)
+    return kept
+```
+
+The page shows `items` with "as of `fetched_at`", and `problem` when there is
+one. Two requests that fetch at the same moment save the same thing, so this
+object needs no lock.
 
 ## 12. Dependencies
 
@@ -941,15 +984,19 @@ Do all of these, in this order. Each has a pass condition.
    own data and cannot change the other's. If visitors share data: what bob
    adds carries bob's name, taken on the server. If a part is for the owner
    only: bob is refused there, on the server, not just by a hidden button.
-   With `EFP_DEV_VISITOR=anonymous` (only if the audience may be "Anyone"):
-   nothing that needs a member works, and nothing crashes.
+   With `EFP_DEV_VISITOR=anonymous`: nothing that needs a member works, and
+   nothing crashes (the audience is the owner's choice, so check it even
+   when the app is meant for members). Who the owner is comes from the
+   Portal, so without the app's token nobody is the owner and the part for
+   the owner refuses everybody: that it lets the owner in is shown by the
+   tests of item 7, not here.
 5. Stop and start the app: everything that should survive is still there
    (`.efp-data/` holds it locally).
 6. No secret and no "me" in the entry directory. Run both, and read every
    hit: the name of a variable is fine, a value is not.
 
    ```
-   grep -rnEi "passw|secret|token|[_-]key|apikey|bearer|authorization|private key|://[^/ \"']*:[^/ \"']*@" --exclude-dir=.venv --exclude-dir=.efp-data --exclude-dir=node_modules --exclude=.env .
+   grep -rnEi "passw|secret|token|[_-]key|apikey|bearer|authorization|private key|://[^/ \"']*:[^/ \"']*@" --exclude-dir=.git --exclude-dir=.venv --exclude-dir=.efp-data --exclude-dir=node_modules --exclude-dir=__pycache__ --exclude=.env .
    grep -rnE "currentUser\(\)|@me\b|/user([\"'?/]|$)|/myself\b" --include="*.py" .
    ```
 
@@ -972,8 +1019,10 @@ Do all of these, in this order. Each has a pass condition.
    no error; a second member (and, if intended, a guest) sees what they
    should.
 
-A test of item 7, for a Flask app (FastAPI: `TestClient(app, root_path="/example")`
-in place of `app.test_client()`):
+A test of item 7, for a Flask app. For FastAPI the client is
+`TestClient(app, root_path="/example")` and every request carries the
+prefix (`client.post("/example/api/summary", ...)`), as uvicorn hands it to
+the app on the host; without the prefix a mounted `StaticFiles` answers 404:
 
 ```python
 from efp_app import testing

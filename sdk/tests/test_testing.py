@@ -240,15 +240,18 @@ def hide():
 '''
 
 FASTAPI_APP = '''
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from efp_app import connectors
 from efp_app.integrations.fastapi import get_visitor, require_visitor
 from efp_app.visitor import Visitor
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
 @app.get("/api/me")
@@ -292,14 +295,20 @@ def test_a_fastapi_app_is_tested_from_its_own_repository(tmp_path):
 
     source = tmp_path / "main.py"
     source.write_text(textwrap.dedent(FASTAPI_APP), encoding="utf-8")
+    (tmp_path / "static").mkdir()
+    (tmp_path / "static" / "app.js").write_text("// the page's script", encoding="utf-8")
     with testing.deployed(tmp_path / "data") as portal:
         portal.on("POST", "/connectors/jira/request", testing.connector_answer({"issues": [{"key": "SHOP-1"}, {"key": "SHOP-2"}]}))
         module = load_module("testing_fastapi_app", source)
-        # The prefix is given as on the host: uvicorn --root-path /example.
+        # The prefix is given as on the host: uvicorn --root-path /example, which hands
+        # the app paths that begin with the prefix. So do the requests of a test.
         with TestClient(module.app, root_path=config.load().base_path) as client:
-            assert client.get("/api/me").json() == {"username": None}
-            assert client.get("/api/me", headers=testing.visitor_headers("bob")).json() == {"username": "bob"}
-            assert client.get("/api/bugs").status_code == 401
-            assert client.get("/api/bugs", headers=testing.visitor_headers("bob")).json() == {"keys": ["SHOP-1", "SHOP-2"]}
+            assert client.get("/example/api/me").json() == {"username": None}
+            assert client.get("/example/api/me", headers=testing.visitor_headers("bob")).json() == {"username": "bob"}
+            assert client.get("/example/api/bugs").status_code == 401
+            assert client.get("/example/api/bugs", headers=testing.visitor_headers("bob")).json() == {"keys": ["SHOP-1", "SHOP-2"]}
+            assert client.get("/example/static/app.js").text == "// the page's script"
+            # Written without the prefix, the request for the mounted file was answered
+            # with 404 by Starlette 1.10: a test would report a missing file the host serves.
         sent = portal.sent_to("/connectors/jira/request")
         assert sent[0]["path"] == "/rest/api/2/search" and sent[0]["query"] == {"jql": "project = SHOP"}

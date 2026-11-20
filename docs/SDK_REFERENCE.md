@@ -3442,8 +3442,11 @@ async def bugs(who: Visitor = Depends(require_visitor)):        # 401 for an ano
 
 Its tests, `test_main.py`. `TestClient(app, root_path=...)` gives the app
 the path prefix the way the host does, which starts a `fastapi` app with
-`--root-path /{slug}` (12.3); the requests themselves are written without
-the prefix:
+`--root-path /{slug}` (12.3). uvicorn then hands the app paths that begin
+with the prefix, so the requests of a test are written with it too. A
+request without the prefix still reaches a plain route, but a mounted app
+(`StaticFiles`) answers it with 404, and the test would say something the
+host does not:
 
 ```python
 import pytest
@@ -3467,17 +3470,17 @@ def client(portal):
 
 
 def test_who_is_visiting(client):
-    assert client.get("/api/me").json() == {"username": None}   # a guest
-    assert client.get("/api/me", headers=testing.visitor_headers("bob")).json() == {"username": "bob"}
+    assert client.get("/example/api/me").json() == {"username": None}   # a guest
+    assert client.get("/example/api/me", headers=testing.visitor_headers("bob")).json() == {"username": "bob"}
 
 
 def test_the_bugs_come_from_jira(portal, client):
     issues = {"issues": [{"key": "SHOP-1"}, {"key": "SHOP-2"}]}
     portal.on("POST", "/connectors/jira/request", testing.connector_answer(issues))
 
-    refused = client.get("/api/bugs")
+    refused = client.get("/example/api/bugs")
     assert refused.status_code == 401 and refused.json() == {"detail": "Sign in to use this app."}
-    answer = client.get("/api/bugs", headers=testing.visitor_headers("bob"))
+    answer = client.get("/example/api/bugs", headers=testing.visitor_headers("bob"))
 
     assert answer.json() == {"keys": ["SHOP-1", "SHOP-2"]}
     [sent] = portal.sent_to("/connectors/jira/request")         # the one call the app made
@@ -3487,7 +3490,7 @@ def test_the_bugs_come_from_jira(portal, client):
 def test_jira_answers_with_an_error(portal, client):
     portal.on("POST", "/connectors/jira/request", testing.connector_answer({"errorMessages": ["down"]}, status=503))
 
-    assert client.get("/api/bugs", headers=testing.visitor_headers("bob")).json() == {"keys": []}
+    assert client.get("/example/api/bugs", headers=testing.visitor_headers("bob")).json() == {"keys": []}
 ```
 
 Run either with `python -m pytest` in the app's directory, with the app's

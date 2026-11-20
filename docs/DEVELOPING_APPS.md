@@ -631,13 +631,18 @@ def test_the_summary(tmp_path):
         portal.on("POST", "/llm/complete", testing.completion("Three bugs are open."))
         from app import app                               # inside the block: the app reads its settings
 
-        client = app.test_client()                        # Flask; FastAPI: TestClient(app, root_path="/example")
+        client = app.test_client()                        # Flask
         answer = client.post("/api/summary", headers=testing.visitor_headers("alice"))
         assert answer.get_json() == {"text": "Three bugs are open."}
         assert portal.sent_to("/llm/complete")[0]["max_output_tokens"] <= 600
 
         assert client.post("/api/summary").status_code == 401    # a guest: no header
 ```
+
+For FastAPI the client is `TestClient(app, root_path="/example")` and the
+requests carry the prefix (`client.post("/example/api/summary", ...)`): that
+is how uvicorn hands them to the app on the host, and a mounted `StaticFiles`
+answers 404 without it.
 
 `testing.connector_answer(...)` is what a connector call answers,
 `testing.error(429, "budget_exceeded")` a refusal, `testing.stream("a", "b")`
