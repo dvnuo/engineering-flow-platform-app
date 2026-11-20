@@ -12,6 +12,7 @@ from ..paths import HostPaths
 from ..registry import Registry
 from ..state import HostState
 from .access import AccessCache
+from .center import CenterRenderer, IconCache
 from .metrics import TrafficStore
 from .pages import PageRenderer
 from .ratelimit import RateLimiter
@@ -31,6 +32,9 @@ class GatewayServices:
     limiter: RateLimiter
     pages: PageRenderer
     metrics: TrafficStore
+    # The app center at the root of the address, and the icons its cards show.
+    center: CenterRenderer
+    icons: IconCache
     # Wall-clock time: sessions, visitor headers and revocations share it.
     clock: Callable[[], float] = time.time
     # What ``background.start`` started (the access-log listener, the loops).
@@ -86,6 +90,8 @@ def build(
             known_app=lambda app_id: registry.find(app_id) is not None,
             clock=clock,
         ),
+        center=CenterRenderer(),
+        icons=IconCache(clock=monotonic),
         clock=clock,
     )
     services.metrics.log_key = lambda: services.access_log_key

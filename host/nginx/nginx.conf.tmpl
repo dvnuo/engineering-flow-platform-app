@@ -150,6 +150,20 @@ http {
             proxy_read_timeout 60s;
         }
 
+        # The icons of the app center (section 6.5): the manager checks the
+        # visitor's session and asks the Portal for the image.
+        location ^~ /_efp/icon/ {
+            proxy_pass http://{{MANAGER_ADDR}};
+            proxy_method GET;
+            proxy_pass_request_body off;
+            proxy_pass_request_headers off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-EFP-Gateway-Secret "{{GATEWAY_SECRET}}";
+            proxy_set_header Cookie $http_cookie;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 30s;
+        }
+
         # Nothing else under /_efp/ exists for a browser. "^~" keeps the
         # regular-expression locations below from being tried.
         location ^~ /_efp/ {
@@ -268,16 +282,18 @@ http {
             proxy_read_timeout 30s;
         }
 
-        # The root of the hostname: a small page that links to the Portal.
+        # The root of the hostname is the app center (section 6.5): the apps
+        # this visitor may open, or the way to sign in. The manager writes it.
+        set $efp_home_uri /_efp/home;
         location = / {
-            proxy_pass http://{{MANAGER_ADDR}}$efp_deny_uri;
+            proxy_pass http://{{MANAGER_ADDR}}$efp_home_uri;
             proxy_method GET;
             proxy_pass_request_body off;
             proxy_pass_request_headers off;
             proxy_set_header Content-Length "";
             proxy_set_header X-EFP-Gateway-Secret "{{GATEWAY_SECRET}}";
-            proxy_set_header X-EFP-Reason home;
             proxy_set_header X-EFP-Original-URI $request_uri;
+            proxy_set_header Cookie $http_cookie;
             proxy_set_header Accept $http_accept;
             proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;
             proxy_set_header Accept-Language $http_accept_language;

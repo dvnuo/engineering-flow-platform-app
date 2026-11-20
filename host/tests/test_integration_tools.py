@@ -118,6 +118,47 @@ def test_the_stub_portal_answers_the_hosts_client(serve, tmp_path):
     assert smoke.request(base, "GET", "/_stub/state", headers=auth).json()["unauthorized"] == 1
 
 
+def test_the_stub_portal_answers_the_app_center_as_the_host_reads_it(serve, tmp_path):
+    from efp_app_host.gateway.center import IconCache, parse_catalog
+
+    handler = type("Handler", (stub_portal.Handler,), {"state": stub_portal.State(API_TOKEN, [])})
+    base = serve(handler)
+    settings = make_settings(tmp_path, portal_internal_url=base)
+    auth = {"Authorization": f"Bearer {API_TOKEN}"}
+    card = {
+        "id": "app-1", "slug": "mindmap", "name": "Mind map", "description": "Draw.", "type": "fastapi", "visibility": "public",
+        "mine": False, "owner": {"username": "alice", "display_name": "Alice"}, "icon": "smoke1", "last_visited_at": None,
+    }  # fmt: skip
+    put = smoke.request(base, "PUT", "/_stub/catalog", headers=auth, body=json.dumps({"apps": [card], "icons": ["app-1"]}).encode())
+    assert put.status == 200
+    # The launch page of the center is the one the gateway redirects to; no token is needed to see it.
+    assert smoke.request(base, "GET", "/apps/launch").json() == {"launch": None}
+
+    async def scenario():
+        client = PortalClient(settings)
+        try:
+            code = await client.redeem_handoff("center.12")
+            again = await client.redeem_handoff("center.12")
+            listed = await client.catalog(12)
+            stranger = await client.catalog(99)
+            icons = IconCache()
+            image = await icons.get("app-1", "smoke1", client.app_icon)
+            none = await client.app_icon("app-2")
+            return code, again, listed, stranger, image, none
+        finally:
+            await client.aclose()
+
+    code, again, listed, stranger, image, none = asyncio.run(scenario())
+    assert code == {"app_id": None, "slug": None, "user": stub_portal.USERS[12]} and again is None
+    catalog = parse_catalog(listed)
+    assert catalog.allowed and catalog.visitor.username == "bob"
+    assert [(app.slug, app.name, app.owner, app.icon) for app in catalog.apps] == [("mindmap", "Mind map", "Alice", "smoke1")]
+    assert parse_catalog(stranger).allowed is False
+    assert image == (stub_portal.ICON, "image/png") and none is None
+    calls = smoke.request(base, "GET", "/_stub/state", headers=auth).json()["calls"]
+    assert calls["catalog"] == 2 and calls["icon"] == 2
+
+
 # ---- the smoke test's own helpers ---------------------------------------------------------
 
 

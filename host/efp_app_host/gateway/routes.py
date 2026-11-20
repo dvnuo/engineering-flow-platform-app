@@ -8,6 +8,9 @@ Internal, reachable only with the gateway secret (nginx adds it):
   or ``401`` / ``403`` with ``X-EFP-Reason``.
 - ``GET /_efp/deny``: turns a reason into the response the browser gets: a
   redirect to the Portal's launch page, a page, or the JSON error.
+- ``GET /_efp/home``: the app center, what nginx answers ``/`` with (section
+  6.5): the apps the visitor may open, or the way to sign in.
+- ``GET /_efp/icon/{slug}``: the icon of an app on that page.
 
 Reached by browsers through nginx: ``/_efp/callback`` and ``/_efp/logout``
 (section 6.3). ``/_efp/health`` tells that the manager is up.
@@ -17,13 +20,17 @@ from __future__ import annotations
 
 import logging
 import re
-from urllib.parse import unquote
+import secrets
+from urllib.parse import parse_qs, unquote
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 
-from ..models import Visitor, is_valid_slug
+from ..models import VISIBILITY_ANYONE, Visitor, is_valid_slug
+from .access import AccessUnavailable
+from .center import CatalogError, parse_catalog
 from .decision import (
+    APP_NOT_FOUND,
     APP_STARTING,
     APP_UNAVAILABLE,
     DETAIL_GATEWAY,
@@ -32,6 +39,7 @@ from .decision import (
     GatewayRequest,
     Refusal,
     decide,
+    is_navigation,
     parse_original_uri,
     refuse,
 )
@@ -61,8 +69,11 @@ SET_COOKIE_HEADER = "X-EFP-Set-Cookie"  # a renewed session cookie for the brows
 USER_HEADER = "X-EFP-User"  # user id, for the access log
 STATIC_ROOT_HEADER = "X-EFP-Static-Root"  # static apps: the directory nginx serves
 
-# A reason only nginx gives: the root path of the apps hostname.
-REASON_HOME = "home"
+# The app center (section 6.5).
+CENTER_PATH = "/"
+SIGNED_IN_MARK = "signed_in"  # /?signed_in=1: the sign-in just finished, do not start it again
+CENTER_AFTER_SIGN_IN = f"{CENTER_PATH}?{SIGNED_IN_MARK}=1"
+ICON_MAX_AGE = 86400
 
 _NO_STORE = {"Cache-Control": "no-store"}
 _PAGE_HEADERS = {
@@ -127,6 +138,7 @@ def _page(
         reason=(record.disabled_reason or "") if record is not None else "",
         portal_url=gateway.settings.portal_public_url,
         app_url=f"/{slug}/" if slug else "",
+        center_url=CENTER_PATH,
         retry_url=retry_url,
         refresh_seconds=refresh_seconds,
     )
@@ -222,8 +234,6 @@ async def deny(request: Request) -> Response:
     slug, path, query = parse_original_uri(original_uri)
     reason = (request.headers.get(REASON_HEADER) or "").strip()
     detail = (request.headers.get(DETAIL_HEADER) or "").strip()
-    if reason == REASON_HOME:
-        return _page(gateway, request, "home", status=200)
     if not reason:
         # No reason from /auth: nginx itself could not get an answer for a
         # request that was let through (the app did not accept the connection).
@@ -241,8 +251,127 @@ async def deny(request: Request) -> Response:
     return refusal_response(gateway, request, refusal, original_uri=original_uri)
 
 
-def _signin_failed(gateway: GatewayServices, request: Request, *, slug: str, status: int) -> Response:
-    return _page(gateway, request, "signin_failed", status=status, slug=slug)
+def _signin_failed(gateway: GatewayServices, request: Request, *, slug: str, status: int, retry_url: str = "") -> Response:
+    return _page(gateway, request, "signin_failed", status=status, slug=slug, retry_url=retry_url)
+
+
+# ---- the app center ---------------------------------------------------------------
+def center_launch_url(portal_public_url: str) -> str:
+    """Where a visitor of the app center signs in (section 6.5, step 1)."""
+
+    return f"{portal_public_url}/apps/launch"
+
+
+def _center_json(code: str, status: int, message: str) -> Response:
+    return JSONResponse({"error": {"code": code, "message": message}}, status_code=status, headers=_NO_STORE)
+
+
+def _cookies(request: Request) -> str:
+    return "; ".join(request.headers.getlist("cookie"))
+
+
+@router.get("/home")
+async def home(request: Request) -> Response:
+    """Section 6.5: the apps this visitor may open, or the way to sign in."""
+
+    gateway = _services(request)
+    blocked = _internal_only(request, gateway)
+    if blocked is not None:
+        return blocked
+
+    navigation = is_navigation(request.headers)
+    session, _forwarded = gateway.sessions.read_cookie_header(_cookies(request), now=gateway.clock())
+    if session is None:
+        if not navigation:
+            return _center_json(SIGN_IN_REQUIRED, 401, "Sign in to see your apps.")
+        query = (request.headers.get(ORIGINAL_URI_HEADER) or "").partition("?")[2]
+        if parse_qs(query).get(SIGNED_IN_MARK):
+            # The sign-in just finished and there is still no session: the
+            # browser did not keep the cookie. Another redirect would only loop.
+            return _signin_failed(gateway, request, slug="", status=400, retry_url=CENTER_PATH)
+        return RedirectResponse(center_launch_url(gateway.settings.portal_public_url), status_code=302, headers=_NO_STORE)
+    if not navigation:
+        # The list is a page, not an API.
+        return _center_json(APP_NOT_FOUND, 404, "There is no app at this address.")
+
+    try:
+        catalog = parse_catalog(await gateway.portal.catalog(session.visitor.id))
+    except CatalogError as exc:
+        logger.error("the Portal's catalog cannot be used: %s", exc)
+        return _page(gateway, request, "center_unavailable", status=503, retry_url=CENTER_PATH)
+    except Exception as exc:
+        logger.warning("the catalog could not be read: %s", exc.__class__.__name__)
+        return _page(gateway, request, "center_unavailable", status=503, retry_url=CENTER_PATH)
+
+    if not catalog.allowed or catalog.visitor is None or catalog.visitor.id != session.visitor.id:
+        # The member is no longer one: the session ends, and the Portal says why when they sign in.
+        response = RedirectResponse(center_launch_url(gateway.settings.portal_public_url), status_code=302, headers=_NO_STORE)
+        response.headers.append("Set-Cookie", gateway.sessions.clear_cookie())
+        return response
+
+    # The Portal just said that this member may open each of these.
+    for app in catalog.apps:
+        gateway.access.remember(app.id, catalog.visitor.id, True, None, catalog.visitor)
+
+    nonce = secrets.token_urlsafe(18)
+    body = gateway.center.render(
+        catalog,
+        pick_locale(request.headers.get("accept-language")),
+        portal_url=gateway.settings.portal_public_url,
+        nonce=nonce,
+    )
+    headers = {
+        **_PAGE_HEADERS,
+        "Content-Security-Policy": (
+            f"default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; "
+            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        ),
+    }
+    response = HTMLResponse(body, status_code=200, headers=headers)
+    now = gateway.clock()
+    if catalog.visitor != session.visitor or gateway.sessions.needs_refresh(session, now=now):
+        response.headers.append("Set-Cookie", gateway.sessions.cookie(gateway.sessions.issue(catalog.visitor, now=now)))
+    return response
+
+
+@router.get("/icon/{slug}")
+async def icon(slug: str, request: Request) -> Response:
+    """An app's icon for a visitor with a session who may open the app; 404 for everything else."""
+
+    gateway = _services(request)
+    blocked = _internal_only(request, gateway)
+    if blocked is not None:
+        return blocked
+    missing = Response(status_code=404, headers=_NO_STORE)
+
+    session, _forwarded = gateway.sessions.read_cookie_header(_cookies(request), now=gateway.clock())
+    record = gateway.registry.find_by_slug(slug) if is_valid_slug(slug) else None
+    if session is None or record is None or not record.enabled:
+        return missing
+    if record.visibility != VISIBILITY_ANYONE:
+        try:
+            answer = await gateway.access.check(record.id, session.visitor.id)
+        except AccessUnavailable:
+            return missing
+        if not answer.allowed:
+            return missing
+    try:
+        found = await gateway.icons.get(record.id, request.query_params.get("v") or "", gateway.portal.app_icon)
+    except Exception as exc:
+        logger.warning("the icon of %s could not be read: %s", record.id, exc.__class__.__name__)
+        return missing
+    if found is None:
+        return missing
+    data, content_type = found
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Cache-Control": f"private, max-age={ICON_MAX_AGE}",
+            "Content-Security-Policy": "default-src 'none'",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("/callback")
@@ -264,18 +393,23 @@ async def callback(request: Request) -> Response:
     if not redeemed:
         return _signin_failed(gateway, request, slug=hinted_slug, status=400)
     try:
-        slug = str(redeemed["slug"])
-        app_id = str(redeemed["app_id"])
         visitor = Visitor.from_json(redeemed["user"])
+        for_center = redeemed["app_id"] is None and redeemed.get("slug") is None
+        slug = "" if for_center else str(redeemed["slug"])
+        app_id = "" if for_center else str(redeemed["app_id"])
     except (KeyError, TypeError, ValueError):
         logger.warning("the Portal's answer to a sign-in code is incomplete")
         return _signin_failed(gateway, request, slug=hinted_slug, status=400)
-    if not is_valid_slug(slug):
+    if for_center:
+        # A code of the app center names a member and no app (section 6.5).
+        target = CENTER_AFTER_SIGN_IN
+    elif not is_valid_slug(slug):
         return _signin_failed(gateway, request, slug="", status=400)
-
-    # The Portal hands out a code only to somebody who may open the app.
-    gateway.access.remember(app_id, visitor.id, True, None, visitor)
-    response = RedirectResponse(safe_next(wanted, slug), status_code=302, headers={**_NO_STORE, "Referrer-Policy": "no-referrer"})
+    else:
+        # The Portal hands out a code only to somebody who may open the app.
+        gateway.access.remember(app_id, visitor.id, True, None, visitor)
+        target = safe_next(wanted, slug)
+    response = RedirectResponse(target, status_code=302, headers={**_NO_STORE, "Referrer-Policy": "no-referrer"})
     response.headers.append("Set-Cookie", gateway.sessions.cookie(gateway.sessions.issue(visitor, now=gateway.clock())))
     return response
 

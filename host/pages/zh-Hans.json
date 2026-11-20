@@ -4,14 +4,32 @@
     "this_app": "该应用",
     "retry": "重试",
     "app": "返回应用",
+    "center": "全部应用",
     "portal": "打开 Portal"
   },
+  "center": {
+    "title": "EFP 应用",
+    "heading": "应用",
+    "search": "搜索应用",
+    "count_one": "{n} 个应用",
+    "count_other": "{n} 个应用",
+    "empty_heading": "还没有应用",
+    "empty_message": "别人共享给你的应用会出现在这里。想发布自己的应用，请到 Portal 的「应用」里操作。",
+    "no_match": "没有符合搜索条件的应用。",
+    "mine": "我的",
+    "portal": "Portal",
+    "sign_out": "退出登录",
+    "audience_private": "仅自己",
+    "audience_public": "本组成员",
+    "audience_platform": "所有成员",
+    "audience_anyone": "任何人"
+  },
   "pages": {
-    "home": {
-      "title": "EFP 应用",
-      "heading": "请从 Portal 打开应用",
-      "message": "在 Portal 里找到你要用的应用，再从那里打开。",
-      "actions": ["portal"]
+    "center_unavailable": {
+      "title": "应用暂时无法使用",
+      "heading": "应用列表暂时无法显示",
+      "message": "暂时连不上 Portal，请稍后重试。",
+      "actions": ["retry", "portal"]
     },
     "starting": {
       "title": "正在启动 {app}",
@@ -23,47 +41,47 @@
       "title": "{app} 暂时无法使用",
       "heading": "{app} 暂时无法使用",
       "message": "应用已停止，或者暂时连不上。请稍后重试。",
-      "actions": ["retry", "portal"]
+      "actions": ["retry", "center", "portal"]
     },
     "not_deployed": {
       "title": "{app} 尚未部署",
       "heading": "{app} 尚未部署",
       "message": "所有者 {owner} 还没有部署它，请稍后再来。",
       "message_no_owner": "所有者还没有部署它，请稍后再来。",
-      "actions": ["portal"]
+      "actions": ["center", "portal"]
     },
     "crashed": {
       "title": "{app} 已停止",
       "heading": "{app} 意外停止",
       "message": "应用运行出错，目前没有在运行。所有者 {owner} 可以在 Portal 的应用日志里查看原因。",
       "message_no_owner": "应用运行出错，目前没有在运行。所有者可以在 Portal 的应用日志里查看原因。",
-      "actions": ["retry", "portal"]
+      "actions": ["retry", "center", "portal"]
     },
     "no_access": {
       "title": "无权访问",
       "heading": "你无权访问 {app}",
       "message": "请联系所有者 {owner}，让对方把应用共享给你。",
       "message_no_owner": "请联系所有者，让对方把应用共享给你。",
-      "actions": ["portal"]
+      "actions": ["center", "portal"]
     },
     "disabled": {
       "title": "{app} 已下架",
       "heading": "{app} 已下架",
       "message": "这个应用已经不能再打开。",
       "detail": "原因：{reason}",
-      "actions": ["portal"]
+      "actions": ["center", "portal"]
     },
     "not_found": {
       "title": "找不到应用",
       "heading": "这个地址没有应用",
       "message": "请检查链接，或者到 Portal 里查找这个应用。",
-      "actions": ["portal"]
+      "actions": ["center", "portal"]
     },
     "signin_failed": {
       "title": "登录没有完成",
       "heading": "登录没有完成",
       "message": "登录链接已过期或已被使用。请重新打开应用再登录一次。",
-      "actions": ["app", "portal"]
+      "actions": ["app", "retry", "portal"]
     },
     "rate_limited": {
       "title": "请求过于频繁",

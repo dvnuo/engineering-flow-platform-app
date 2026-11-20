@@ -340,7 +340,7 @@ def test_the_app_location_does_what_section_6_2_asks(parsed):
     }
 
 
-def test_the_headers_nginx_reads_are_the_ones_the_manager_sends(parsed, gateway_server):
+def test_the_headers_nginx_reads_are_the_ones_the_manager_sends(conf, parsed, gateway_server, settings):
     from efp_app_host.gateway import routes
 
     app = directives(block(parsed, "location ~ ^/(?<efp_slug>[a-z0-9][a-z0-9-]*[a-z0-9])/"))
@@ -363,7 +363,17 @@ def test_the_headers_nginx_reads_are_the_ones_the_manager_sends(parsed, gateway_
     ):
         assert f"proxy_set_header {name} {value}" in deny
     assert "proxy_method GET" in deny and "proxy_pass_request_body off" in deny and "proxy_pass_request_headers off" in deny
-    assert f"proxy_set_header {routes.REASON_HEADER} {routes.REASON_HOME}" in directives(block(gateway_server, "location = /"))
+    # The root is the app center: the manager's own route, with the visitor's cookies and no reason.
+    home = directives(block(gateway_server, "location = /"))
+    assert "proxy_pass http://127.0.0.1:%d$efp_home_uri" % settings.admin_port in home
+    assert "set $efp_home_uri /_efp/home;" in conf
+    assert "proxy_set_header Cookie $http_cookie" in home and "proxy_pass_request_headers off" in home
+    assert f"proxy_set_header {routes.ORIGINAL_URI_HEADER} $request_uri" in home
+    assert not [item for item in home if routes.REASON_HEADER in item]
+    # Its icons: the manager again, which gets the cookies and nothing else of the request.
+    icons = directives(block(gateway_server, "location ^~ /_efp/icon/"))
+    assert "proxy_pass http://127.0.0.1:%d" % settings.admin_port in icons
+    assert "proxy_set_header Cookie $http_cookie" in icons and "proxy_pass_request_headers off" in icons
     assert f"proxy_set_header {routes.REASON_HEADER} app_not_found" in directives(block(gateway_server, "location /"))
 
 
@@ -381,6 +391,7 @@ def test_the_secret_only_goes_to_the_manager_and_the_static_server(conf, parsed,
     assert sorted(holders) == sorted(
         [
             "location = /_efp_internal/auth",
+            "location ^~ /_efp/icon/",
             "location @efp_deny",
             "location = /",
             "location /",

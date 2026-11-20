@@ -66,7 +66,7 @@ def turn_away(client, gateway, uri: str, reason: str, *, detail: str = "", heade
 @pytest.mark.parametrize("presented", [None, "", "wrong", "x" * 43])
 def test_internal_routes_need_the_gateway_secret(client, gateway, registry, fake_runtime, path, presented):
     add_app(registry, fake_runtime, visibility="anyone")
-    headers = {"X-EFP-Original-URI": "/mindmap/", "X-EFP-Reason": "home"}
+    headers = {"X-EFP-Original-URI": "/mindmap/", "X-EFP-Reason": "app_not_found"}
     if presented is not None:
         headers["X-EFP-Gateway-Secret"] = presented
     response = client.get(path, headers=headers)
@@ -276,12 +276,15 @@ def test_deny_without_a_reason_means_the_app_could_not_be_reached(client, gatewa
     assert (unknown.status_code, unknown.json()["error"]["code"]) == (503, "app_unavailable")
 
 
-def test_the_root_page_links_to_the_portal(client, gateway):
-    response = turn_away(client, gateway, "/", "home")
-    assert response.status_code == 200
-    assert 'href="https://efp.example.com"' in response.text
-    # Even a client that wants no HTML gets the page: there is no error to report.
-    assert turn_away(client, gateway, "/", "home", headers=FETCH).status_code == 200
+def test_the_pages_of_a_refusal_lead_to_the_list_of_apps(client, gateway, registry, fake_runtime):
+    # The root of the address is the app center (test_gateway_center.py).
+    add_app(registry, fake_runtime)
+    for reason in ("no_access", "app_disabled", "app_not_found"):
+        page = turn_away(client, gateway, "/mindmap/", reason)
+        assert '<a class="button" href="/">All apps</a>' in page.text, reason
+        assert 'href="https://efp.example.com"' in page.text
+    # "home" was a reason once; it is no longer one, so it means what every unknown reason means.
+    assert turn_away(client, gateway, "/", "home", headers=FETCH).status_code == 503
 
 
 def test_a_path_that_is_no_app_is_not_found(client, gateway):

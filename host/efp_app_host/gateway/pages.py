@@ -1,5 +1,7 @@
 """The gateway's own pages: starting, unavailable, no access and so on.
 
+The app center, the page at the root of the address, is ``center.py``.
+
 ``host/pages/page.html`` is the one layout; ``host/pages/<locale>.json`` holds
 the words. The pages are plain HTML without any outside asset, and every
 value that is put into them is escaped.
@@ -18,7 +20,7 @@ from .resources import pages_dir
 DEFAULT_LOCALE = "en"
 LOCALES = ("en", "zh-Hans", "zh-Hant-HK")
 PAGES = (
-    "home",
+    "center_unavailable",
     "starting",
     "unavailable",
     "not_deployed",
@@ -29,7 +31,7 @@ PAGES = (
     "signin_failed",
     "rate_limited",
 )
-ACTIONS = ("retry", "app", "portal")
+ACTIONS = ("retry", "app", "center", "portal")
 
 _LAYOUT_SLOT = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 _TEXT_SLOT = re.compile(r"\{([a-z_]+)\}")
@@ -122,6 +124,7 @@ class PageRenderer:
         reason: str = "",
         portal_url: str = "",
         app_url: str = "",
+        center_url: str = "",
         retry_url: str = "",
         refresh_seconds: int | None = None,
     ) -> str:
@@ -138,7 +141,7 @@ class PageRenderer:
         if values["reason"] and entry.get("detail"):
             detail_html = f'<p class="detail">{html.escape(_fill(str(entry["detail"]), values))}</p>'
 
-        links = {"retry": _href(retry_url), "app": _href(app_url), "portal": _href(portal_url)}
+        links = {"retry": _href(retry_url), "app": _href(app_url), "center": _href(center_url), "portal": _href(portal_url)}
         buttons = []
         for name in entry.get("actions") or []:
             target = links.get(name)

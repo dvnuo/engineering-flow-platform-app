@@ -6,14 +6,19 @@ It answers docs/CONTRACTS.md, section 5, under ``/api/app-host/v1`` with
 canned data and remembers what the host sent:
 
 - ``POST /handoff/redeem``  a code ``ok.<app id>.<slug>.<user id>`` is good
-  once; anything else is ``400 invalid_code``.
+  once, and so is ``center.<user id>``, the code of the app center (it names
+  no app); anything else is ``400 invalid_code``.
 - ``POST /access/check``    allowed, unless the pair was put on the deny list.
 - ``GET  /apps``            the desired state (``--apps`` or ``PUT /_stub/apps``).
 - ``POST /metrics/ingest``, ``POST /events``  recorded.
+- ``POST /catalog``         what the app center shows: the list given with
+  ``PUT /_stub/catalog``, for a known user.
+- ``GET  /apps/{id}/icon``  a small PNG for the ids named there, else 404.
 
 The test drives and inspects it through ``/_stub/...`` (same bearer token):
 ``GET /_stub/state`` returns events, metrics and call counts;
-``PUT /_stub/apps`` and ``PUT /_stub/deny`` change the canned answers.
+``PUT /_stub/apps``, ``PUT /_stub/deny`` and ``PUT /_stub/catalog`` change
+the canned answers.
 """
 
 from __future__ import annotations
@@ -30,6 +35,8 @@ USERS = {
     12: {"id": 12, "username": "bob", "display_name": "Bob", "group_id": 3, "group_name": "QA"},
     13: {"id": 13, "username": "carol", "display_name": "Carol", "group_id": 4, "group_name": "Ops"},
 }
+# What GET /apps/{id}/icon answers: the PNG signature and a few bytes.
+ICON = b"\x89PNG\r\n\x1a\n" + bytes(range(16))
 
 
 class State:
@@ -38,6 +45,8 @@ class State:
         self.lock = threading.Lock()
         self.apps = apps
         self.denied: set[tuple[str, int]] = set()
+        self.catalog: list = []
+        self.icons: set[str] = set()
         self.used_codes: set[str] = set()
         self.events: list[dict] = []
         self.metrics: list[dict] = []
@@ -103,6 +112,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/apps/launch/"):
             self._json(200, {"launch": path.rsplit("/", 1)[-1]})
             return
+        if path == "/apps/launch":  # the app center's sign-in (section 6.5)
+            self._json(200, {"launch": None})
+            return
         if not self._authorized():
             with state.lock:
                 state.unauthorized += 1
@@ -131,6 +143,8 @@ class Handler(BaseHTTPRequestHandler):
                 state.used_codes.add(code)
             if len(parts) == 4 and parts[0] == "ok" and parts[3].isdigit() and int(parts[3]) in USERS and fresh:
                 self._json(200, {"app_id": parts[1], "slug": parts[2], "user": USERS[int(parts[3])]})
+            elif len(parts) == 2 and parts[0] == "center" and parts[1].isdigit() and int(parts[1]) in USERS and fresh:
+                self._json(200, {"app_id": None, "slug": None, "user": USERS[int(parts[1])]})
             else:
                 self._json(400, {"error": {"code": "invalid_code", "message": "the code is unknown, used or expired"}})
         elif path == PREFIX + "/access/check" and self.command == "POST":
@@ -142,6 +156,33 @@ class Handler(BaseHTTPRequestHandler):
             if user_id in USERS:
                 answer["user"] = USERS[user_id]
             self._json(200, answer)
+        elif path == "/_stub/catalog" and self.command == "PUT":
+            with state.lock:
+                state.catalog = list(body.get("apps") or [])
+                state.icons = {str(app_id) for app_id in body.get("icons") or []}
+            self._json(200, {"ok": True})
+        elif path == PREFIX + "/catalog" and self.command == "POST":
+            self._count("catalog")
+            user_id = int(body.get("user_id") or 0)
+            with state.lock:
+                apps = list(state.catalog)
+            if user_id in USERS:
+                self._json(200, {"allowed": True, "reason": None, "user": USERS[user_id], "apps": apps})
+            else:
+                self._json(200, {"allowed": False, "reason": "user_inactive", "apps": []})
+        elif path.startswith(PREFIX + "/apps/") and path.endswith("/icon") and self.command == "GET":
+            self._count("icon")
+            app_id = path[len(PREFIX + "/apps/") : -len("/icon")]
+            with state.lock:
+                known = app_id in state.icons
+            if known:
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(ICON)))
+                self.end_headers()
+                self.wfile.write(ICON)
+            else:
+                self._json(404, {"error": {"code": "icon_not_found", "message": "this app has no icon"}})
         elif path == PREFIX + "/apps" and self.command == "GET":
             self._count("apps")
             with state.lock:

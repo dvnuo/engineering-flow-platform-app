@@ -132,6 +132,18 @@ def portal(credentials) -> FakePortal:
 
 
 @pytest.fixture
+def deployed(monkeypatch, tmp_path):
+    """The environment of an app on a sandbox host: an id, a slug, a path prefix, a visitor key, a data directory."""
+    from test_visitor import APP_ID, VISITOR_KEY
+
+    monkeypatch.setenv("EFP_APP_ID", APP_ID)
+    monkeypatch.setenv("EFP_APP_SLUG", "example")
+    monkeypatch.setenv("EFP_APP_BASE_PATH", "/example")
+    monkeypatch.setenv("EFP_VISITOR_KEY", VISITOR_KEY)
+    monkeypatch.setenv("EFP_APP_DATA_DIR", str(tmp_path / "data"))
+
+
+@pytest.fixture
 def no_sleep(monkeypatch):
     """Retries without the waiting."""
     monkeypatch.setattr(sdk_client, "RETRY_DELAY", 0.0)

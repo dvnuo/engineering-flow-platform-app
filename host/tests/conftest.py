@@ -128,7 +128,11 @@ class FakePortal:
         self.desired: list[dict[str, Any]] = []
         self.metrics: list[dict[str, Any]] = []
         self.events: list[dict[str, Any]] = []
+        self.catalogs: dict[int, dict[str, Any]] = {}
+        self.icons: dict[str, tuple[bytes, str]] = {}
         self.access_calls = 0
+        self.catalog_calls = 0
+        self.icon_calls = 0
         self.fail = False
 
     async def redeem_handoff(self, code: str) -> dict[str, Any] | None:
@@ -145,6 +149,22 @@ class FakePortal:
 
     async def desired_apps(self) -> list[dict[str, Any]]:
         return list(self.desired)
+
+    async def catalog(self, user_id: int) -> dict[str, Any]:
+        from efp_app_host.portal_client import PortalUnavailable
+
+        self.catalog_calls += 1
+        if self.fail:
+            raise PortalUnavailable("portal down")
+        return self.catalogs.get(user_id, {"allowed": False, "reason": "user_inactive", "apps": []})
+
+    async def app_icon(self, app_id: str) -> tuple[bytes, str] | None:
+        from efp_app_host.portal_client import PortalUnavailable
+
+        self.icon_calls += 1
+        if self.fail:
+            raise PortalUnavailable("portal down")
+        return self.icons.get(app_id)
 
     async def push_metrics(self, payload: dict[str, Any]) -> bool:
         self.metrics.append(payload)

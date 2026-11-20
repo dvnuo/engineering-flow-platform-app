@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -73,6 +74,27 @@ class PortalClient:
             raise PortalUnavailable(f"desired state answered {response.status_code}")
         apps = response.json().get("apps")
         return apps if isinstance(apps, list) else []
+
+    async def catalog(self, user_id: int) -> dict[str, Any]:
+        response = await self._request("POST", "/catalog", json={"user_id": int(user_id)})
+        if response.status_code != 200:
+            raise PortalUnavailable(f"the catalog answered {response.status_code}")
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise PortalUnavailable("the catalog is not JSON") from exc
+        if not isinstance(data, dict):
+            raise PortalUnavailable("the catalog is not a JSON object")
+        return data
+
+    async def app_icon(self, app_id: str) -> tuple[bytes, str] | None:
+        response = await self._request("GET", f"/apps/{quote(str(app_id), safe='')}/icon")
+        if response.status_code == 404:
+            return None
+        if response.status_code != 200:
+            raise PortalUnavailable(f"the icon answered {response.status_code}")
+        content_type = (response.headers.get("content-type") or "").partition(";")[0].strip().lower()
+        return response.content, content_type
 
     async def push_metrics(self, payload: dict[str, Any]) -> bool:
         try:

@@ -642,6 +642,33 @@ class Smoke:
         self.check("or 404 app_not_found for a script", missing_json.status == 404 and missing_json.json()["error"]["code"] == "app_not_found", missing_json)
         self.register("probe-aaaa", "probe-a", visibility="anyone")
 
+        # ---- the app center ---------------------------------------------------
+        self.section("the app center at the root of the address")
+        root = self.page("/")
+        self.check("without a session the root sends the visitor to sign in", root.status == 302 and root.header("Location") == f"{self.args.portal_public}/apps/launch", root)
+        script = self.page("/", headers=FETCH)
+        self.check("and a script gets 401 as JSON", script.status == 401 and script.json()["error"]["code"] == "sign_in_required", script)
+        owner = {"username": "alice", "display_name": "Alice"}
+        cards = [
+            {"id": "probe-aaaa", "slug": "probe-a", "name": "Probe A", "description": "The first probe.", "type": "command", "visibility": "platform", "mine": False, "owner": owner, "icon": "smoke1", "last_visited_at": None},
+            {"id": "smoke-site", "slug": "smoke-site", "name": "Smoke <site>", "description": "", "type": "static", "visibility": "private", "mine": True, "owner": owner, "icon": None, "last_visited_at": None},
+        ]
+        self.stub("PUT", "/_stub/catalog", {"apps": cards, "icons": ["probe-aaaa"]})
+        entered = self.page("/_efp/callback?code=center.12&next=%2F")
+        member = next((value.split(";", 1)[0] for value in entered.all("Set-Cookie") if value.startswith(SESSION_COOKIE + "=")), "")
+        self.check("the center's sign-in comes back to the list with a session", entered.status == 302 and entered.header("Location") == "/?signed_in=1" and bool(member), entered)
+        listed = self.page("/?signed_in=1", headers={**NAVIGATE, "Cookie": member})
+        self.check("the list has a card for each app the Portal names", listed.status == 200 and 'href="/probe-a/"' in listed.text and 'href="/smoke-site/"' in listed.text, listed)
+        self.check("what the Portal sends is escaped", "Smoke &lt;site&gt;" in listed.text and "<site>" not in listed.text, listed.text[-1500:])
+        self.check("the page runs its one script under a nonce", "script-src 'nonce-" in (listed.header("Content-Security-Policy") or ""), listed.headers)
+        image = self.page("/_efp/icon/probe-a?v=smoke1", headers={"Cookie": member})
+        self.check("an app's icon reaches the member through the gateway", image.status == 200 and image.header("Content-Type") == "image/png" and image.body.startswith(b"\x89PNG"), image)
+        self.check("and nobody without a session", self.page("/_efp/icon/probe-a?v=smoke1").status == 404)
+        lost = self.page("/?signed_in=1")
+        self.check("a browser that kept no cookie is told so, not sent round again", lost.status == 400 and "<" in lost.text and lost.header("Location") is None, lost)
+        counts = self.stub("GET", "/_stub/state").json()["calls"]
+        self.check("the Portal was asked for the list and for the icon", counts.get("catalog", 0) >= 1 and counts.get("icon", 0) == 1, counts)
+
         # ---- redeploy and rollback ----------------------------------------
         self.section("redeploy and rollback")
         site_two, _ = self.deploy("smoke-site", files_bundle({**site, "public/index.html": "<html><body>release two</body></html>\n"}))

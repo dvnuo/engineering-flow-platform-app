@@ -22,6 +22,7 @@ timestamp is an ISO-8601 UTC string (`2026-11-15T08:30:00Z`).
 | Slug | `^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`, unique, immutable; the URL path segment |
 | Reserved slugs | `_efp`, `api`, `app`, `apps`, `admin`, `assets`, `auth`, `efp`, `health`, `login`, `logout`, `portal`, `static`, `www` |
 | App URL | `{APPS_PUBLIC_URL}/{slug}/` |
+| App center | `{APPS_PUBLIC_URL}/`: the apps a signed-in member may open (section 6.5) |
 | Base path | `/{slug}` (no trailing slash) |
 | App token | `efpa_` + 43 url-safe characters |
 | Visibility | `private` (owner only), `public` (the owner's group), `platform` (every member), `anyone` (no sign-in) |
@@ -223,6 +224,8 @@ Same bearer token. Never routed from the public ingress.
 ```
 
 A code works once and for 60 seconds. `400 {"error":{"code":"invalid_code"}}`.
+A code issued for the app center (section 6.5) names no app: `app_id` and
+`slug` are `null`.
 
 ### 5.2 `POST /access/check` `{"app_id": "...", "user_id": 12}`
 
@@ -273,12 +276,44 @@ started afresh cannot lower them. `200 {"ok": true}`.
  "detail": {"exit_code": 1, "log": ["..."]}, "at": "..."}
 ```
 
+### 5.6 `POST /catalog` `{"user_id": 12}`
+
+What the app center shows a member (section 6.5):
+
+```json
+{"allowed": true, "reason": null,
+ "user": {"id": 12, "username": "bob", "display_name": "Bob", "group_id": 3, "group_name": "QA"},
+ "apps": [{"id": "...", "slug": "mindmap", "name": "Mind map",
+           "description": "Draw and share mind maps.", "type": "fastapi",
+           "visibility": "public", "mine": false,
+           "owner": {"username": "alice", "display_name": "Alice"},
+           "icon": "5f2c9a81d3e0", "last_visited_at": "2026-11-18T09:12:00Z"}]}
+```
+
+- `apps` holds every app the member may open that is enabled and has been
+  deployed, their own included (`mine`). A system administrator gets what a
+  member in their place would: the list is not the administration's.
+- Order: the apps the member used, the most recent first, then the others by
+  name.
+- `visibility` is the audience in force (`anyone` only when it is approved).
+- `icon` is a version string when the app has an icon (5.7), else `null`.
+- `allowed` is false with `reason` `user_inactive` when the member is unknown
+  or no longer active; `apps` is then empty and `user` is omitted.
+
+### 5.7 `GET /apps/{app_id}/icon`
+
+The app's icon as the last deployment read it: the bytes, with
+`Content-Type` `image/png`, `image/jpeg`, `image/gif` or `image/webp`.
+`404 {"error":{"code":"icon_not_found"}}` when the app has none or does not
+exist. The host decides who may see it.
+
 ## 6. Gateway
 
 ### 6.1 Request handling
 
-1. `/_efp/health` -> `200 ok`. `/_efp/callback`, `/_efp/logout` are handled by
-   the manager. Every other path under `/_efp/` is `404`.
+1. `/_efp/health` -> `200 ok`. `/_efp/callback`, `/_efp/logout` and
+   `/_efp/icon/{slug}` are handled by the manager. Every other path under
+   `/_efp/` is `404`. `/` is the app center (6.5).
 2. `/{slug}` redirects to `/{slug}/`.
 3. For `/{slug}/...` the gateway decides, in this order:
    - unknown slug -> `404` page;
@@ -347,6 +382,37 @@ key       = base64url-decoded visitor_key of the app
 ```
 
 `exp` is 60 seconds ahead. A missing header means an anonymous visitor.
+
+### 6.5 The app center
+
+`GET /` on the apps address lists the apps the visitor may open; a card
+leads to `/{slug}/`. It is for members: it needs a session.
+
+1. A page navigation without a valid session:
+   `302 {PORTAL_PUBLIC_URL}/apps/launch` (no slug). The Portal, after its own
+   sign-in when needed, answers
+   `302 {APPS_PUBLIC_URL}/_efp/callback?code=<code>&next=%2F`. The code
+   redeems (5.1) to a member and no app; the manager sets the session cookie
+   and answers `302 /?signed_in=1`.
+2. `/?signed_in=1` still without a session means the browser did not keep the
+   cookie: the "sign-in did not finish" page (`400`), never another redirect.
+3. With a session the manager asks 5.6 and answers the page. Every app in the
+   answer counts as an access decision (5.2) for the time such decisions are
+   remembered, so a click on a card costs no further call. `allowed: false`
+   ends the session (the cookie is cleared) and starts at 1.
+4. The Portal cannot be asked: `503` with a page that offers to try again.
+5. A request that is not a page navigation gets JSON: `401 sign_in_required`
+   without a session, `404 app_not_found` with one. The list is a page, not
+   an API.
+
+`GET /_efp/icon/{slug}` answers the icon of an app (5.7) to a visitor with a
+session who may open it, with `Cache-Control: private, max-age=86400`; the
+page names it as `/_efp/icon/{slug}?v=<icon version>`. Anything else is
+`404`, which does not tell whether the app exists.
+
+Apps run on this same origin, so the script of an app a member has opened can
+load the app center as that member. The page therefore holds nothing but
+what the member may open anyway: names, descriptions, owners and addresses.
 
 ## 7. Isolation and storage
 

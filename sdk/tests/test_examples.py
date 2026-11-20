@@ -10,121 +10,62 @@ connector call (``connector_answer``), a completion (``COMPLETION``) and a
 streamed completion (``STREAMED``).
 """
 
-import base64
-import importlib.util
 import json
 import re
 import runpy
 import sys
 import types
-from pathlib import Path
 
 import pytest
 
 from efp_app import _check, storage
 from efp_app import manifest as sdk_manifest
 from conftest import EXAMPLES, envelope, sse
-from test_visitor import APP_ID, VISITOR_KEY, payload_of, sign
+from example_support import (
+    APP_INFO,
+    BUDGET_MESSAGE,
+    COMPLETION,
+    CONFLUENCE,
+    CONNECTOR_OFF,
+    GITHUB,
+    JIRA,
+    JIRA_ON,
+    LLM,
+    PACKAGES,
+    STREAMED,
+    client_for,
+    connector_answer,
+    example_files,
+    example_types,
+    load_module,
+    owner,
+    sent_to,
+    signed,
+)
 
-TYPES = {
-    "team-links": "static",
-    "team-poll": "fastapi",
-    "log-explainer": "fastapi",
-    "jira-digest": "flask",
-    "release-notes": "fastapi",
-    "confluence-ask": "streamlit",
-    "setup-check": "fastapi",
-}
+TYPES = example_types()
 NAMES = tuple(TYPES)
-PACKAGES = {"fastapi": ["fastapi", "uvicorn"], "flask": ["flask", "gunicorn"], "streamlit": ["streamlit"]}
-
-APP_INFO = {
-    "id": APP_ID,
-    "slug": "setup",
-    "name": "Setup check",
-    "url": "https://app.example.com/setup/",
-    "owner": {"id": 5, "username": "alice", "display_name": "Alice", "group_id": 3, "group_name": "QA"},
-    "llm": {"enabled": True, "default_model": "gpt-5.4", "models": ["gpt-5.4"]},
-    "connectors": [{"type": "jira", "write": False}],
-    "budget": {"daily_credits": 50.0, "used_credits": 1.2, "daily_tokens": 2000000, "used_tokens": 3400},
-}
-JIRA_ON = {"connectors": [{"type": "jira", "base_url": "https://jira.example.com/", "write": False}]}
-COMPLETION = {
-    "text": "Two issues moved.",
-    "model": "gpt-5.4",
-    "finish_reason": "stop",
-    "usage": {"input_tokens": 120, "output_tokens": 40, "credits": 0.004},
-}
-DONE = {"type": "done", "model": "gpt-5.4", "finish_reason": "stop", "usage": {"input_tokens": 3, "output_tokens": 2, "credits": 0.001}}
-STREAMED = ({"type": "delta", "text": "Hel"}, {"type": "delta", "text": "lo"}, DONE)
-BUDGET_MESSAGE = "This app has used up its AI budget for today."
-CONNECTOR_OFF = "The owner has not turned on this connector for the app."
-LLM = "/llm/complete"
+#: The seven this file tests one by one; every later example has a test_example_<name>.py of its own.
+FIRST_EXAMPLES = ("confluence-ask", "jira-digest", "log-explainer", "release-notes", "setup-check", "team-links", "team-poll")
 
 pytestmark = pytest.mark.skipif(not EXAMPLES.is_dir(), reason="needs a checkout of the repository (examples/)")
-
-
-def load_module(name: str, path: Path, register=None):
-    """Run a file as a module; ``register`` (a monkeypatch) also puts it in ``sys.modules``."""
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    if register is not None:
-        register.setitem(sys.modules, name, module)
-    before = sys.dont_write_bytecode
-    sys.dont_write_bytecode = True  # no __pycache__ inside examples/
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        sys.dont_write_bytecode = before
-    return module
-
-
-def connector_answer(body=None, status=200, text=None, truncated=False):
-    """What the Portal answers to ``POST /connectors/{type}/request``: the other system's status and body."""
-    return {
-        "status": status,
-        "headers": {"content-type": "application/json" if text is None else "text/html"},
-        "json": body,
-        "body_base64": None if text is None else base64.b64encode(text.encode("utf-8")).decode("ascii"),
-        "truncated": truncated,
-    }
-
-
-def sent_to(portal, path):
-    """The JSON bodies the app sent to one route of the Portal, in order."""
-    return [json.loads(request.content) for request in portal.requests if request.url.path.endswith(path)]
-
-
-def signed(**changes):
-    """The header the gateway adds for a signed-in visitor (Bob, unless changed)."""
-    return {"X-EFP-Visitor": sign(payload_of(**changes))}
-
-
-def client_for(app, root_path=""):
-    from fastapi.testclient import TestClient
-
-    return TestClient(app, root_path=root_path)
-
-
-@pytest.fixture
-def deployed(monkeypatch, tmp_path):
-    """The environment of an app on a sandbox host."""
-    monkeypatch.setenv("EFP_APP_ID", APP_ID)
-    monkeypatch.setenv("EFP_APP_SLUG", "example")
-    monkeypatch.setenv("EFP_APP_BASE_PATH", "/example")
-    monkeypatch.setenv("EFP_VISITOR_KEY", VISITOR_KEY)
-    monkeypatch.setenv("EFP_APP_DATA_DIR", str(tmp_path / "data"))
 
 
 # --- Every example ---------------------------------------------------------------------------
 
 
 def test_the_readme_lists_every_example():
-    found = sorted(path.name for path in EXAMPLES.iterdir() if path.is_dir())
-    assert found == sorted(NAMES)
+    assert set(FIRST_EXAMPLES) <= set(NAMES)
     readme = (EXAMPLES / "README.md").read_text(encoding="utf-8")
     for name in NAMES:
-        assert "[%s](%s/)" % (name, name) in readme
+        assert "[%s](%s/)" % (name, name) in readme, name
+
+
+def test_every_example_has_tests_of_its_own():
+    here = EXAMPLES.parent / "sdk" / "tests"
+    for name in NAMES:
+        if name not in FIRST_EXAMPLES:
+            assert (here / ("test_example_%s.py" % name.replace("-", "_"))).is_file(), name
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -136,7 +77,7 @@ def test_an_example_is_complete_and_valid(name):
     assert "efp-app dev examples/%s" % name in readme
 
     data = json.loads((directory / "efp-app.json").read_text(encoding="utf-8"))
-    assert data["type"] == TYPES[name]
+    assert data["type"] in sdk_manifest.TYPES
     assert data["description"].startswith("Example: ")
     assert "owners" not in data  # an example limits nobody: any member may register a copy
 
@@ -150,29 +91,28 @@ def test_an_example_is_complete_and_valid(name):
 @pytest.mark.parametrize("name", [name for name in NAMES if TYPES[name] != "static"])
 def test_a_python_example_asks_for_nothing_exotic(name):
     directory = EXAMPLES / name
-    lines = [
-        line.strip()
-        for line in (directory / "requirements.txt").read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
-    assert [re.match(r"[A-Za-z0-9._-]+", line).group(0).lower() for line in lines] == PACKAGES[TYPES[name]]
+    requirements = directory / "requirements.txt"
+    wanted = PACKAGES[TYPES[name]]
+    lines = []
+    if wanted or requirements.exists():  # an example on the standard library alone needs no file
+        lines = [
+            line.strip()
+            for line in requirements.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+    assert [re.match(r"[A-Za-z0-9._-]+", line).group(0).lower() for line in lines] == wanted
     assert all("==" not in line and "@" not in line and not line.startswith("-") for line in lines)
     env_example = (directory / ".env.example").read_text(encoding="utf-8")
     assert "EFP_APP_TOKEN=\n" in env_example and "EFP_PORTAL_URL=\n" in env_example
     assert ".env\n" in (directory / ".gitignore").read_text(encoding="utf-8")
     sources = [path for path in directory.rglob("*.py") if "__pycache__" not in path.parts]
     assert sources
+    together = ""
     for source in sources:
         text = source.read_text(encoding="utf-8")
         compile(text, str(source), "exec")
-        assert "EfpError" in text and "user_message" in text  # an SDK error ends as a sentence for the visitor
-
-
-def example_files():
-    skipped = {"__pycache__", ".efp-data", ".venv"}
-    for path in sorted(EXAMPLES.rglob("*")):
-        if path.is_file() and not skipped.intersection(path.parts) and path.name != ".env" and path.suffix != ".pyc":
-            yield path
+        together += text
+    assert "EfpError" in together and "user_message" in together  # an SDK error ends as a sentence for the visitor
 
 
 def test_examples_are_ascii():
@@ -182,7 +122,7 @@ def test_examples_are_ascii():
 
 def test_pages_put_text_in_as_text_keep_nothing_in_the_browser_and_do_not_poll():
     scripts = [path for path in example_files() if path.suffix == ".js"]
-    assert len(scripts) == 6  # every example with a page of its own
+    assert len(scripts) >= 6  # every example with a page of its own
     for script in scripts:
         text = script.read_text(encoding="utf-8")
         for banned in ("innerHTML", "insertAdjacentHTML", "document.write", "localStorage", "sessionStorage", "setInterval"):
@@ -405,7 +345,6 @@ SEARCH = {
         },
     ],
 }
-JIRA = "/connectors/jira/request"
 
 
 @pytest.fixture
@@ -545,7 +484,6 @@ COMPARE = {
         {"sha": "d" * 40, "commit": {"message": "Bump version to 1.4.0", "author": {"name": "CI"}}, "author": {"login": "ci-bot"}},
     ],
 }
-GITHUB = "/connectors/github/request"
 WANTED = {"repository": "acme/app", "base": "v1.3.0", "head": "v1.4.0"}
 
 
@@ -667,7 +605,6 @@ WIKI = {
         },
     ],
 }
-CONFLUENCE = "/connectors/confluence/request"
 NOTHING_FOUND = ("info", "No page matches these words. Try other words.")
 
 
@@ -804,10 +741,6 @@ def test_confluence_ask_searches_only_the_listed_spaces(deployed, portal, monkey
 def setup_check(deployed):
     pytest.importorskip("fastapi")
     return load_module("example_setup_check", EXAMPLES / "setup-check" / "main.py")
-
-
-def owner():
-    return signed(sub=5, username="alice", name="Alice")
 
 
 def test_setup_check_answers_the_owner_alone(setup_check, portal):
