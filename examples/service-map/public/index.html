@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Service map</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Service map</h1>
+    <p id="summary" class="muted">Loading the services...</p>
+  </header>
+
+  <div class="toolbar">
+    <label class="field">
+      <span class="label">Search</span>
+      <input id="search" type="search" placeholder="Name of a service" autocomplete="off" spellcheck="false">
+    </label>
+    <label class="field">
+      <span class="label">Team</span>
+      <select id="team"><option value="">All teams</option></select>
+    </label>
+    <label class="field">
+      <span class="label">Tier</span>
+      <select id="tier">
+        <option value="0">All tiers</option>
+        <option value="1">Tier 1</option>
+        <option value="2">Tier 2</option>
+        <option value="3">Tier 3</option>
+      </select>
+    </label>
+    <div class="buttons" role="group" aria-label="View">
+      <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">&minus;</button>
+      <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+      <button id="fit" type="button" title="Show the whole map">Fit</button>
+      <button id="relayout" type="button" title="Forget the positions you dragged and lay the map out again">Lay out again</button>
+    </div>
+  </div>
+  <p id="status" class="status" role="status"></p>
+
+  <main class="layout">
+    <section class="map-area" aria-label="Dependency map">
+      <!-- Drawn by app.js: one group per service in #nodes, one per dependency in #edges. -->
+      <svg id="map" tabindex="0" role="group" aria-label="Map of the services. Drag to move it, scroll or pinch to zoom, press Tab to walk through the services.">
+        <g id="viewport">
+          <g id="edges"></g>
+          <g id="nodes"></g>
+        </g>
+      </svg>
+      <p id="empty" class="empty" hidden>
+        No service matches these filters.
+        <button id="show-all" type="button">Show all</button>
+      </p>
+      <div class="legend">
+        <ul id="teams" class="chips" aria-label="Teams"></ul>
+        <ul class="chips" aria-label="How to read the map">
+          <li><span class="key arrow"></span>A &rarr; B: A depends on B</li>
+          <li><span class="key ring needs"></span>what the chosen service needs</li>
+          <li><span class="key ring users"></span>what needs the chosen service</li>
+          <li><span class="key ring far"></span>dashed: not directly, through others</li>
+          <li><span class="key arrow cycle"></span>part of a cycle</li>
+          <li>the number in a circle is the tier</li>
+        </ul>
+      </div>
+    </section>
+
+    <aside id="panel" class="panel" aria-label="Details of the chosen service" aria-live="polite">
+      <p class="muted">Choose a service on the map to see what it depends on and what depends on it.</p>
+    </aside>
+  </main>
+
+  <section id="cycles" class="block" hidden>
+    <h2>Dependency cycles</h2>
+    <p class="muted">Services in a cycle need each other: none of them can start, be deployed or recover on its own.</p>
+    <ul id="cycle-list" class="plain"></ul>
+  </section>
+
+  <section id="problems" class="block" hidden>
+    <h2>Problems in services.json</h2>
+    <ul id="problem-list"></ul>
+  </section>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

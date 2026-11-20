@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Glossary translator</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Glossary translator</h1>
+      <p class="muted">
+        Translation between English, Simplified Chinese and Traditional
+        Chinese (Hong Kong) that keeps to the team's terms. Markdown is kept;
+        code, addresses and file paths are left as they are.
+      </p>
+    </header>
+
+    <p id="notice" class="notice" role="status" hidden></p>
+
+    <section aria-labelledby="translate-heading">
+      <h2 id="translate-heading">Translate</h2>
+      <form id="translate-form">
+        <div class="pair">
+          <div>
+            <label for="source">From</label>
+            <select id="source"></select>
+          </div>
+          <button type="button" id="swap-button" aria-label="Swap the two languages">Swap</button>
+          <div>
+            <label for="target">To</label>
+            <select id="target"></select>
+          </div>
+        </div>
+        <label for="text">Text</label>
+        <textarea id="text" rows="9" placeholder="Type or paste the text to translate"></textarea>
+        <div class="bar">
+          <button type="submit" id="translate-button" class="primary">Translate</button>
+          <button type="button" id="stop-button" hidden>Stop</button>
+          <span id="count" class="muted"></span>
+        </div>
+      </form>
+      <p id="status" class="status" role="status"></p>
+
+      <div id="result" hidden>
+        <h3 id="output-heading">Translation</h3>
+        <pre id="output" aria-labelledby="output-heading" aria-live="polite" tabindex="0"></pre>
+        <div class="bar">
+          <button type="button" id="copy-button">Copy</button>
+        </div>
+        <h3>Glossary terms in this text</h3>
+        <p id="terms-note" class="muted"></p>
+        <ul id="terms" class="terms"></ul>
+      </div>
+    </section>
+
+    <section aria-labelledby="glossary-heading">
+      <h2 id="glossary-heading">Glossary</h2>
+      <p id="glossary-facts" class="muted" role="status">Loading...</p>
+      <div class="bar">
+        <label for="filter" class="inline">Find</label>
+        <input type="search" id="filter" autocomplete="off" placeholder="a term in any language">
+        <a id="export-link" href="api/glossary.csv" download="glossary.csv">Export as CSV</a>
+      </div>
+      <div class="table-wrap">
+        <table id="glossary">
+          <thead><tr id="glossary-head"></tr></thead>
+          <tbody id="glossary-rows"></tbody>
+        </table>
+      </div>
+      <p id="glossary-empty" class="muted" hidden></p>
+      <div id="owner-tools" class="bar" hidden>
+        <button type="button" id="add-button">Add a term</button>
+        <button type="button" id="import-button">Import a CSV file</button>
+        <input type="file" id="import-file" accept=".csv,text/csv" hidden>
+        <button type="button" id="save-button" class="primary" disabled>Save the glossary</button>
+      </div>
+      <p id="glossary-status" class="status" role="status"></p>
+    </section>
+  </main>
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

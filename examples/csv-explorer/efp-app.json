@@ -1,0 +1,8 @@
+{
+  "name": "CSV explorer",
+  "description": "Example: look into a CSV file with a preview, a summary of its columns, charts and a group-by, and ask the model about it when the model is on.",
+  "type": "streamlit",
+  "entry": "app.py",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

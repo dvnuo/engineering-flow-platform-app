@@ -1,0 +1,8 @@
+{
+  "name": "Glossary translator",
+  "description": "Example: translate between English, Simplified Chinese and Traditional Chinese (Hong Kong) with a glossary of the team's terms that the app's owner keeps.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

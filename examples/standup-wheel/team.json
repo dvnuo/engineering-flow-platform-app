@@ -1,0 +1,10 @@
+{
+  "members": [
+    {"username": "alice", "name": "Alice"},
+    {"username": "bob", "name": "Bob"},
+    {"username": "carol", "name": "Carol"},
+    {"username": "dave", "name": "Dave"},
+    {"username": "erin", "name": "Erin"},
+    {"username": "frank", "name": "Frank"}
+  ]
+}

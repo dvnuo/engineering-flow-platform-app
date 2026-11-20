@@ -1,0 +1,8 @@
+{
+  "name": "Bug squash",
+  "description": "Example: a 45-second canvas game with a leaderboard that accepts only plausible scores.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

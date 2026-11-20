@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mind map</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main id="list-view" class="page">
+    <header>
+      <h1>Mind maps</h1>
+      <p id="who" class="muted"></p>
+    </header>
+    <p id="list-status" class="status" role="status"></p>
+
+    <form id="new-form" hidden>
+      <label for="new-title">A new map</label>
+      <div class="field-row">
+        <input type="text" id="new-title" maxlength="80" placeholder="What is it about?" autocomplete="off" required>
+        <button type="submit" class="primary">Create</button>
+      </div>
+    </form>
+
+    <section id="mine-section" aria-labelledby="mine-heading" hidden>
+      <div class="section-head">
+        <h2 id="mine-heading">My maps</h2>
+        <span id="mine-count" class="muted"></span>
+      </div>
+      <ul id="mine" class="cards"></ul>
+      <p id="mine-empty" class="empty" hidden>You have no maps yet. Give the first one a name above.</p>
+    </section>
+
+    <section aria-labelledby="shared-heading">
+      <div class="section-head">
+        <h2 id="shared-heading">Shared maps</h2>
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+      <ul id="shared" class="cards"></ul>
+      <p id="shared-empty" class="empty" hidden>Nobody else shares a map at the moment. A map appears here when its owner makes it visible to everyone.</p>
+    </section>
+  </main>
+
+  <div id="editor-view" class="editor" hidden>
+    <header class="bar">
+      <a id="back" class="button" href="#">All maps</a>
+      <input type="text" id="title" class="title" maxlength="80" aria-label="Title of the map" autocomplete="off">
+      <span id="save-status" class="muted" role="status"></span>
+      <button type="button" id="save" class="primary" title="Save (Ctrl+S)">Save</button>
+    </header>
+
+    <div class="bar tools">
+      <div id="edit-tools" class="group" role="toolbar" aria-label="Change the map">
+        <button type="button" id="add-child" title="Add a child (Tab)">Child</button>
+        <button type="button" id="add-sibling" title="Add a sibling (Enter)">Sibling</button>
+        <button type="button" id="rename-node" title="Rename (F2 or double click)">Rename</button>
+        <button type="button" id="move-node" title="Move to another parent (M, or drag the node)">Move</button>
+        <button type="button" id="delete-node" class="danger" title="Delete the branch (Del)">Delete</button>
+        <span id="colors" class="swatches" role="group" aria-label="Colour of the branch"></span>
+        <button type="button" id="undo" title="Undo (Ctrl+Z)">Undo</button>
+        <button type="button" id="redo" title="Redo (Ctrl+Y)">Redo</button>
+      </div>
+      <div class="group" role="toolbar" aria-label="Look at the map">
+        <button type="button" id="toggle-node" title="Fold or unfold the branch (Space)">Fold</button>
+        <button type="button" id="zoom-out" title="Zoom out (-)" aria-label="Zoom out">-</button>
+        <button type="button" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+        <button type="button" id="fit" title="Show the whole map (0)">Fit</button>
+        <details id="export-menu" class="menu">
+          <summary>Export</summary>
+          <div class="menu-items">
+            <button type="button" id="export-svg">SVG picture</button>
+            <button type="button" id="export-png">PNG picture</button>
+            <button type="button" id="export-md">Markdown outline</button>
+          </div>
+        </details>
+        <details class="menu">
+          <summary>Keys</summary>
+          <dl class="menu-items keys">
+            <dt>Tab</dt><dd>add a child</dd>
+            <dt>Enter</dt><dd>add a sibling</dd>
+            <dt>F2</dt><dd>rename</dd>
+            <dt>Del</dt><dd>delete the branch</dd>
+            <dt>Space</dt><dd>fold or unfold</dd>
+            <dt>Arrows</dt><dd>walk through the map</dd>
+            <dt>Alt + Up, Down</dt><dd>change the order</dd>
+            <dt>M</dt><dd>move to another parent</dd>
+            <dt>+ - 0</dt><dd>zoom in, zoom out, fit</dd>
+            <dt>Esc</dt><dd>let go of the map, so that Tab moves on</dd>
+          </dl>
+        </details>
+      </div>
+      <label id="share-label" class="check">
+        <input type="checkbox" id="share-box"> Visible to everyone who can open the app
+      </label>
+    </div>
+
+    <div id="notice" class="notice" hidden>
+      <span id="notice-text"></span>
+      <span id="notice-actions" class="group"></span>
+    </div>
+
+    <div id="stage" class="stage">
+      <svg id="canvas" tabindex="0" role="application" aria-label="The mind map. Arrow keys walk through it; the Keys menu lists the rest.">
+        <g id="viewport"></g>
+      </svg>
+      <input type="text" id="node-editor" class="node-editor" maxlength="200" aria-label="Text of the node" autocomplete="off" hidden>
+      <p id="hint" class="hint" role="status"></p>
+    </div>
+    <p id="announce" class="visually-hidden" aria-live="polite"></p>
+  </div>
+
+  <dialog id="dialog" aria-labelledby="dialog-title">
+    <form method="dialog">
+      <h2 id="dialog-title"></h2>
+      <p id="dialog-text"></p>
+      <input type="text" id="dialog-input" maxlength="80" aria-labelledby="dialog-title" autocomplete="off">
+      <div class="dialog-actions">
+        <button type="button" id="dialog-cancel">Cancel</button>
+        <button type="submit" id="dialog-ok" class="primary" value="ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

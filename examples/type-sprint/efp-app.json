@@ -1,0 +1,8 @@
+{
+  "name": "Type sprint",
+  "description": "Example: a 60-second typing sprint on command lines and code, with a history and a leaderboard the server works out itself.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

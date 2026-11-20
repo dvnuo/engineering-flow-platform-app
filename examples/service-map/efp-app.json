@@ -1,0 +1,6 @@
+{
+  "name": "Service map",
+  "description": "Example: an interactive dependency map of services, drawn from a JSON file, with what depends on what and where the cycles are. No backend.",
+  "type": "static",
+  "entry": "public"
+}

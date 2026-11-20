@@ -1,0 +1,6 @@
+{
+  "name": "Screenshot diff",
+  "description": "Example: compare an expected and an actual screenshot pixel by pixel in the browser, with tolerance, changed regions and a diff to download. No backend.",
+  "type": "static",
+  "entry": "public"
+}

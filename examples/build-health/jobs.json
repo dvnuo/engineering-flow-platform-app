@@ -1,0 +1,9 @@
+{
+  "jobs": [
+    {"name": "Web app: main", "path": "team/web-app/main"},
+    {"name": "Web app: release", "path": "team/web-app/release"},
+    {"name": "API: main", "path": "team/api/main"},
+    {"name": "Mobile: nightly", "path": "team/mobile/nightly"},
+    {"name": "Deploy to staging", "path": "ops/deploy-staging"}
+  ]
+}

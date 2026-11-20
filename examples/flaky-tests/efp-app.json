@@ -1,0 +1,8 @@
+{
+  "name": "Flaky tests",
+  "description": "Example: which tests of a Jenkins job flip between passing and failing, as a heatmap of test by build.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

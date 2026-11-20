@@ -1,0 +1,8 @@
+{
+  "name": "Sprint burndown",
+  "description": "Example: the state of a Jira sprint: burndown, issues by status, load per assignee and late additions.",
+  "type": "streamlit",
+  "entry": "app.py",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

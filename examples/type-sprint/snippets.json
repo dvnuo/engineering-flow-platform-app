@@ -1,0 +1,148 @@
+{
+  "sprint_seconds": 60,
+  "topics": [
+    {
+      "id": "git",
+      "label": "Git",
+      "snippets": [
+        "git status --short --branch",
+        "git switch -c feature/login-retry",
+        "git add -p src/auth/session.py",
+        "git commit -m \"Fix token refresh on 401\"",
+        "git log --oneline --graph -n 15",
+        "git rebase -i origin/main",
+        "git stash push -m \"wip: flaky test\"",
+        "git cherry-pick -x 4f2a9c1",
+        "git diff --stat main...HEAD",
+        "git push --force-with-lease origin HEAD",
+        "git restore --staged config/local.yaml",
+        "git bisect start HEAD v2.3.0",
+        "git tag -a v2.4.0 -m \"Release 2.4.0\"",
+        "git fetch --prune --tags",
+        "git blame -L 40,60 lib/retry.go",
+        "git reflog show --date=relative"
+      ]
+    },
+    {
+      "id": "kubectl",
+      "label": "kubectl",
+      "snippets": [
+        "kubectl get pods -n qa -o wide",
+        "kubectl logs -f deploy/api --tail=100",
+        "kubectl describe pod api-7d9f6c5b8-x2kqp",
+        "kubectl rollout status deploy/web -n staging",
+        "kubectl rollout undo deploy/web --to-revision=3",
+        "kubectl exec -it api-0 -- /bin/sh",
+        "kubectl apply -f k8s/overlays/qa/",
+        "kubectl get events --sort-by=.lastTimestamp",
+        "kubectl top pods -n qa --containers",
+        "kubectl scale deploy/worker --replicas=4",
+        "kubectl port-forward svc/db 5432:5432",
+        "kubectl config use-context qa-cluster",
+        "kubectl delete pod -l app=cache --grace-period=30",
+        "kubectl get ingress -A -o yaml",
+        "kubectl set image deploy/api api=registry.example.com/api:1.8.2"
+      ]
+    },
+    {
+      "id": "docker",
+      "label": "Docker",
+      "snippets": [
+        "docker build -t api:dev --target test .",
+        "docker run --rm -p 8080:8080 api:dev",
+        "docker compose up -d --build",
+        "docker compose logs -f --tail=50 web",
+        "docker exec -it api-db-1 psql -U app",
+        "docker images --filter dangling=true",
+        "docker system prune --volumes -f",
+        "docker tag api:dev registry.example.com/api:1.8.2",
+        "docker push registry.example.com/api:1.8.2",
+        "docker inspect --format '{{.State.Health.Status}}' web",
+        "docker ps -a --format '{{.Names}}: {{.Status}}'",
+        "docker volume ls -q | xargs docker volume rm",
+        "docker stats --no-stream",
+        "docker cp api:/app/report.xml ./report.xml"
+      ]
+    },
+    {
+      "id": "shell",
+      "label": "Shell",
+      "snippets": [
+        "grep -rn \"TODO\" src/ --include=\"*.py\"",
+        "find . -name \"*.log\" -mtime +7 -delete",
+        "tail -f /var/log/app/error.log | grep -v DEBUG",
+        "for f in *.csv; do wc -l \"$f\"; done",
+        "ps aux | sort -nrk 3 | head -5",
+        "tar -czf backup.tar.gz --exclude=node_modules .",
+        "chmod +x scripts/deploy.sh && ./scripts/deploy.sh qa",
+        "export PATH=\"$HOME/.local/bin:$PATH\"",
+        "sed -i 's/localhost/127.0.0.1/g' config.ini",
+        "awk -F, '{sum += $3} END {print sum}' sales.csv",
+        "ssh -L 5432:db.internal:5432 bastion",
+        "du -sh * | sort -h | tail -10",
+        "xargs -P 4 -n 1 ./check.sh < hosts.txt",
+        "lsof -i :8080",
+        "cut -d: -f1 /etc/passwd | sort | uniq -c"
+      ]
+    },
+    {
+      "id": "curl",
+      "label": "curl",
+      "snippets": [
+        "curl -s https://qa.example.com/health | jq .status",
+        "curl -X POST -d '{\"name\":\"qa\"}' https://api.example.com/v1/envs",
+        "curl -I https://www.example.com/",
+        "curl -H \"Authorization: Bearer $TOKEN\" https://api.example.com/v1/me",
+        "curl -fsSL https://get.example.com/install.sh -o install.sh",
+        "curl -o /dev/null -s -w \"%{http_code}\" https://qa.example.com/",
+        "curl --retry 3 --retry-delay 2 https://api.example.com/v1/builds",
+        "curl -u \"$USER:$PASS\" https://nexus.example.com/service/rest/v1/status",
+        "curl -X DELETE https://api.example.com/v1/sessions/42",
+        "curl -G --data-urlencode \"q=status:failed\" https://api.example.com/v1/search",
+        "curl -k --resolve qa.example.com:443:10.0.0.12 https://qa.example.com/",
+        "curl -sS -X PATCH -d '{\"on\":false}' https://api.example.com/v1/flags/beta",
+        "curl -F \"file=@report.xml\" https://api.example.com/v1/uploads"
+      ]
+    },
+    {
+      "id": "sql",
+      "label": "SQL",
+      "snippets": [
+        "SELECT id, email FROM users WHERE active = true ORDER BY id;",
+        "SELECT status, COUNT(*) FROM builds GROUP BY status;",
+        "UPDATE jobs SET state = 'queued' WHERE state = 'stuck';",
+        "DELETE FROM sessions WHERE expires_at < NOW();",
+        "INSERT INTO tags (name, color) VALUES ('flaky', 'orange');",
+        "SELECT u.name, t.title FROM users u JOIN tasks t ON t.owner_id = u.id;",
+        "CREATE INDEX idx_runs_started ON runs (started_at DESC);",
+        "ALTER TABLE builds ADD COLUMN duration_ms INTEGER;",
+        "SELECT * FROM runs WHERE started_at >= NOW() - INTERVAL '1 day';",
+        "SELECT name FROM suites WHERE name LIKE 'smoke%' LIMIT 20;",
+        "EXPLAIN ANALYZE SELECT * FROM events WHERE run_id = 42;",
+        "SELECT branch, MAX(finished_at) FROM builds GROUP BY branch;",
+        "UPDATE flags SET enabled = false WHERE key = 'beta';",
+        "SELECT COALESCE(owner, 'nobody') AS owner FROM tasks;"
+      ]
+    },
+    {
+      "id": "python",
+      "label": "Python",
+      "snippets": [
+        "print(sum(x * x for x in range(10)))",
+        "with open(\"report.json\", encoding=\"utf-8\") as f: data = json.load(f)",
+        "failed = [t for t in tests if t.status == \"failed\"]",
+        "for name, value in sorted(os.environ.items()): print(name)",
+        "python -m pytest -x -k \"login and not slow\" --maxfail=1",
+        "python -m venv .venv && .venv/bin/pip install -r requirements.txt",
+        "counts = collections.Counter(line.split()[0] for line in lines)",
+        "response.raise_for_status(); body = response.json()",
+        "def retry(times=3, delay=0.5): return lambda fn: fn",
+        "assert result.exit_code == 0, result.output",
+        "path = pathlib.Path(__file__).parent / \"fixtures\"",
+        "latest = max(builds, key=lambda b: b[\"finished_at\"])",
+        "logging.basicConfig(level=logging.INFO, format=\"%(message)s\")",
+        "if __name__ == \"__main__\": raise SystemExit(main())"
+      ]
+    }
+  ]
+}

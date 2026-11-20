@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planning poker</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main id="lobby" hidden>
+    <header>
+      <h1>Planning poker</h1>
+      <p id="who" class="muted"></p>
+    </header>
+    <p id="lobby-status" class="status" role="status"></p>
+
+    <form id="new-room" hidden>
+      <h2>A new room</h2>
+      <label for="new-title">The story to estimate</label>
+      <input type="text" id="new-title" maxlength="120" placeholder="ABC-123 Export the report as PDF" autocomplete="off" required>
+      <label for="new-link">A link to it (optional)</label>
+      <input type="url" id="new-link" maxlength="500" placeholder="https://" autocomplete="off">
+      <p id="deck-preview" class="muted"></p>
+      <button type="submit" class="primary">Open the room</button>
+    </form>
+
+    <section id="rooms-section" aria-labelledby="rooms-heading" hidden>
+      <div class="section-head">
+        <h2 id="rooms-heading">Rooms used lately</h2>
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+      <ul id="rooms" class="rooms"></ul>
+      <p id="rooms-empty" class="empty" hidden>No rooms yet. Open one above and send its link to the team.</p>
+    </section>
+  </main>
+
+  <main id="room" hidden>
+    <header class="room-head">
+      <div>
+        <p class="muted"><a href="./">All rooms</a> <span id="round"></span></p>
+        <h1 id="story">Planning poker</h1>
+        <p><a id="story-link" target="_blank" rel="noopener noreferrer" hidden></a></p>
+      </div>
+      <div class="group">
+        <span id="connection" class="pill" role="status">Connecting...</span>
+        <button type="button" id="retry" hidden>Try again</button>
+        <button type="button" id="copy-link">Copy the link to this room</button>
+      </div>
+    </header>
+    <p id="room-status" class="status" role="status"></p>
+
+    <div id="table" hidden>
+      <section aria-labelledby="deck-heading">
+        <h2 id="deck-heading">Your card</h2>
+        <div id="deck" class="deck" role="group" aria-label="The cards"></div>
+        <div class="group actions">
+          <button type="button" id="reveal" class="primary" disabled>Reveal</button>
+          <button type="button" id="next">New round</button>
+        </div>
+        <form id="next-form" class="next-form" hidden>
+          <label for="next-title">The next story</label>
+          <input type="text" id="next-title" maxlength="120" autocomplete="off" required>
+          <label for="next-link">A link to it (optional)</label>
+          <input type="url" id="next-link" maxlength="500" placeholder="https://" autocomplete="off">
+          <p id="next-note" class="muted"></p>
+          <div class="group">
+            <button type="submit" class="primary">Start the round</button>
+            <button type="button" id="next-cancel">Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section aria-labelledby="members-heading">
+        <h2 id="members-heading">In the room</h2>
+        <ul id="members" class="members"></ul>
+      </section>
+
+      <section id="result" aria-labelledby="result-heading" hidden>
+        <h2 id="result-heading">Result</h2>
+        <p id="verdict" class="verdict"></p>
+        <dl class="numbers">
+          <div><dt>Average</dt><dd id="average"></dd></div>
+          <div><dt>Median</dt><dd id="median"></dd></div>
+          <div><dt>Cards</dt><dd id="votes"></dd></div>
+        </dl>
+        <ul id="spread" class="spread"></ul>
+      </section>
+
+      <section id="history-section" aria-labelledby="history-heading" hidden>
+        <h2 id="history-heading">Earlier rounds</h2>
+        <ol id="history" class="history"></ol>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

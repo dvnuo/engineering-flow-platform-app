@@ -121,7 +121,7 @@ def test_examples_are_ascii():
 
 
 def test_pages_put_text_in_as_text_keep_nothing_in_the_browser_and_do_not_poll():
-    scripts = [path for path in example_files() if path.suffix == ".js"]
+    scripts = [path for path in example_files() if path.suffix in (".js", ".mjs")]
     assert len(scripts) >= 6  # every example with a page of its own
     for script in scripts:
         text = script.read_text(encoding="utf-8")

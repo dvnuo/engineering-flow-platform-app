@@ -1,0 +1,8 @@
+{
+  "name": "Retro board",
+  "description": "Example: a retrospective board with anonymous cards and a few dot votes for every member.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

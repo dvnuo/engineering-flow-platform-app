@@ -1,0 +1,8 @@
+# The largest upload Streamlit accepts, in MB: the same 5 MB as MAX_FILE_BYTES
+# in tabular.py. The script checks the size too, but it runs only after a file
+# has arrived in the app's memory; this setting keeps a larger one out.
+#
+# Leave server.baseUrlPath and the CORS and XSRF settings out of this file:
+# the host passes them on the command line.
+[server]
+maxUploadSize = 5

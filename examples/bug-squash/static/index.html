@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bug squash</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Bug squash</h1>
+      <p id="who" class="muted">Loading...</p>
+    </header>
+
+    <div class="hud">
+      <div class="stat">
+        <span class="label">Score</span>
+        <span class="value" id="score">0</span>
+      </div>
+      <div class="stat">
+        <span class="label">Combo</span>
+        <span class="value"><span id="combo">x1</span> <span class="streak" id="streak"></span></span>
+      </div>
+      <div class="stat">
+        <span class="label">Seconds left</span>
+        <span class="value" id="time">-</span>
+      </div>
+    </div>
+    <div class="timebar" aria-hidden="true"><span id="timebar"></span></div>
+
+    <div class="stage" id="stage">
+      <canvas id="board" role="img" aria-label="The board. Bugs cross it; squash them with a click, a tap or the letter they carry."></canvas>
+      <div class="overlay" id="overlay">
+        <p class="overlay-title" id="overlay-title">Loading...</p>
+        <p class="overlay-text" id="overlay-text"></p>
+        <button type="button" class="primary" id="start" hidden>Start</button>
+      </div>
+    </div>
+
+    <fieldset class="options" id="options">
+      <legend class="visually-hidden">Options</legend>
+      <label><input type="checkbox" id="calm"> <span id="calm-label">Calm mode: bugs sit still instead of crawling</span></label>
+      <label><input type="checkbox" id="letters"> Letters on bugs: squash with the keyboard</label>
+    </fieldset>
+    <p id="status" class="muted" role="status"></p>
+
+    <section id="summary" tabindex="-1" aria-labelledby="summary-title" hidden>
+      <h2 id="summary-title">Your run</h2>
+      <p id="verdict" role="status"></p>
+      <table>
+        <tbody id="summary-rows"></tbody>
+      </table>
+    </section>
+
+    <section aria-labelledby="rules-title">
+      <h2 id="rules-title">The rules</h2>
+      <ul class="legend" id="legend"></ul>
+      <ul class="notes" id="notes"></ul>
+    </section>
+
+    <section aria-labelledby="leaders-title">
+      <div class="heading-row">
+        <h2 id="leaders-title">Leaderboard</h2>
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+      <p id="board-note" class="muted" role="status">Loading...</p>
+      <table id="leaders" hidden>
+        <thead>
+          <tr><th scope="col" class="number">Rank</th><th scope="col">Member</th><th scope="col" class="number">Best score</th></tr>
+        </thead>
+        <tbody id="leader-rows"></tbody>
+      </table>
+    </section>
+  </main>
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

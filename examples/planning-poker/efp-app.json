@@ -1,0 +1,8 @@
+{
+  "name": "Planning poker",
+  "description": "Example: a live estimation room over a WebSocket, with hidden picks until somebody reveals them.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

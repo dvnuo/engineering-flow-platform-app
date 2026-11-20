@@ -1,0 +1,441 @@
+/* Light and dark from one set of variables: light-dark() picks by the visitor's setting. */
+:root {
+  color-scheme: light dark;
+  --page: light-dark(#f5f6f8, #14161a);
+  --panel: light-dark(#ffffff, #1d2026);
+  --text: light-dark(#1c2026, #e7e9ee);
+  --muted: light-dark(#5d6673, #9ba4b3);
+  --line: light-dark(#d5d9e0, #343943);
+  --accent: light-dark(#2456c9, #8db0ff);
+  --on-accent: light-dark(#ffffff, #0f1320);
+  --bad: light-dark(#b3261e, #f2b8b5);
+  --added: light-dark(#dcf5e3, #173a25);
+  --removed: light-dark(#fde2df, #4a1f1c);
+  --mark-even: light-dark(#ffe58a, #6b5200);
+  --mark-odd: light-dark(#ffc59a, #7a3a0c);
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+}
+
+.top,
+.layout {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.top {
+  padding-top: 1.5rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+h3 {
+  margin: 1.25rem 0 0.4rem;
+  font-size: 1rem;
+}
+
+.privacy {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 0.25rem solid var(--accent);
+  border-radius: 0.4rem;
+  background: var(--panel);
+  font-size: 0.95rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+  padding-top: 1.25rem;
+  padding-bottom: 4rem;
+}
+
+nav {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+nav a {
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.4rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+nav a:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+nav a[aria-current="page"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tool {
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--panel);
+}
+
+.tool > * + * {
+  margin-top: 0.75rem;
+}
+
+.tool > .muted:first-of-type {
+  margin-top: 0.25rem;
+}
+
+p {
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+textarea,
+input[type="text"],
+input[type="number"],
+select,
+button {
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--page);
+}
+
+textarea,
+input[type="text"] {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+}
+
+textarea,
+.mono,
+.output,
+.pointer,
+table.values td {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}
+
+textarea {
+  resize: vertical;
+  tab-size: 2;
+}
+
+textarea[readonly] {
+  background: color-mix(in srgb, var(--page) 60%, var(--panel));
+}
+
+input[type="number"] {
+  width: 5rem;
+  padding: 0.4rem 0.5rem;
+}
+
+select {
+  padding: 0.4rem 0.5rem;
+}
+
+button {
+  padding: 0.4rem 0.9rem;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+button.chip {
+  padding: 0.2rem 0.6rem;
+  border-radius: 1rem;
+}
+
+button.copy {
+  min-width: 5.5rem; /* "Copied" must not make the row jump */
+}
+
+td button.copy {
+  padding: 0.15rem 0.6rem;
+  font-family: system-ui, sans-serif;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.row > input[type="text"] {
+  flex: 1 1 16rem;
+  width: auto;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.75rem;
+}
+
+.field {
+  display: block;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.row > .field,
+.row > .label {
+  margin-bottom: 0;
+}
+
+.check {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice legend {
+  padding: 0;
+}
+
+.status {
+  min-height: 1.5rem; /* the line keeps its place while it is empty */
+  overflow-wrap: anywhere;
+}
+
+.problem {
+  color: var(--bad);
+}
+
+.pointer,
+.output {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--page);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pointer {
+  border-color: var(--bad);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.notes {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--muted);
+}
+
+.notes:empty,
+.block:empty {
+  display: none;
+}
+
+.notice {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--bad);
+  border-left-width: 0.25rem;
+  border-radius: 0.4rem;
+}
+
+.headline {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.headline:empty {
+  display: none;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.35rem 0.6rem 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+table.values td {
+  overflow-wrap: anywhere;
+}
+
+table.values td:first-child {
+  font-family: inherit;
+  font-size: inherit;
+  white-space: nowrap;
+}
+
+.runs {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+mark {
+  border-radius: 0.2rem;
+  color: inherit;
+}
+
+mark.even {
+  background: var(--mark-even);
+}
+
+mark.odd {
+  background: var(--mark-odd);
+}
+
+/* A match of no characters still has a place: a thin bar marks it. */
+mark.empty {
+  display: inline-block;
+  width: 0.15rem;
+  height: 1em;
+  vertical-align: text-bottom;
+}
+
+.diff {
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}
+
+.line {
+  display: grid;
+  grid-template-columns: 3rem 3rem minmax(0, 1fr);
+}
+
+.line .number {
+  padding-right: 0.5rem;
+  color: var(--muted);
+  text-align: right;
+  user-select: none;
+}
+
+.line .text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Colour is backed by the + and - at the start of each line. */
+.line.add {
+  background: var(--added);
+}
+
+.line.del {
+  background: var(--removed);
+}
+
+.line.hunk {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--muted);
+}
+
+.offscreen {
+  position: fixed;
+  left: -100rem;
+  top: 0;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Narrow screens: the tools become a row that scrolls sideways above the tool. */
+@media (max-width: 46rem) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+
+  nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+
+  nav a {
+    white-space: nowrap;
+  }
+
+  .tool {
+    padding: 1rem 0.75rem;
+  }
+}

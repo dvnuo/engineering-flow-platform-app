@@ -55,12 +55,16 @@ checkout always takes the top-level directory (`setup.py`).
 
 ## The example apps
 
-`examples/` at the repository root holds seven complete small apps, from a
-static page of links to a Streamlit app that answers from Confluence
-([what each one shows](../examples/README.md)). They are not part of the
-package: a member copies one into a repository of their own.
-`tests/test_examples.py` runs every one of them against the fake Portal, so
-an example cannot fall behind the SDK without a test failing.
+`examples/` at the repository root holds twenty-six complete apps, from a
+static page of links to dashboards, drawing boards, team games and tools
+that use the model ([what each one shows](../examples/README.md)). They are
+not part of the package: a member copies one into a repository of their own.
+`tests/test_examples.py` and `tests/test_example_<name>.py` run every one of
+them against the fake Portal, so an example cannot fall behind the SDK
+without a test failing.
+
+The reference of everything in this package, with examples that the tests
+run, is [docs/SDK_REFERENCE.md](../docs/SDK_REFERENCE.md).
 
 ## Tests
 

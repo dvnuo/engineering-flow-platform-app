@@ -1,0 +1,396 @@
+:root {
+  color-scheme: light dark;
+  --ink: light-dark(#1f2633, #e9ecf2);
+  --muted: light-dark(#5b6676, #a3adbd);
+  --page: light-dark(#ffffff, #0f1216);
+  --surface: light-dark(#f6f7fa, #151920);
+  --line: light-dark(#d3d9e3, #2c3440);
+  --accent: light-dark(#2f5fc4, #8fb0f5);
+  --on-accent: light-dark(#ffffff, #0f1216);
+  --good: light-dark(#1d7a46, #6fd29a);
+  --bad: light-dark(#b3261e, #f2b8b5);
+  --bad-back: light-dark(#fbe3e1, #5c1f1b);
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--page);
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+h3 {
+  margin: 1.5rem 0 0.25rem;
+  font-size: 1rem;
+}
+
+header p {
+  margin: 0.15rem 0 0;
+}
+
+section {
+  margin-top: 2rem;
+}
+
+button {
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button.primary {
+  padding: 0.6rem 1.75rem;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Choosing a topic */
+
+.topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  border: 0;
+}
+
+.topics legend {
+  margin-bottom: 0.5rem;
+  padding: 0;
+  font-weight: 600;
+}
+
+.topics label {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 2rem;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.topics label:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.topics small {
+  color: var(--muted);
+}
+
+#status,
+#hint {
+  min-height: 1.5rem;
+  margin: 0.5rem 0 0;
+}
+
+/* The sprint */
+
+.meters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stat .label {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.stat .value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.timebar {
+  height: 0.35rem;
+  margin: 0.5rem 0 1rem;
+  border-radius: 0.2rem;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.timebar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left;
+}
+
+.line,
+.typing {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  font-family: var(--mono);
+  font-size: clamp(1rem, 3.4vw, 1.25rem);
+  line-height: 1.6;
+}
+
+.line {
+  min-height: 3.2rem;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 0.5rem 0.5rem 0 0;
+  background: var(--surface);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.line .ahead,
+.line .next {
+  color: var(--muted);
+}
+
+.line .right {
+  color: var(--good);
+}
+
+/* A wrong character is marked where it stands, by more than its colour. */
+.line .wrong {
+  border-radius: 0.15rem;
+  background: var(--bad-back);
+  color: var(--bad);
+  text-decoration: underline wavy;
+}
+
+.line .next {
+  box-shadow: inset 0 -0.15rem 0 var(--accent);
+  color: var(--ink);
+}
+
+.typing {
+  border: 1px solid var(--line);
+  border-radius: 0 0 0.5rem 0.5rem;
+  background: var(--page);
+  color: var(--ink);
+}
+
+.typing:disabled {
+  opacity: 0.6;
+}
+
+#stop {
+  margin-top: 0.5rem;
+}
+
+/* The result and the history */
+
+.headline {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+#verdict {
+  margin: 0.25rem 0 0;
+}
+
+#worst code {
+  display: block;
+  margin-bottom: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.4rem;
+  background: var(--surface);
+  font-family: var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 14rem;
+}
+
+.chart[hidden] {
+  display: none;
+}
+
+.chart .grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart .tick {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.chart .tick.strong {
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+.chart .bar {
+  fill: var(--accent);
+}
+
+.chart .average {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.chart .trend {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.chart .dot {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.chart .dot.hollow {
+  fill: var(--page);
+}
+
+.chart .dot.best {
+  fill: var(--good);
+  stroke: var(--good);
+}
+
+.key {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-left: 0.75rem;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.swatch:first-child {
+  margin-left: 0;
+}
+
+.swatch.hollow {
+  background: var(--page);
+}
+
+.swatch.best {
+  border-color: var(--good);
+  background: var(--good);
+}
+
+/* The leaderboard */
+
+.heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.heading-row h2 {
+  margin: 0;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+thead th {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+tr.you {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-weight: 600;
+}
+
+@media (max-width: 30rem) {
+  .stat .value {
+    font-size: 1.3rem;
+  }
+}

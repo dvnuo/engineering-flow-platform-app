@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stand-up wheel</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Stand-up wheel</h1>
+      <p id="who" class="muted">Loading...</p>
+    </header>
+
+    <div class="board">
+      <section class="wheel-side" aria-labelledby="wheel-title">
+        <h2 id="wheel-title" class="visually-hidden">The wheel</h2>
+        <div class="wheel">
+          <!-- The wheel is built in wheel.js and app.js; the pointer at the top does not turn. -->
+          <svg id="wheel" viewBox="-110 -116 220 232" role="img" aria-labelledby="wheel-text">
+            <g id="disc"></g>
+            <circle class="hub" r="13"></circle>
+            <path class="pointer" d="M-9 -114L9 -114L0 -96Z"></path>
+          </svg>
+        </div>
+        <p id="wheel-text" class="visually-hidden"></p>
+        <p id="next" class="next" role="status" aria-live="polite"></p>
+        <div class="actions">
+          <button type="button" class="primary" id="spin" disabled>Spin</button>
+          <button type="button" id="new-round" hidden>Start a new round</button>
+          <button type="button" id="refresh">Refresh</button>
+        </div>
+        <p id="status" class="muted" role="status"></p>
+      </section>
+
+      <section class="round-side" aria-labelledby="round-title">
+        <h2 id="round-title">This round</h2>
+        <h3>Has spoken</h3>
+        <ol id="spoken" class="people"></ol>
+        <p id="spoken-empty" class="muted">Nobody yet.</p>
+        <h3>Still to speak</h3>
+        <ul id="waiting" class="people chips"></ul>
+        <p id="waiting-empty" class="muted" hidden></p>
+        <div id="away-block" hidden>
+          <h3>Away today</h3>
+          <ul id="away" class="people chips"></ul>
+        </div>
+      </section>
+    </div>
+
+    <section aria-labelledby="history-title">
+      <h2 id="history-title">Earlier rounds</h2>
+      <ul id="history" class="history"></ul>
+      <p id="history-empty" class="muted">No round has been closed yet.</p>
+    </section>
+
+    <section id="owner" aria-labelledby="owner-title" hidden>
+      <h2 id="owner-title">The team</h2>
+      <p id="owner-note" class="muted"></p>
+      <form id="team-form" novalidate>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Portal username</th>
+                <th scope="col">Name on the wheel</th>
+                <th scope="col">Away today</th>
+                <th scope="col"><span class="visually-hidden">Remove</span></th>
+              </tr>
+            </thead>
+            <tbody id="team-rows"></tbody>
+          </table>
+        </div>
+        <div class="actions">
+          <button type="button" id="add-person">Add a person</button>
+          <button type="submit" class="primary" id="save-team">Save the list</button>
+        </div>
+        <p id="team-status" class="muted" role="status"></p>
+      </form>
+    </section>
+    <p id="not-owner" class="muted" hidden>The names and "away today" are edited by the owner of this app.</p>
+
+    <dialog id="confirm" aria-labelledby="confirm-title">
+      <form method="dialog">
+        <h2 id="confirm-title">Start a new round?</h2>
+        <p id="confirm-text"></p>
+        <div class="actions">
+          <button type="submit" value="cancel" id="confirm-no">Keep this round</button>
+          <button type="submit" value="close" class="primary" id="confirm-yes">Start a new round</button>
+        </div>
+      </form>
+    </dialog>
+  </main>
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

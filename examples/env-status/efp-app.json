@@ -1,0 +1,7 @@
+{
+  "name": "Environment status",
+  "description": "Example: are the test environments up? A plain Python web server run as a \"command\" app.",
+  "type": "command",
+  "command": "python server.py",
+  "health_path": "/healthz"
+}

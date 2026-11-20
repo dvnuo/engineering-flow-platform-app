@@ -1,0 +1,48 @@
+{
+  "run_seconds": 45,
+  "countdown_seconds": 3,
+  "spawn_gap_ms": {"start": 1100, "end": 420},
+  "speed_up": 1.5,
+  "combo": {"step": 5, "max_multiplier": 5},
+  "escape_penalty": 5,
+  "kinds": {
+    "typo": {
+      "label": "Typo",
+      "note": "Plain and steady.",
+      "points": 10,
+      "hits": 1,
+      "cross_seconds": 7,
+      "size": 1,
+      "weight": [6, 3]
+    },
+    "flaky": {
+      "label": "Flaky test",
+      "note": "Fast, and never where it was a moment ago.",
+      "points": 25,
+      "hits": 1,
+      "cross_seconds": 4.2,
+      "size": 0.9,
+      "weight": [1.5, 3]
+    },
+    "legacy": {
+      "label": "Legacy bug",
+      "note": "Armoured: the first hit only cracks it.",
+      "points": 40,
+      "hits": 2,
+      "cross_seconds": 10,
+      "size": 1.4,
+      "weight": [1, 2.5]
+    },
+    "feature": {
+      "label": "Feature",
+      "note": "Not a bug. Let it cross the board and it ships.",
+      "points": -30,
+      "hits": 1,
+      "cross_seconds": 8,
+      "size": 1.15,
+      "weight": [1.2, 1.8],
+      "friend": true,
+      "ship_bonus": 5
+    }
+  }
+}

@@ -1,0 +1,227 @@
+{
+  "services": [
+    {
+      "name": "web-shop",
+      "team": "Storefront",
+      "tier": 1,
+      "description": "The shop customers open in a browser. Renders pages on the server and calls the API gateway for everything else.",
+      "links": [
+        { "title": "Runbook", "url": "https://wiki.example.com/display/SHOP/web-shop+runbook" },
+        { "title": "Dashboard", "url": "https://grafana.example.com/d/web-shop" },
+        { "title": "Repository", "url": "https://github.example.com/acme/web-shop" }
+      ],
+      "depends_on": ["api-gateway", "feature-flags"]
+    },
+    {
+      "name": "mobile-bff",
+      "team": "Storefront",
+      "tier": 1,
+      "description": "Backend for the iOS and Android apps: one call per screen, shaped for a phone on a slow network.",
+      "links": [
+        { "title": "Runbook", "url": "https://wiki.example.com/display/SHOP/mobile-bff+runbook" },
+        { "title": "Repository", "url": "https://github.example.com/acme/mobile-bff" }
+      ],
+      "depends_on": ["api-gateway", "notifications", "feature-flags"]
+    },
+    {
+      "name": "api-gateway",
+      "team": "Platform",
+      "tier": 1,
+      "description": "The single way in: routing, rate limits and the check of every access token.",
+      "links": [
+        { "title": "Runbook", "url": "https://wiki.example.com/display/PLAT/api-gateway+runbook" },
+        { "title": "Dashboard", "url": "https://grafana.example.com/d/api-gateway" }
+      ],
+      "depends_on": ["identity", "catalog", "search", "cart", "checkout", "orders"]
+    },
+    {
+      "name": "identity",
+      "team": "Identity",
+      "tier": 1,
+      "description": "Sign-in, sessions and access tokens for customers and staff.",
+      "links": [
+        { "title": "Runbook", "url": "https://wiki.example.com/display/IAM/identity+runbook" },
+        { "title": "Repository", "url": "https://github.example.com/acme/identity" }
+      ],
+      "depends_on": ["postgres-main", "session-cache"]
+    },
+    {
+      "name": "catalog",
+      "team": "Storefront",
+      "tier": 1,
+      "description": "Products, categories and their pictures. The source of truth for what can be sold.",
+      "links": [
+        { "title": "Runbook", "url": "https://wiki.example.com/display/SHOP/catalog+runbook" },
+        { "title": "API", "url": "https://docs.example.com/apis/catalog" }
+      ],
+      "depends_on": ["postgres-main", "object-store", "event-bus"]
+    },
+    {
+      "name": "search",
+      "team": "Storefront",
+      "tier": 2,
+      "description": "Full-text search and suggestions over the catalog.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/SHOP/search+runbook" }],
+      "depends_on": ["search-index", "catalog"]
+    },
+    {
+      "name": "search-index",
+      "team": "Data",
+      "tier": 2,
+      "description": "Keeps the search cluster in step with the catalog by reading its change events.",
+      "links": [{ "title": "Dashboard", "url": "https://grafana.example.com/d/search-index" }],
+      "depends_on": ["event-bus"]
+    },
+    {
+      "name": "cart",
+      "team": "Storefront",
+      "tier": 1,
+      "description": "The basket of a customer, kept across devices.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/SHOP/cart+runbook" }],
+      "depends_on": ["catalog", "pricing", "session-cache"]
+    },
+    {
+      "name": "pricing",
+      "team": "Payments",
+      "tier": 1,
+      "description": "The price of a basket: list prices, taxes and whatever promotions grants.",
+      "links": [
+        { "title": "Runbook", "url": "https://wiki.example.com/display/PAY/pricing+runbook" },
+        { "title": "API", "url": "https://docs.example.com/apis/pricing" }
+      ],
+      "depends_on": ["catalog", "promotions"]
+    },
+    {
+      "name": "promotions",
+      "team": "Payments",
+      "tier": 2,
+      "description": "Vouchers and campaigns. Asks pricing for list prices to work out a discount, while pricing asks it for the discounts: a cycle worth untangling.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/PAY/promotions+runbook" }],
+      "depends_on": ["pricing", "feature-flags"]
+    },
+    {
+      "name": "checkout",
+      "team": "Payments",
+      "tier": 1,
+      "description": "Turns a basket into a paid order, step by step.",
+      "links": [
+        { "title": "Runbook", "url": "https://wiki.example.com/display/PAY/checkout+runbook" },
+        { "title": "Dashboard", "url": "https://grafana.example.com/d/checkout" }
+      ],
+      "depends_on": ["cart", "pricing", "payments", "orders", "identity"]
+    },
+    {
+      "name": "payments",
+      "team": "Payments",
+      "tier": 1,
+      "description": "Talks to the card and wallet providers and records every attempt.",
+      "links": [
+        { "title": "Runbook", "url": "https://wiki.example.com/display/PAY/payments+runbook" },
+        { "title": "Repository", "url": "https://github.example.com/acme/payments" }
+      ],
+      "depends_on": ["fraud-check", "ledger", "event-bus"]
+    },
+    {
+      "name": "fraud-check",
+      "team": "Payments",
+      "tier": 2,
+      "description": "Scores a payment before it is sent to the provider.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/PAY/fraud-check+runbook" }],
+      "depends_on": ["identity", "feature-flags"]
+    },
+    {
+      "name": "ledger",
+      "team": "Payments",
+      "tier": 1,
+      "description": "Double-entry bookkeeping of every movement of money.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/PAY/ledger+runbook" }],
+      "depends_on": ["postgres-main", "event-bus"]
+    },
+    {
+      "name": "orders",
+      "team": "Fulfilment",
+      "tier": 1,
+      "description": "Orders and their states, from placed to delivered.",
+      "links": [
+        { "title": "Runbook", "url": "https://wiki.example.com/display/FUL/orders+runbook" },
+        { "title": "API", "url": "https://docs.example.com/apis/orders" }
+      ],
+      "depends_on": ["inventory", "postgres-main", "event-bus"]
+    },
+    {
+      "name": "inventory",
+      "team": "Fulfilment",
+      "tier": 1,
+      "description": "Stock per warehouse, and reservations while an order is being paid.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/FUL/inventory+runbook" }],
+      "depends_on": ["postgres-main", "event-bus"]
+    },
+    {
+      "name": "shipping",
+      "team": "Fulfilment",
+      "tier": 2,
+      "description": "Books carriers, prints labels and follows parcels.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/FUL/shipping+runbook" }],
+      "depends_on": ["orders", "notifications", "event-bus"]
+    },
+    {
+      "name": "notifications",
+      "team": "Platform",
+      "tier": 2,
+      "description": "E-mail, SMS and push messages, with templates and a do-not-disturb list.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/PLAT/notifications+runbook" }],
+      "depends_on": ["identity", "event-bus"]
+    },
+    {
+      "name": "reporting",
+      "team": "Data",
+      "tier": 3,
+      "description": "Nightly sales and stock reports for finance and the warehouses.",
+      "links": [{ "title": "Dashboard", "url": "https://grafana.example.com/d/reporting" }],
+      "depends_on": ["event-bus", "object-store"]
+    },
+    {
+      "name": "feature-flags",
+      "team": "Platform",
+      "tier": 2,
+      "description": "Switches features on for a share of customers without a deployment.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/PLAT/feature-flags+runbook" }],
+      "depends_on": ["postgres-main"]
+    },
+    {
+      "name": "session-cache",
+      "team": "Platform",
+      "tier": 1,
+      "description": "The shared in-memory store for sessions and baskets.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/PLAT/session-cache+runbook" }],
+      "depends_on": []
+    },
+    {
+      "name": "event-bus",
+      "team": "Platform",
+      "tier": 1,
+      "description": "The message broker every service publishes its changes to.",
+      "links": [
+        { "title": "Runbook", "url": "https://wiki.example.com/display/PLAT/event-bus+runbook" },
+        { "title": "Dashboard", "url": "https://grafana.example.com/d/event-bus" }
+      ],
+      "depends_on": []
+    },
+    {
+      "name": "postgres-main",
+      "team": "Platform",
+      "tier": 1,
+      "description": "The main database cluster. Each service has its own schema.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/PLAT/postgres-main+runbook" }],
+      "depends_on": []
+    },
+    {
+      "name": "object-store",
+      "team": "Platform",
+      "tier": 2,
+      "description": "Files: product pictures, labels, report exports.",
+      "links": [{ "title": "Runbook", "url": "https://wiki.example.com/display/PLAT/object-store+runbook" }],
+      "depends_on": []
+    }
+  ]
+}
