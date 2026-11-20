@@ -17,6 +17,11 @@ tini
 
 - Port **8080** is what the Ingress routes to. Port **9000** is for the Portal
   only, from inside the cluster; it must never get a public route.
+- The root of the apps address (`/` on port 8080) is the **app center**: the
+  apps a signed-in member may open. The manager writes it from what the
+  Portal answers (`POST /api/app-host/v1/catalog`), so it needs the Portal
+  to be reachable; a visitor without a session is sent to the Portal to sign
+  in. Nothing has to be configured for it.
 - The host is **one replica**. Two hosts on the same volume would corrupt it;
   the Deployment uses `strategy: Recreate` for that reason.
 - The container starts as **root**: the manager creates one OS user per app
@@ -94,7 +99,7 @@ section 3).
 | `EFP_HOST_PIP_ALLOW_SDIST` | `false` | Allow packages that have no wheel. A source distribution runs its build code at deployment time (as the app's user, inside its isolation). |
 | `EFP_HOST_RESOURCE_DIR` | `/opt/efp` (set in the image) | Where the gateway's nginx template and pages are. Leave it. |
 | `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_TRUSTED_HOST`, `PIP_CERT`, ... | | Read by pip itself. Every `PIP_*` variable is passed to deployments and **never** to apps. |
-| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` | | Passed to deployments and to apps. The manager's own calls to the Portal never use a proxy. Put the cluster's service domain into `NO_PROXY`, or apps will send their SDK calls to the proxy. |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` | | Passed to deployments and to apps. The manager's own calls to the Portal never use a proxy. Put the cluster's service domain into `NO_PROXY`, or apps will send their SDK calls to the proxy. The host adds `127.0.0.1`, `localhost` and `::1` to an app's `NO_PROXY` by itself whenever a proxy is set, because some frameworks (Gradio) ask their own port while they start. |
 
 A certificate file named by `PIP_CERT`, `SSL_CERT_FILE` or
 `REQUESTS_CA_BUNDLE` must exist in the container (mount it, for example below
@@ -340,6 +345,8 @@ gone.
 | Static apps answer 403/404 from nginx in sandbox mode | nginx's worker (`www-data`) must reach the files: the directory above `EFP_HOST_STORE_DIR` must be `0755` (the entrypoint sets it; a custom `securityContext.fsGroup` or mount option can undo it). |
 | The pod does not start: "the app host must start as root" | `runAsUser: 0` is required (section 1). |
 | nginx answers 502 right after a start | The manager is still probing the isolation; a few seconds. |
+| The app center says "The list of apps is not available right now" | The manager could not ask the Portal for the member's catalog: `EFP_PORTAL_INTERNAL_URL`, the host API token, or a Portal older than the host (it lacks `/api/app-host/v1/catalog`). The apps themselves still open by their addresses. |
+| The app center sends the browser to the Portal and it comes back to "Sign-in did not finish" | The browser did not keep the session cookie. It is `Secure`: the apps address must be served over https. |
 
 ## 10. CI
 
@@ -350,7 +357,8 @@ container next to a stub Portal once per isolation variant
 (`integration/ci.sh`): it deploys the starter templates, one of
 the example apps (`examples/team-poll`, with a member signing in and voting)
 and a probe app, checks them through the gateway, checks that one app cannot read
-another's files, environment or stored objects, and that redeploy, rollback
+another's files, environment or stored objects, that the app center lists
+what the Portal names and serves an icon, and that redeploy, rollback
 and a new container on the same volume work. On a Linux machine with Docker
 the same runs with `sh integration/ci.sh all hidden` (or
 `sandbox`).

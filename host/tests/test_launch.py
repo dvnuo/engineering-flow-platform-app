@@ -124,9 +124,42 @@ def test_environment_in_sandbox_mode(tmp_path):
     assert env["SCRIPT_NAME"] == "/mindmap"
     # The owner may override the host's proxy, but never sees the pip settings.
     assert env["HTTPS_PROXY"] == "http://mine:1"
+    # With a proxy set, what the app asks of itself stays off it.
+    assert env["NO_PROXY"] == env["no_proxy"] == "127.0.0.1,localhost,::1"
     assert not any(key.startswith("PIP_") for key in env)
     assert "secret" not in " ".join(env.values())
     assert dirs.code == paths.code_dir("app-1", "s1") and dirs.data == paths.data_dir("app-1")
+
+
+@pytest.mark.parametrize(
+    "given, expected",
+    [
+        ({}, {}),  # no proxy: nothing to exempt, nothing is added
+        ({"NO_PROXY": ".svc.cluster.local"}, {"NO_PROXY": ".svc.cluster.local"}),
+        ({"HTTPS_PROXY": "http://p:1"}, {"NO_PROXY": "127.0.0.1,localhost,::1", "no_proxy": "127.0.0.1,localhost,::1"}),
+        (
+            {"http_proxy": "http://p:1", "NO_PROXY": ".svc.cluster.local, 10.0.0.0/8"},
+            {"NO_PROXY": ".svc.cluster.local,10.0.0.0/8,127.0.0.1,localhost,::1", "no_proxy": ".svc.cluster.local,10.0.0.0/8,127.0.0.1,localhost,::1"},
+        ),
+        (
+            {"ALL_PROXY": "socks5://p:1", "no_proxy": "LOCALHOST,127.0.0.1"},
+            {"NO_PROXY": "LOCALHOST,127.0.0.1,::1", "no_proxy": "LOCALHOST,127.0.0.1,::1"},
+        ),
+        (
+            {"HTTPS_PROXY": "http://p:1", "NO_PROXY": "a.example", "no_proxy": "b.example"},
+            {"NO_PROXY": "a.example,127.0.0.1,localhost,::1", "no_proxy": "b.example,127.0.0.1,localhost,::1"},
+        ),
+        ({"HTTPS_PROXY": "http://p:1", "NO_PROXY": "*"}, {"NO_PROXY": "*"}),
+        ({"HTTPS_PROXY": "", "HTTP_PROXY": ""}, {}),  # an empty variable is no proxy
+    ],
+)
+def test_an_apps_own_address_never_goes_through_the_proxy(given, expected):
+    # Gradio asks its own port while it starts; through a proxy that fails and the app never comes up.
+    from efp_app_host.launch import exempt_loopback_from_proxy
+
+    env = dict(given)
+    exempt_loopback_from_proxy(env)
+    assert {key: value for key, value in env.items() if key.lower() == "no_proxy"} == expected
 
 
 def test_environment_in_hidden_mode(tmp_path):

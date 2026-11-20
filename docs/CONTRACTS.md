@@ -483,6 +483,7 @@ places: files under `EFP_APP_DATA_DIR/objects/` (sandbox), this socket
 | `HOME`, `TMPDIR` | a private writable directory, emptied on restart |
 | `PYTHONUNBUFFERED` | `1` |
 | owner-defined variables | may not start with `EFP_` and may not be `PORT`, `HOME`, `TMPDIR`, `PATH` |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (either case), `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` | the host's own, when it has them. With a proxy set, `127.0.0.1`, `localhost` and `::1` are added to `NO_PROXY` and `no_proxy`: what an app asks of its own port never goes to the proxy |
 
 On a developer's machine the SDK needs only `EFP_APP_TOKEN` and
 `EFP_PORTAL_URL` (the Portal's public address).
@@ -509,7 +510,13 @@ is `PORT`. The host and `efp-app dev` use the same command lines.
   `uvicorn` for `fastapi`, `gunicorn` for `flask`.
 - On Windows `efp-app dev` starts `flask` apps with
   `python -m flask --app {entry} run --port {PORT}` (gunicorn needs a POSIX
-  system).
+  system). With `--prefix` it wraps the app so that Flask's own server
+  applies `SCRIPT_NAME` the way gunicorn does.
+- `efp-app dev --prefix NAME` puts a stand-in for the gateway in front of
+  the app: the prefix is removed or kept as in the table, the forwarded
+  headers of 6.2 are added, and a request outside `/NAME/` is answered 404.
+  It signs nobody in and sets no `EFP_APP_ID`, so identity and storage stay
+  those of a developer's machine.
 - An app is healthy when `GET {health_path}` on its port (with the prefix when
   the type keeps it) answers with a status below 500.
 

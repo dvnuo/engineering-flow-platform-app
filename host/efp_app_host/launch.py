@@ -189,7 +189,33 @@ def app_environment(
         env["EFP_APP_DATA_DIR"] = paths.data_dir(record.id).as_posix()
     if extra:
         env.update(extra)
+    exempt_loopback_from_proxy(env)
     return env
+
+
+PROXY_VARIABLES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def exempt_loopback_from_proxy(env: dict[str, str]) -> None:
+    """With a proxy in the environment, name the loopback addresses in ``NO_PROXY``.
+
+    An app's own port is on 127.0.0.1, and some frameworks ask it while they
+    start (Gradio's ``launch()`` does). Sent to the platform's proxy, that
+    request fails and the app never comes up. Both spellings of the variable
+    are written, because libraries differ in which one they read.
+    """
+
+    if not any(env.get(name) for name in PROXY_VARIABLES):
+        return
+    for name in ("NO_PROXY", "no_proxy"):
+        other = "no_proxy" if name == "NO_PROXY" else "NO_PROXY"
+        entries = [item.strip() for item in (env.get(name) or env.get(other) or "").split(",") if item.strip()]
+        if "*" in entries:
+            continue  # nothing goes through the proxy anyway
+        known = {item.lower() for item in entries}
+        entries += [host for host in LOOPBACK_HOSTS if host not in known]
+        env[name] = ",".join(entries)
 
 
 def health_url(record: AppRecord, release: Release, *, port: int | None = None) -> str:
