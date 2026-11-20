@@ -359,8 +359,13 @@ def keep_paths_from_msys(env: Dict[str, str]) -> None:
     like a POSIX path into a Windows path, so ``EFP_APP_BASE_PATH=/my-app``
     reaches a ``command`` app (started through ``sh -c``) as
     ``C:/Program Files/Git/my-app``. ``MSYS2_ENV_CONV_EXCL`` names the
-    variables to leave alone.
+    variables to leave alone. It does the same to command-line arguments
+    (``python server.py $EFP_APP_BASE_PATH``); ``MSYS_NO_PATHCONV`` (Git for
+    Windows) and ``MSYS2_ARG_CONV_EXCL`` (MSYS2) switch that off, which is
+    how the host behaves: there nothing is rewritten.
     """
+    env.setdefault("MSYS_NO_PATHCONV", "1")
+    env.setdefault("MSYS2_ARG_CONV_EXCL", "*")
     names = [item for item in (env.get("MSYS2_ENV_CONV_EXCL") or "").split(";") if item]
     if "*" in names:
         return

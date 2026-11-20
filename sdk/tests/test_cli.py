@@ -853,13 +853,19 @@ def test_the_apps_own_address_stays_off_a_company_proxy():
 def test_git_bash_is_told_to_leave_the_prefix_alone():
     env = {}
     cli.keep_paths_from_msys(env)
-    assert env == {"MSYS2_ENV_CONV_EXCL": "EFP_APP_BASE_PATH;SCRIPT_NAME;GRADIO_ROOT_PATH"}
-    kept = {"MSYS2_ENV_CONV_EXCL": "MY_PATH;SCRIPT_NAME"}
+    assert env == {
+        "MSYS2_ENV_CONV_EXCL": "EFP_APP_BASE_PATH;SCRIPT_NAME;GRADIO_ROOT_PATH",
+        # Arguments are left alone as well: "python server.py $EFP_APP_BASE_PATH" gets /my-app, as on the host.
+        "MSYS_NO_PATHCONV": "1",
+        "MSYS2_ARG_CONV_EXCL": "*",
+    }
+    kept = {"MSYS2_ENV_CONV_EXCL": "MY_PATH;SCRIPT_NAME", "MSYS2_ARG_CONV_EXCL": "/mine"}
     cli.keep_paths_from_msys(kept)
     assert kept["MSYS2_ENV_CONV_EXCL"] == "MY_PATH;SCRIPT_NAME;EFP_APP_BASE_PATH;GRADIO_ROOT_PATH"
+    assert kept["MSYS2_ARG_CONV_EXCL"] == "/mine"  # what the developer chose stays
     everything = {"MSYS2_ENV_CONV_EXCL": "*"}
     cli.keep_paths_from_msys(everything)
-    assert everything == {"MSYS2_ENV_CONV_EXCL": "*"}
+    assert everything["MSYS2_ENV_CONV_EXCL"] == "*"
     # Only on Windows does the dev command set it.
     assert ("MSYS2_ENV_CONV_EXCL" in cli.child_environment({}, {}, 8000)) is (sys.platform == "win32")
 

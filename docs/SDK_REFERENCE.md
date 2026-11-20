@@ -2834,8 +2834,10 @@ app's requirements must be installed in the same environment.
    set, `127.0.0.1`, `localhost` and `::1` are added to
    `NO_PROXY` and `no_proxy`, so that what the app asks of its own port does
    not go to the proxy (the host does the same); on Windows the three names
-   of step 3 are added to `MSYS2_ENV_CONV_EXCL`, so that Git Bash does not
-   rewrite the prefix into a Windows path;
+   of step 3 are added to `MSYS2_ENV_CONV_EXCL`, and `MSYS_NO_PATHCONV=1`
+   and `MSYS2_ARG_CONV_EXCL=*` are set unless they already are, so that Git
+   Bash rewrites neither the prefix nor a command's arguments into Windows
+   paths;
 5. the variables of the table above;
 6. with `--prefix`, the variables named below.
 
@@ -3027,7 +3029,7 @@ need them.
 | `cli.child_environment(base, env_file, port, *, system_proxy=None)` | The environment of the app's process, built as 12.3 says (steps 1 to 4). `system_proxy` is the result of `cli.system_proxy_settings()`; `efp-app dev` passes it. |
 | `cli.system_proxy_settings()` | The proxy of the operating system's own settings (Windows, macOS), as `({"http": ..., "https": ...}, [hosts that bypass it])`; empty when there is none. When no proxy variable is set, `efp-app dev` writes it into the app's environment as `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`: Python's HTTP libraries would use that proxy anyway, and httpx ignores the system's bypass list, so the app's own port would be sent to the proxy. |
 | `cli.exempt_loopback_from_proxy(env)` | Changes `env` in place: when it holds a proxy variable (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, in either case), `127.0.0.1`, `localhost` and `::1` are added to `NO_PROXY` and `no_proxy`. The app listens on 127.0.0.1 and some frameworks ask their own port while they start (Gradio's `launch()`); through a company proxy that request fails. The host does the same for a deployed app. `cli.child_environment` calls it. |
-| `cli.keep_paths_from_msys(env)` | Changes `env` in place: adds `EFP_APP_BASE_PATH`, `SCRIPT_NAME` and `GRADIO_ROOT_PATH` to `MSYS2_ENV_CONV_EXCL`, so that the `sh` of Git Bash does not turn the path prefix into a Windows path when it starts a `command` app. `cli.child_environment` calls it on Windows only. |
+| `cli.keep_paths_from_msys(env)` | Changes `env` in place: adds `EFP_APP_BASE_PATH`, `SCRIPT_NAME` and `GRADIO_ROOT_PATH` to `MSYS2_ENV_CONV_EXCL`, so that the `sh` of Git Bash does not turn the path prefix into a Windows path when it starts a `command` app, and sets `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL=*` (unless they are set) so that it does not rewrite the command's arguments either. `cli.child_environment` calls it on Windows only. |
 | `cli.build_launch(found, port, base_path="", python=None, platform=None)` | The command line for a `manifest.Manifest`, as a `cli.Launch`. `base_path` is the prefix, `python` the interpreter, `platform` the value of `sys.platform` to decide for. |
 | `cli.Launch` | How an app is started: see below. |
 

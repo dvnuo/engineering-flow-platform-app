@@ -11,19 +11,58 @@ This guide covers the Python SDK (`efp-app-sdk`, imported as `efp_app`), the
 `efp-app` command and the rules an app has to follow. The wire contracts
 behind it are in [CONTRACTS.md](CONTRACTS.md).
 
-Looking for something to copy? [`examples/`](../examples/README.md) holds
-seven small apps (a page of links, a poll, a log explainer, a Jira digest,
-release notes from commits, questions answered from Confluence, a setup
-check), each built around one of the habits this guide describes.
+Related documents:
 
-Contents: [Quick start](#quick-start) - [The manifest](#the-manifest) -
+- [SDK_REFERENCE.md](SDK_REFERENCE.md): every function, class, error,
+  environment variable and command, exactly. This guide explains; the
+  reference lists.
+- [CONVERTING_A_PROJECT.md](CONVERTING_A_PROJECT.md): turning an existing
+  web app, script, notebook or front-end build into an app, step by step.
+- [`examples/`](../examples/README.md): complete apps to copy, from a page of
+  links to dashboards, drawing tools, team games and model-backed tools, with
+  an index of which example shows what.
+- [AGENTS.md](../AGENTS.md): the same rules as a brief for an AI agent.
+
+Contents: [How an app runs](#how-an-app-runs) - [Quick start](#quick-start) -
+[The manifest](#the-manifest) -
 [App types and the path prefix](#app-types-and-the-path-prefix) -
 [What reaches your app](#what-reaches-your-app) -
 [Visitor identity](#visitor-identity) - [The language model](#the-language-model) -
 [Connectors](#connectors) - [Storage](#storage) - [About the app](#about-the-app) -
 [Errors](#errors) - [Local development](#local-development) -
-[efp-app check](#efp-app-check) - [Limits](#limits) -
-[Troubleshooting](#troubleshooting)
+[efp-app check](#efp-app-check) -
+[Where visitors find the app](#where-visitors-find-the-app) -
+[Limits](#limits) - [Troubleshooting](#troubleshooting)
+
+## How an app runs
+
+Everything else in this guide follows from six facts.
+
+1. **An app is a directory.** One directory of a GitHub repository with a
+   manifest, `efp-app.json`, in it. You register it in the Portal; the Portal
+   reads it with the platform's read-only service account.
+2. **A deployment is a copy of one commit.** The Portal sends the directory
+   to the app host, which unpacks it, installs `requirements.txt` into an
+   environment of its own, starts the app, checks that it answers and only
+   then switches to it. The code is read-only once it runs. A failed
+   deployment leaves the running release untouched, and the previous release
+   is kept for a rollback.
+3. **The host starts the app, as one process.** For each type there is one
+   command line ([below](#app-types-and-the-path-prefix)). The app listens on
+   `127.0.0.1` and the port in `PORT`. Nothing else is reachable.
+4. **A gateway stands in front of it.** Visitors reach the app at
+   `https://<apps host>/<slug>/`. The gateway signs them in with the Portal,
+   checks that the app is open to them, and tells the app who they are in a
+   signed header. So an app has no login of its own, and every address it
+   hands to a browser must work under `/<slug>/`.
+5. **An idle app is stopped.** After a while without requests the process is
+   stopped; the next visit starts it again. Nothing lives in memory or on the
+   local disk, and nothing runs in the background. What must survive goes to
+   `efp_app.storage`.
+6. **The app borrows from its owner.** With the app's token the SDK calls the
+   Portal for the owner's language model and the owner's connectors. The
+   owner switches each of them on for the app, pays for the model calls, and
+   lends their connector's access to every visitor.
 
 ## Quick start
 
@@ -105,12 +144,12 @@ it on the app's page.
 |---|---|
 | `name` | required, 1-80 characters |
 | `description` | optional, up to 500 characters |
-| `icon` | optional, an image file in the entry directory |
+| `icon` | optional, an image file in the entry directory: PNG, JPEG, GIF or WebP, at most 256 KB (a larger one is left out when the app is deployed) |
 | `type` | required: `fastapi`, `flask`, `streamlit`, `gradio`, `command`, `static` |
 | `entry` | `fastapi` / `flask`: `module:attribute` (`main:app`). `streamlit` / `gradio`: the script (`app.py`). `static`: the directory to serve, default `.`. Not used by `command` |
-| `command` | only for `command`: one shell command line; it may use `$PORT` and `$EFP_APP_BASE_PATH` |
+| `command` | only for `command`: one shell command line of at most 2000 characters; it may use `$PORT` and `$EFP_APP_BASE_PATH` |
 | `requirements` | optional, default `requirements.txt`; without the file the app has no dependencies |
-| `health_path` | optional, default `/`; the app is healthy when a `GET` of it answers with a status below 500 |
+| `health_path` | optional, default `/`, at most 200 characters; the app is healthy when a `GET` of it answers with a status below 500 |
 | `startup_timeout` | optional, whole seconds, default 60, at most 300 |
 | `strip_prefix` | optional; overrides whether the gateway removes the path prefix (next section) |
 | `owners` | optional; the Portal usernames that may register this directory as an app (default: any member) |
@@ -235,14 +274,22 @@ url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 const socket = new WebSocket(url);
 ```
 
+A FastAPI app that serves WebSockets lists `uvicorn[standard]` in its
+`requirements.txt`: plain `uvicorn` comes without a WebSocket library and
+refuses the upgrade. On the server the visitor of a WebSocket is read from
+its handshake (`get_visitor(websocket)`). An open WebSocket counts as use:
+the app is not stopped while somebody is connected
+([`examples/planning-poker`](../examples/planning-poker/)).
+
 ## What reaches your app
 
 - The path, with or without the prefix (see above), and
   `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host`,
   `X-Forwarded-Prefix: /<slug>`.
 - The visitor's cookies, without the gateway's own session cookie.
-- `X-EFP-Visitor`, when the visitor is signed in. The gateway removes every
-  `X-EFP-*` header a browser sends, so this one cannot be forged from outside.
+- `X-EFP-Visitor`, when the visitor is signed in. The gateway refuses (with
+  `400`) every request in which the client itself sent an `X-EFP-*` header,
+  so this one cannot be forged from outside.
 - WebSockets and streamed answers pass through unbuffered; a request may take
   up to an hour.
 
@@ -311,9 +358,11 @@ Good to know:
 - Do not take identity from anything else (a query parameter, a form field,
   your own cookie without a check).
 - On your own machine there is no gateway: without the header, `current()`
-  returns the owner of the app (asked from the Portal once), or the user named
-  by `EFP_DEV_VISITOR`. `EFP_DEV_VISITOR=anonymous` shows the app as a
-  visitor who is not signed in.
+  returns the user named by `EFP_DEV_VISITOR` when that is set, else the
+  owner of the app (asked from the Portal once). Every name is a visitor of
+  its own, with an id made from the name, so you can try an app as alice
+  and then as bob. `EFP_DEV_VISITOR=anonymous` shows the app as a visitor
+  who is not signed in.
 
 ## The language model
 
@@ -338,7 +387,7 @@ stream.text, stream.usage       # complete once the stream has ended
 | `max_output_tokens`, `temperature` | optional; a provider may ignore `temperature` |
 | `reasoning_effort` | `"low"`, `"medium"` or `"high"`; left out, an app call runs at `low`, and because reasoning tokens count as output tokens, a high effort with a small `max_output_tokens` can come back with an empty text |
 | `visitor` | the `Visitor` (or the header value): the Portal records who caused the call |
-| `timeout` | seconds; default 600 |
+| `timeout` | seconds allowed for each wait on the Portal (10 at most for connecting), not for the call as a whole; default 600 |
 
 `llm.acomplete(...)` and `llm.astream(...)` are the same for asynchronous
 code:
@@ -497,11 +546,15 @@ except EfpError as exc:
 | `provider_error` | `ProviderError` | the model provider failed |
 | `upstream_error` | `UpstreamError` | the connector's system could not be reached |
 | `upstream_timeout` | `UpstreamTimeoutError` | the connector's system was too slow |
-| `not_configured` | `ConfigurationError` | `EFP_APP_TOKEN` or `EFP_PORTAL_URL` is missing |
+| `not_configured` | `ConfigurationError` | `EFP_APP_TOKEN` or `EFP_PORTAL_URL` is missing, the address is not an `http(s)` one, or a CA bundle cannot be loaded |
 | `portal_unreachable`, `portal_timeout` | `PortalUnreachableError`, `PortalTimeoutError` | the Portal cannot be reached |
 | `unexpected_response`, `stream_interrupted` | `UnexpectedResponseError`, `StreamInterruptedError` | a broken answer, usually a wrong `EFP_PORTAL_URL` or a restart |
 | `not_found`, `invalid_key`, `too_large`, `quota_exceeded` | `StorageNotFoundError`, `InvalidKeyError`, `TooLargeError`, `QuotaExceededError` | storage; all derive from `StorageError` |
 | `data_dir_unavailable`, `storage_unavailable` | `DataDirUnavailableError`, `StorageUnavailableError` | storage that this host does not offer |
+| `storage_error`, `invalid_json` | `StorageError` | storage failed for another reason; `load_json` found an object that is not JSON |
+
+The complete table, with the status and the sentence of every class, is in
+[SDK_REFERENCE.md](SDK_REFERENCE.md), section 10.
 
 The SDK repeats a read (`GET`) when the connection fails and never repeats a
 model or connector call: repeat those yourself only when doing so is safe.
@@ -519,7 +572,8 @@ shell win over `.env`. `--dry-run` shows the command without starting it.
 | `EFP_PORTAL_URL` | the Portal's address as you open it in the browser |
 | `EFP_DEV_VISITOR` | optional: a username to act as, or `anonymous` |
 | `EFP_VISITOR_KEY` | not needed (there is no gateway to sign anything) |
-| `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` | honoured, for a company proxy or CA |
+| `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY` | honoured, for a company proxy |
+| `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, `SSL_CERT_DIR` | honoured, for a company CA |
 
 What a deployed app gets, for reference: `EFP_APP_ID`, `EFP_APP_SLUG`,
 `EFP_APP_TOKEN`, `EFP_APP_BASE_PATH`, `EFP_APP_PUBLIC_URL`, `EFP_PORTAL_URL`,
@@ -528,20 +582,57 @@ What a deployed app gets, for reference: `EFP_APP_ID`, `EFP_APP_SLUG`,
 names may not start with `EFP_` or be `PORT`, `HOME`, `TMPDIR`, `PATH`).
 Read your own settings from the environment; do not commit secrets.
 
-Differences from the host to keep in mind:
+### Under the prefix, as when deployed
 
-- No gateway: nobody signs in, no `X-EFP-Visitor`, no path prefix. Run
-  `efp-app check` before every deployment; it finds the prefix mistakes that
-  cannot show up locally.
+`efp-app dev [directory] --prefix NAME` (`NAME` is a slug: 3 to 40 lower-case
+letters, digits and `-`) runs the app the way it is served once deployed: the app is started with `EFP_APP_BASE_PATH=/NAME` and the
+host's options for its type, and a small gateway in front of it serves it at
+`http://127.0.0.1:8000/NAME/`, removing or keeping the prefix as the real
+gateway does for that type. WebSockets and streamed answers pass through.
+
+Every request that lands outside `/NAME/` is answered with a 404 that says
+so and is printed on the console:
+
+```
+outside the app: GET /static/app.js  (a URL that starts with "/"?)
+```
+
+Open the app, use every page and every button once, and watch the console: a
+line like the one above is a URL that will break when deployed. One kind of
+mistake does not show there: a relative URL that is wrong only on a page
+below the top level (`fetch("api/items")` on `/NAME/reports/2026`) stays
+inside the app, so the gateway has nothing to report. It shows as a 404 in
+the app's own log and in the browser's network panel; look there too. Identity and
+storage stay those of your machine (`EFP_DEV_VISITOR`, `./.efp-data/`). Use
+this mode before the first deployment and after every change to pages,
+redirects or WebSockets.
+
+### Differences from the host
+
+- No real gateway: nobody signs in and there is no `X-EFP-Visitor`. Without
+  `--prefix` there is no path prefix either. Run `efp-app check` before every
+  deployment and `efp-app dev --prefix` when pages changed; between them they
+  find the prefix mistakes.
 - Flask on Windows runs on Flask's own server (`python -m flask --app {entry}
   run`), because gunicorn needs a POSIX system. The host uses gunicorn.
 - A static app is previewed with Python's file server; on the host there is
-  no process.
+  no process. The preview is more permissive than the host: it serves files
+  whose name starts with a dot and lists directories without an
+  `index.html`, and the host does neither.
 - Local data is in `./.efp-data/`. Windows cannot keep keys whose segments
   end in a dot or are device names (`NUL`, `COM1`); the SDK says so instead of
   saving them under another name.
 - Calls made locally are real: they use your model provider, count against
   the app's budget and reach the real Jira.
+- Behind a company proxy: `efp-app dev` adds `127.0.0.1` and `localhost` to
+  `NO_PROXY` for the app, as the host does, because some frameworks
+  (Gradio) ask their own port while they start. A proxy that is only in
+  the operating system's settings (Windows, macOS) is written into the
+  app's environment as `HTTP_PROXY` and `HTTPS_PROXY` first: Python's HTTP
+  libraries would use it anyway, and one of them (httpx, which the SDK and
+  Gradio use) ignores the system's list of hosts that bypass it.
+- A `command` app is started through `sh -c`, so on Windows it needs Git
+  Bash or WSL.
 
 ## efp-app check
 
@@ -555,11 +646,33 @@ Differences from the host to keep in mind:
   `action="/..."`, `fetch("/...")`, `url(/...)`), each with the relative form
   to use; requirement lines the host cannot install (repositories, URLs, local
   paths, index options); a requirements file that does not list the app's
-  framework; unknown manifest keys.
+  framework, or the default `requirements.txt` missing; an entry attribute
+  that the entry module never mentions; a static app without an
+  `index.html`; unknown manifest keys.
 
 The URL scan is a text search: a flagged line that never reaches a browser is
 harmless, and a URL assembled at run time is not found. Python sources are
-not scanned.
+not scanned. `efp-app dev --prefix` finds what the scan cannot, by running
+the app.
+
+## Where visitors find the app
+
+- **Its own address**, `https://<apps host>/<slug>/`. The slug is made from
+  the name when you register the app, never changes and is never given to
+  another app, so the address is safe to send around and to bookmark.
+- **The app center**, `https://<apps host>/`: every app a member may open,
+  the ones they used last first, with a search over names, descriptions and
+  owners. Your own apps are there too, marked as yours.
+- **Apps in the Portal**: the same list next to the tools for owners.
+
+What a card shows comes from the manifest and the Portal: `name`,
+`description` (one or two sentences; say what the app does for the visitor),
+`icon` (a PNG, JPEG, GIF or WebP file of at most 256 KB in the entry
+directory; without one the card shows the first letter of the name) and your
+name as the owner. An app appears in other members' lists once it has been
+deployed and its audience includes them; you choose the audience on the
+app's page in the Portal: only you, your group, every member, or anyone
+(where the platform allows that).
 
 ## Limits
 
@@ -596,8 +709,10 @@ not scanned.
 ## Troubleshooting
 
 **Works locally; deployed, the page has no styles or scripts, or `fetch`
-answers 404.** A URL starts with `/`. Run `efp-app check` and make the URLs
-relative (FastAPI, static), or build them with `url_for` (Flask).
+answers 404.** A URL starts with `/`. Run `efp-app check`, then
+`efp-app dev --prefix my-app` and watch the console for "outside the app".
+Make the URLs relative (FastAPI, static), or build them with `url_for`
+(Flask).
 
 **A redirect or a form lands on a "not found" page.** The same
 cause in Python code: `redirect("/done")`. Use `url_for` /
