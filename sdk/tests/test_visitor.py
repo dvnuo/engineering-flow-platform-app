@@ -237,8 +237,21 @@ def test_a_bad_header_is_an_anonymous_visitor_even_locally(monkeypatch):
 def test_dev_visitor_from_the_environment(monkeypatch):
     monkeypatch.setenv("EFP_DEV_VISITOR", "carol")
     found = visitor.current({})
-    assert found == Visitor(id=0, username="carol", name="carol")
+    assert found == Visitor(id=visitor.dev_visitor_id("carol"), username="carol", name="carol")
     assert found.raw is None
+
+
+def test_two_names_are_two_visitors_on_a_developers_machine(monkeypatch):
+    # An app that keeps data per visitor.id can be tried as two members on one machine.
+    ids = {}
+    for name in ("alice", "bob", "carol", "dave", "Alice ", "ALICE"):
+        monkeypatch.setenv("EFP_DEV_VISITOR", name)
+        ids[name] = visitor.current({}).id
+    assert ids["alice"] == ids["Alice "] == ids["ALICE"] == visitor.dev_visitor_id("alice")
+    assert len({ids["alice"], ids["bob"], ids["carol"], ids["dave"]}) == 4
+    # Far above the ids the Portal gives its members, and the same on every run.
+    assert all(900_000_000 <= value < 1_000_000_000 for value in ids.values())
+    assert visitor.dev_visitor_id("alice") == 900_000_000 + __import__("zlib").crc32(b"alice") % 100_000_000
 
 
 @pytest.mark.parametrize("name", ["anonymous", "Anonymous", "none"])

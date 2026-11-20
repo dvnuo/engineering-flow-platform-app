@@ -828,3 +828,56 @@ def test_python_dash_m_runs_the_tool():
     result = subprocess.run([sys.executable, "-m", "efp_app", "--version"], cwd=str(SDK_ROOT), capture_output=True, text=True)
     assert result.returncode == 0
     assert result.stdout.strip().startswith("efp-app 0.1.0")
+
+
+# --- what efp-app dev protects the app's environment from --------------------------------------
+
+
+def test_the_apps_own_address_stays_off_a_company_proxy():
+    # Gradio asks its own port while it starts; through a proxy that fails and the app never comes up.
+    env = cli.child_environment({"HTTPS_PROXY": "http://proxy:3128", "NO_PROXY": ".corp.example"}, {}, 8000)
+    assert env["NO_PROXY"] == env["no_proxy"] == ".corp.example,127.0.0.1,localhost,::1"
+    already = cli.child_environment({"http_proxy": "http://proxy:3128", "no_proxy": "LOCALHOST, 127.0.0.1"}, {}, 8000)
+    assert already["no_proxy"] == already["NO_PROXY"] == "LOCALHOST,127.0.0.1,::1"
+    everything = {"HTTPS_PROXY": "http://proxy:3128", "NO_PROXY": "*"}
+    cli.exempt_loopback_from_proxy(everything)
+    assert everything == {"HTTPS_PROXY": "http://proxy:3128", "NO_PROXY": "*"}
+    # No proxy: nothing to exempt, nothing is added.
+    plain = cli.child_environment({"NO_PROXY": ".corp.example"}, {}, 8000)
+    assert plain["NO_PROXY"] == ".corp.example" and "no_proxy" not in plain
+    # A proxy that only .env names counts as well.
+    from_file = cli.child_environment({}, {"HTTP_PROXY": "http://proxy:3128"}, 8000)
+    assert from_file["NO_PROXY"] == "127.0.0.1,localhost,::1"
+
+
+def test_git_bash_is_told_to_leave_the_prefix_alone():
+    env = {}
+    cli.keep_paths_from_msys(env)
+    assert env == {"MSYS2_ENV_CONV_EXCL": "EFP_APP_BASE_PATH;SCRIPT_NAME;GRADIO_ROOT_PATH"}
+    kept = {"MSYS2_ENV_CONV_EXCL": "MY_PATH;SCRIPT_NAME"}
+    cli.keep_paths_from_msys(kept)
+    assert kept["MSYS2_ENV_CONV_EXCL"] == "MY_PATH;SCRIPT_NAME;EFP_APP_BASE_PATH;GRADIO_ROOT_PATH"
+    everything = {"MSYS2_ENV_CONV_EXCL": "*"}
+    cli.keep_paths_from_msys(everything)
+    assert everything == {"MSYS2_ENV_CONV_EXCL": "*"}
+    # Only on Windows does the dev command set it.
+    assert ("MSYS2_ENV_CONV_EXCL" in cli.child_environment({}, {}, 8000)) is (sys.platform == "win32")
+
+
+def test_a_proxy_of_the_systems_own_settings_is_handed_to_the_app_with_its_own_port_exempt():
+    # Windows keeps the proxy in its settings; httpx reads it there and ignores the bypass list beside it.
+    system = ({"http": "http://proxy.corp.example:8080", "https": "http://proxy.corp.example:8080"}, [".corp.example", "intranet"])
+    env = cli.child_environment({}, {}, 8000, system_proxy=system)
+    assert env["HTTP_PROXY"] == env["HTTPS_PROXY"] == "http://proxy.corp.example:8080"
+    assert env["NO_PROXY"] == env["no_proxy"] == ".corp.example,intranet,127.0.0.1,localhost,::1"
+
+    # A proxy named in the environment (or in .env) wins: the system's settings are not looked at.
+    named = cli.child_environment({"HTTPS_PROXY": "http://mine:1"}, {}, 8000, system_proxy=system)
+    assert named["HTTPS_PROXY"] == "http://mine:1" and "HTTP_PROXY" not in named
+    assert named["NO_PROXY"] == "127.0.0.1,localhost,::1"
+    # A machine without a system proxy: nothing is added.
+    assert not [name for name in cli.child_environment({}, {}, 8000, system_proxy=({}, [])) if "proxy" in name.lower()]
+
+    proxies, bypass = cli.system_proxy_settings()  # whatever this machine has, in the promised shape
+    assert set(proxies) <= {"http", "https"} and all("://" in address for address in proxies.values())
+    assert all("*" not in host and host != "<local>" for host in bypass)

@@ -546,3 +546,62 @@ def test_a_refusal_before_the_body_was_read_still_arrives(unix_service):
         storage.save("big", os.urandom(8 * 1024 * 1024))
     with pytest.raises(errors.QuotaExceededError):
         storage.save("small", b"01234567890")
+
+
+# --- two requests that meet on one object (a developer's Windows machine) ----------------------
+
+
+def test_many_threads_saving_and_loading_one_object_all_succeed(monkeypatch, tmp_path):
+    # No transactions: the last save wins. But no save, load or delete may fail because another one
+    # is at work on the same object, which is what Windows does to a file that is open elsewhere.
+    monkeypatch.setenv("EFP_APP_ID", "app-1")
+    monkeypatch.setenv("EFP_APP_DATA_DIR", str(tmp_path / "data"))
+    failures = []
+
+    def worker(number):
+        try:
+            for round_number in range(40):
+                storage.save_json("shared/state.json", {"by": number, "round": round_number})
+                seen = storage.load_json("shared/state.json", default=None)
+                assert seen is None or set(seen) == {"by", "round"}  # whole, never half written
+        except Exception as exc:  # collected: an assertion in a thread would otherwise be lost
+            failures.append(repr(exc))
+
+    threads = [threading.Thread(target=worker, args=(number,)) for number in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(120)
+    assert failures == [] and not any(thread.is_alive() for thread in threads)
+    assert set(storage.load_json("shared/state.json")) == {"by", "round"}
+    assert [item.key for item in storage.list("shared/")] == ["shared/state.json"]  # no temporary file is left
+
+
+def test_a_file_that_is_busy_for_a_moment_is_tried_again_on_windows_only(monkeypatch, tmp_path):
+    monkeypatch.setenv("EFP_APP_ID", "app-1")
+    monkeypatch.setenv("EFP_APP_DATA_DIR", str(tmp_path / "data"))
+    real_replace = os.replace
+    calls = {"count": 0}
+
+    def busy_twice(source, target):
+        calls["count"] += 1
+        if calls["count"] <= 2:
+            raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(storage.os, "replace", busy_twice)
+    monkeypatch.setattr(storage.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(storage, "_ON_WINDOWS", True)
+    storage.save("a.txt", "saved on the third attempt")
+    assert calls["count"] == 3 and storage.load("a.txt") == b"saved on the third attempt"
+
+    # A file that stays busy is an error in the end, and elsewhere nothing is tried twice.
+    monkeypatch.setattr(storage.os, "replace", lambda source, target: (_ for _ in ()).throw(PermissionError(13, "busy")))
+    with pytest.raises(errors.StorageError):
+        storage.save("a.txt", "never")
+    monkeypatch.setattr(storage, "_ON_WINDOWS", False)
+    calls["count"] = 0
+    monkeypatch.setattr(storage.os, "replace", busy_twice)
+    with pytest.raises(errors.StorageError):
+        storage.save("b.txt", "one attempt only")
+    assert calls["count"] == 1

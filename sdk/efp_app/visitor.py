@@ -27,6 +27,7 @@ import json
 import logging
 import re
 import threading
+import zlib
 import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional, Tuple, Union
@@ -37,6 +38,9 @@ HEADER = "X-EFP-Visitor"
 _VERSION = "v1"
 _ANONYMOUS_NAMES = {"anonymous", "anon", "none", "nobody"}
 _OWNER_RETRY_SECONDS = 30.0
+# Where the ids of visitors named with EFP_DEV_VISITOR start, and how many there are.
+_DEV_ID_BASE = 900_000_000
+_DEV_ID_RANGE = 100_000_000
 _B64URL = re.compile(r"[A-Za-z0-9_-]+")
 
 log = logging.getLogger("efp_app")
@@ -211,12 +215,22 @@ _owner: Tuple[Any, float, Optional[Visitor]] = (None, 0.0, None)
 _warned = False
 
 
+def dev_visitor_id(username: str) -> int:
+    """The id of a visitor named with ``EFP_DEV_VISITOR``: made from the name, the same on every run.
+
+    Two names give two ids, so an app that keeps data per ``visitor.id`` can
+    be tried as two members on one machine. The numbers start far above the
+    ids the Portal gives its members and are nobody's real id.
+    """
+    return _DEV_ID_BASE + zlib.crc32(username.strip().lower().encode("utf-8")) % _DEV_ID_RANGE
+
+
 def _dev_visitor(settings: config.Settings) -> Optional[Visitor]:
     name = (settings.dev_visitor or "").strip()
     if name:
         if name.lower() in _ANONYMOUS_NAMES:
             return None
-        return Visitor(id=0, username=name, name=name)
+        return Visitor(id=dev_visitor_id(name), username=name, name=name)
     return _owner_visitor(settings)
 
 

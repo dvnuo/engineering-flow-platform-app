@@ -36,8 +36,11 @@ import json
 import os
 import re
 import secrets
+import contextlib
 import socket
 import struct
+import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -155,6 +158,39 @@ def windows_problem(key: str) -> Optional[str]:
     return None
 
 
+# Windows refuses to replace, read or remove a file that another thread or
+# process has open at that very moment (PermissionError); a POSIX system does
+# not. So on a developer's Windows machine the requests of this process take
+# turns on an object (a lock chosen by its path), and one that still meets
+# another process waits a moment and tries again, for up to about two seconds.
+# On the host (Linux) there is no lock and the first attempt is the only one.
+_ON_WINDOWS = os.name == "nt"
+_WINDOWS_ATTEMPTS = 14
+_TURNS = tuple(threading.Lock() for _ in range(64))
+
+
+def _turn(target: Path) -> Any:
+    """Entered around one file operation on ``target``."""
+    if not _ON_WINDOWS:
+        return contextlib.nullcontext()
+    return _TURNS[hash(str(target)) % len(_TURNS)]
+
+
+def _patiently(action: Callable[[], Any]) -> Any:
+    if not _ON_WINDOWS:
+        return action()
+    delay = 0.001
+    for attempt in range(_WINDOWS_ATTEMPTS):
+        try:
+            return action()
+        except PermissionError:
+            if attempt == _WINDOWS_ATTEMPTS - 1:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 0.25)
+    return None  # not reached
+
+
 class _Files:
     def __init__(self, root: Path, mode: str) -> None:
         self.root = root
@@ -202,7 +238,8 @@ class _Files:
                     os.fsync(handle.fileno())
                 except OSError:
                     pass
-            os.replace(temporary, target)
+            with _turn(target):
+                _patiently(lambda: os.replace(temporary, target))
         except OSError as exc:
             raise self._failure("save", key, exc) from exc
         finally:
@@ -216,7 +253,8 @@ class _Files:
         if not target.is_file():
             raise errors.StorageNotFoundError("there is no object with the key %r" % key)
         try:
-            return target.read_bytes()
+            with _turn(target):
+                return _patiently(target.read_bytes)
         except FileNotFoundError:
             raise errors.StorageNotFoundError("there is no object with the key %r" % key) from None
         except OSError as exc:
@@ -230,7 +268,8 @@ class _Files:
         if not target.is_file():
             return False
         try:
-            os.unlink(target)
+            with _turn(target):
+                _patiently(lambda: os.unlink(target))
         except FileNotFoundError:
             return False
         except OSError as exc:

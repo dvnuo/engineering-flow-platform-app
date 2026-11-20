@@ -13,7 +13,7 @@ import types
 import pytest
 
 from efp_app import visitor
-from efp_app.visitor import Visitor
+from efp_app.visitor import Visitor, dev_visitor_id
 from conftest import SDK_ROOT
 from test_visitor import APP_ID, VISITOR_KEY, payload_of, sign
 
@@ -121,7 +121,7 @@ def test_fastapi_on_a_developers_machine_uses_the_dev_visitor(monkeypatch):
     monkeypatch.setenv("EFP_DEV_VISITOR", "carol")
     client = TestClient(make_fastapi_app())
     assert client.get("/me").json() == {"username": "carol", "group": None}
-    assert client.get("/private").json() == {"id": 0}
+    assert client.get("/private").json() == {"id": dev_visitor_id("carol")}
 
 
 def test_starlette_request_works_directly(deployed):
@@ -247,7 +247,7 @@ def test_streamlit_on_a_developers_machine(monkeypatch, fake_streamlit):
     from efp_app.integrations.streamlit import get_visitor
 
     monkeypatch.setenv("EFP_DEV_VISITOR", "carol")
-    assert get_visitor() == Visitor(id=0, username="carol", name="carol")
+    assert get_visitor() == Visitor(id=dev_visitor_id("carol"), username="carol", name="carol")
 
 
 # --- Gradio (any object with headers) ------------------------------------------------------------

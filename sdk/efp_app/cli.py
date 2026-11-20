@@ -3,10 +3,12 @@
     efp-app init <fastapi|flask|streamlit|gradio|static> [directory]
         copy a starter app into the directory (default: the current one)
 
-    efp-app dev [directory] [--port N]
+    efp-app dev [directory] [--port N] [--prefix NAME]
         start the app of efp-app.json the way the host starts it
         (docs/CONTRACTS.md, section 8.1), without a path prefix; the token
-        and the Portal address come from the environment or from .env
+        and the Portal address come from the environment or from .env.
+        With --prefix the app runs under /NAME/ behind a local stand-in for
+        the gateway, which is how it is addressed once deployed
 
     efp-app check [directory] [--strict]
         check the manifest, the files it names and the pages' URLs before
@@ -16,18 +18,20 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import importlib.util
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from . import _check, config
+from . import _check, _devgateway, config
 from . import manifest as _manifest
 from ._version import __version__
 
@@ -164,7 +168,8 @@ def build_launch(
     """The command line of section 8.1 for this manifest.
 
     ``efp-app dev`` calls it with an empty ``base_path``, which leaves out
-    every option that carries the prefix. ``platform`` is ``sys.platform``.
+    every option that carries the prefix, and with ``/NAME`` for
+    ``--prefix NAME``. ``platform`` is ``sys.platform``.
     """
     python = python or sys.executable
     platform = sys.platform if platform is None else platform
@@ -181,10 +186,16 @@ def build_launch(
 
     if found.type == "flask":
         if platform == "win32":
+            note = "gunicorn needs a POSIX system, so on Windows the app runs on Flask's own server"
+            if not base:
+                return Launch([python, "-m", "flask", "--app", entry, "run", "--port", number], needs="flask", note=note)
+            # That server ignores SCRIPT_NAME; _devgateway.flask_app applies it the way gunicorn does.
+            wrapped = "efp_app._devgateway:flask_app('%s')" % entry
             return Launch(
-                [python, "-m", "flask", "--app", entry, "run", "--port", number],
+                [python, "-m", "flask", "--app", wrapped, "run", "--port", number],
+                env={"SCRIPT_NAME": base},
                 needs="flask",
-                note="gunicorn needs a POSIX system, so on Windows the app runs on Flask's own server",
+                note=note + ", and efp_app applies SCRIPT_NAME for it",
             )
         argv = [python, "-m", "gunicorn", entry, "--bind", "%s:%s" % (HOST, number)]
         argv += ["--workers", "1", "--threads", "8", "--timeout", "120"]
@@ -239,8 +250,19 @@ def read_env_file(path: Path) -> Dict[str, str]:
     return values
 
 
-def child_environment(base: Mapping[str, str], env_file: Mapping[str, str], port: int) -> Dict[str, str]:
-    """The environment of the app process: the caller's, then ``.env``, then what section 8 sets."""
+def child_environment(
+    base: Mapping[str, str],
+    env_file: Mapping[str, str],
+    port: int,
+    *,
+    system_proxy: Optional[Tuple[Mapping[str, str], Sequence[str]]] = None,
+) -> Dict[str, str]:
+    """The environment of the app process: the caller's, then ``.env``, then what section 8 sets.
+
+    ``system_proxy`` is what ``system_proxy_settings()`` found, for a machine
+    whose proxy is in the operating system's settings and not in the
+    environment; ``efp-app dev`` passes it, tests leave it out.
+    """
     env = dict(base)
     for name, value in env_file.items():
         if not env.get(name):
@@ -249,7 +271,103 @@ def child_environment(base: Mapping[str, str], env_file: Mapping[str, str], port
         env.pop(name, None)
     env[config.PORT] = str(port)
     env["PYTHONUNBUFFERED"] = "1"
+    if system_proxy is not None and not any(env.get(name) for name in _PROXY_VARIABLES):
+        proxies, bypass = system_proxy
+        for scheme, address in proxies.items():
+            env[scheme.upper() + "_PROXY"] = address
+        if proxies and bypass and not (env.get("NO_PROXY") or env.get("no_proxy")):
+            env["NO_PROXY"] = ",".join(bypass)
+    exempt_loopback_from_proxy(env)
+    if sys.platform == "win32":
+        keep_paths_from_msys(env)
     return env
+
+
+def system_proxy_settings() -> Tuple[Dict[str, str], List[str]]:
+    """The proxy of the operating system's own settings (Windows, macOS): ``({"http": ..., "https": ...}, [hosts that bypass it])``.
+
+    Why ``efp-app dev`` hands it to the app as environment variables: with no
+    proxy variable set, Python's HTTP libraries read these settings by
+    themselves, and httpx (which the SDK and Gradio use) then ignores the
+    list of hosts that are not to be proxied. The app's own port on 127.0.0.1
+    would go to the company proxy. Written into the environment, the same
+    proxy is used and ``NO_PROXY`` is honoured.
+    """
+    try:
+        import urllib.request
+
+        found = urllib.request.getproxies()
+    except Exception:  # a broken setting must not keep the app from starting
+        return {}, []
+    proxies = {}
+    for scheme in ("http", "https"):
+        address = found.get(scheme)
+        if address:
+            proxies[scheme] = address if "://" in address else "http://" + address
+    return proxies, (_windows_proxy_bypass() if proxies and sys.platform == "win32" else [])
+
+
+def _windows_proxy_bypass() -> List[str]:
+    """The "do not use the proxy for" list of the Windows settings, as far as ``NO_PROXY`` can say it."""
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings") as key:
+            value = str(winreg.QueryValueEx(key, "ProxyOverride")[0])
+    except Exception:
+        return []
+    hosts: List[str] = []
+    for item in value.split(";"):
+        item = item.strip()
+        if not item or item == "<local>":
+            continue
+        if item.startswith("*."):
+            item = item[1:]  # "*.corp.example" is ".corp.example" in NO_PROXY
+        if "*" in item or "," in item:
+            continue  # "10.*" and the like have no form in NO_PROXY
+        hosts.append(item)
+    return hosts
+
+
+_PROXY_VARIABLES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+_LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def exempt_loopback_from_proxy(env: Dict[str, str]) -> None:
+    """With a proxy in the environment, name the loopback addresses in ``NO_PROXY``, as the host does.
+
+    The app listens on 127.0.0.1, and some frameworks ask their own port
+    while they start (Gradio's ``launch()`` does). Sent to a company proxy,
+    that request fails and the app never comes up.
+    """
+    if not any(env.get(name) for name in _PROXY_VARIABLES):
+        return
+    for name in ("NO_PROXY", "no_proxy"):
+        other = "no_proxy" if name == "NO_PROXY" else "NO_PROXY"
+        entries = [item.strip() for item in (env.get(name) or env.get(other) or "").split(",") if item.strip()]
+        if "*" in entries:
+            continue
+        known = {item.lower() for item in entries}
+        entries += [host for host in _LOOPBACK_HOSTS if host not in known]
+        env[name] = ",".join(entries)
+
+
+def keep_paths_from_msys(env: Dict[str, str]) -> None:
+    """Git Bash on Windows: do not let its ``sh`` rewrite the path prefix into a Windows path.
+
+    An MSYS program that starts a Windows one turns every variable that looks
+    like a POSIX path into a Windows path, so ``EFP_APP_BASE_PATH=/my-app``
+    reaches a ``command`` app (started through ``sh -c``) as
+    ``C:/Program Files/Git/my-app``. ``MSYS2_ENV_CONV_EXCL`` names the
+    variables to leave alone.
+    """
+    names = [item for item in (env.get("MSYS2_ENV_CONV_EXCL") or "").split(";") if item]
+    if "*" in names:
+        return
+    for name in _BASE_PATH_VARIABLES:
+        if name not in names:
+            names.append(name)
+    env["MSYS2_ENV_CONV_EXCL"] = ";".join(names)
 
 
 def _quote(argument: str) -> str:
@@ -274,9 +392,22 @@ def cmd_dev(args: argparse.Namespace) -> int:
     port = args.port
     if port is None:
         port = config.load(os.environ).port or config.load(env_file).port or DEFAULT_PORT
-    env = child_environment(os.environ, env_file, port)
-    launch = build_launch(found, port)
-    env.update(launch.env)
+    # With --prefix the gateway listens on the port that was asked for, and the app on a free one behind it.
+    slug = args.prefix
+    base = "/" + slug if slug else ""
+    app_port = port
+    while slug and app_port == port:
+        app_port = _devgateway.free_port()
+    env = child_environment(os.environ, env_file, app_port, system_proxy=system_proxy_settings())
+    launch = build_launch(found, app_port, base_path=base)
+    sets = dict(launch.env)
+    if slug:
+        # What section 8 says about the address. EFP_APP_ID stays unset: it alone makes the SDK treat the
+        # process as deployed (config.Settings.deployed), and identity and storage are to stay local.
+        sets[config.APP_BASE_PATH] = base
+        sets[config.APP_SLUG] = slug
+        sets[config.APP_PUBLIC_URL] = "http://%s:%d%s/" % (HOST, port, base)
+    env.update(sets)
 
     if launch.needs and importlib.util.find_spec(launch.needs) is None:
         _fail(
@@ -300,10 +431,19 @@ def cmd_dev(args: argparse.Namespace) -> int:
     settings = config.load(env)
     _say("efp-app dev: %s (%s)" % (found.name, found.type))
     _say("  directory  %s" % directory)
-    _say("  address    http://%s:%d/" % (HOST, port))
+    if slug:
+        _say("  address    http://%s:%d%s/  (under %s, as the app is addressed once deployed)" % (HOST, port, base, base))
+        _say(
+            "  gateway    %s:%d -> the app on %s:%d, with %s %s the path as the host does for this app"
+            % (HOST, port, HOST, app_port, base, "removed from" if found.strip_prefix else "kept in")
+        )
+        _say("             a request outside %s/ gets 404 and a line here: it would not reach the app once deployed" % base)
+        _say("             open the address above, not the one the app's own server prints: that port has no gateway")
+    else:
+        _say("  address    http://%s:%d/" % (HOST, port))
     _say("  command    %s" % " ".join(_quote(argument) for argument in launch.argv))
-    for name in sorted(launch.env):
-        _say("  sets       %s=%s" % (name, launch.env[name]))
+    for name in sorted(sets):
+        _say("  sets       %s=%s" % (name, sets[name]))
     if launch.note:
         _say("  note       %s" % launch.note)
     if found.type != "static":
@@ -332,12 +472,91 @@ def cmd_dev(args: argparse.Namespace) -> int:
         except Exception:
             pass
     try:
+        if slug:
+            gateway = _devgateway.Gateway(
+                slug,
+                app_port,
+                strip_prefix=found.strip_prefix,
+                say=_report,
+                startup_timeout=found.startup_timeout,
+                local_file_server=found.type == "static",
+            )
+            return _run_behind_gateway(gateway, port, launch.argv, directory, env)
         return subprocess.call(launch.argv, cwd=str(directory), env=env)
     except KeyboardInterrupt:
         return 130
     except OSError as exc:
         _fail("efp-app dev: could not start %s: %s" % (launch.argv[0], exc.strerror or exc))
         return 1
+
+
+def _report(text: str) -> None:
+    """A line of the gateway, out at once even when the output is a file or a pipe."""
+    _say(text)
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+
+
+def _run_behind_gateway(
+    gateway: _devgateway.Gateway, port: int, argv: List[str], directory: Path, env: Mapping[str, str]
+) -> int:
+    """Run the app with the gateway in front of it, until the app's process ends: its exit code.
+
+    Ctrl+C reaches the app as well (it shares the console), so it is given a
+    moment to leave by itself; ``KeyboardInterrupt`` and a command that
+    cannot be started (``OSError``) are the caller's to report. SIGTERM
+    reaches this process alone, so it is passed on: ``kill`` of the command
+    then ends the app too, and the command with it.
+    """
+    started: List[Any] = []
+
+    def pass_on(signum: int, frame: Any) -> None:
+        for process in started:
+            process.terminate()
+
+    async def serve() -> int:
+        try:
+            server = await gateway.start(port)  # first: with the port taken, the app is not started
+        except OSError as exc:
+            _fail("efp-app dev: could not listen on %s:%d: %s" % (HOST, port, exc.strerror or exc))
+            return 1
+        try:
+            process = subprocess.Popen(argv, cwd=str(directory), env=dict(env))
+            started.append(process)
+            while process.poll() is None:
+                await asyncio.sleep(0.2)
+            return int(process.returncode)
+        finally:
+            server.close()
+
+    previous: Any = None
+    try:
+        previous = signal.signal(signal.SIGTERM, pass_on)
+    except ValueError:
+        pass  # not the main thread: signals are not this function's to handle
+    try:
+        return asyncio.run(serve())
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
+        for process in started:
+            _stop(process)
+
+
+def _stop(process: Any, grace: float = 5.0) -> None:
+    """Make sure the app's process is gone: wait, then ask, then insist."""
+    for ask in (None, process.terminate, process.kill):
+        try:
+            if ask is not None:
+                ask()
+            process.wait(timeout=grace)
+            return
+        except (subprocess.TimeoutExpired, KeyboardInterrupt):
+            continue  # too slow, or Ctrl+C again
+        except OSError:
+            return
 
 
 # --- check --------------------------------------------------------------------
@@ -368,6 +587,14 @@ def cmd_check(args: argparse.Namespace) -> int:
 # --- The command line ---------------------------------------------------------
 
 
+def _prefix(text: str) -> str:
+    """The value of ``--prefix`` as a slug; argparse reports what is wrong with it."""
+    try:
+        return _devgateway.parse_prefix(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="efp-app", description="Create, run and check EFP apps.")
     parser.add_argument("--version", action="version", version="efp-app " + __version__)
@@ -389,10 +616,19 @@ def build_parser() -> argparse.ArgumentParser:
     dev = commands.add_parser(
         "dev",
         help="run the app locally, the way the host runs it",
-        description="Start the app of efp-app.json the way the host starts it, without a path prefix.",
+        description="Start the app of efp-app.json the way the host starts it: without a path prefix, "
+        "or with --prefix under /NAME/ behind a local stand-in for the gateway.",
     )
     dev.add_argument("directory", nargs="?", default=None, help="the app's directory (default: the current one)")
     dev.add_argument("--port", type=int, default=None, help="the port to listen on (default: $PORT, else 8000)")
+    dev.add_argument(
+        "--prefix",
+        type=_prefix,
+        default=None,
+        metavar="NAME",
+        help="serve the app under /NAME/ as it is addressed once deployed (NAME is a slug such as my-app); "
+        "a request outside /NAME/ gets 404 and a line on the console",
+    )
     dev.add_argument("--dry-run", action="store_true", help="show the command and stop")
     dev.set_defaults(handler=cmd_dev)
 
