@@ -128,6 +128,9 @@ pip install -r examples/team-poll/requirements.txt
 efp-app dev examples/team-poll
 ```
 
+Installing from the checkout leaves build files in it
+(`sdk/efp_app_sdk.egg-info/`, `sdk/build/`); git ignores both.
+
 Open http://127.0.0.1:8000/. The static examples and the ones that use only
 the visitor and storage need no Portal: name yourself with
 `EFP_DEV_VISITOR=alice` in the example's `.env` (each README says how). The
@@ -195,9 +198,15 @@ python -m pytest tests/test_examples.py tests/test_example_retro_board.py
 The FastAPI examples run for real, the Flask ones when Flask is installed,
 the Streamlit and Gradio ones against small stand-ins for the libraries, and
 logic written in JavaScript runs under node when node is installed. Read the
-tests when you want to see what a connector or the model answers on the wire,
-or how to test your own app without a Portal (`conftest.py`: `FakePortal`;
-`example_support.py`: the helpers).
+tests when you want to see what a connector or the model answers on the
+wire.
+
+To test an app of your own without a Portal, in its own repository, use
+`efp_app.testing`: it is part of the SDK and holds the same stand-in Portal
+these tests run on, the environment of a deployed app and the signed header
+of a visitor ([SDK_REFERENCE.md](../docs/SDK_REFERENCE.md), section 14).
+`conftest.py` and `example_support.py` are this repository's own helpers
+around it and are not installed with the SDK.
 
 ## Writing a new example
 

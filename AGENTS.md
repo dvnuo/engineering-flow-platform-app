@@ -27,8 +27,11 @@ code.
    class.
 4. [examples/README.md](examples/README.md): find the example closest to
    your task with its "which example shows what" table, and read that
-   example in full (code, README, and its test in `sdk/tests/`). Copy its
-   structure rather than inventing one.
+   example in full: code, README, and its test. The test of an example is
+   `sdk/tests/test_example_<name>.py`; seven examples (`confluence-ask`,
+   `jira-digest`, `log-explainer`, `release-notes`, `setup-check`,
+   `team-links`, `team-poll`) are sections of `sdk/tests/test_examples.py`
+   instead. Copy the example's structure rather than inventing one.
 
 ### What an app is, in ten lines
 
@@ -57,7 +60,9 @@ reviewer. The reason for each is in the guide.
 2. **Identity comes from the gateway, on the server.** Use `require_visitor`
    / `get_visitor` (`efp_app.integrations.<framework>`) or
    `efp_app.visitor.current(headers)`. Never from a request body, a query
-   parameter or the app's own cookie. Never add a login page.
+   parameter or the app's own cookie. Never add a login page. "Only the
+   owner" is `visitor.username == app.info(cached=True).owner.username`, on
+   the server; when `app.info` raises, nobody is the owner.
 3. **A connector is the owner's shared service account, not the visitor.**
    Never `currentUser()`, `@me`, `/user` or "my ..." through a connector;
    name the person with `visitor.username`. Check `answer.status`: the other
@@ -71,7 +76,10 @@ reviewer. The reason for each is in the guide.
 6. **What must survive is in `efp_app.storage`.** Not in a module-level
    variable, not in the code directory, not in `HOME` or `TMPDIR`.
 7. **No two requests may lose each other's writes.** Storage has no
-   transactions: one object per writer or per item, or a version check.
+   transactions and no "save only if unchanged": one object per writer or
+   per item; where an object is shared, a `threading.Lock` around load,
+   change, save (the app is one process), with a version number inside the
+   lock when two pages can edit the same object.
 8. **No background work**: no scheduler, no thread that outlives a request,
    no queue, no page that polls the server on a timer.
 9. **No secret in the repository**, and none in a `static` app at all.
@@ -93,10 +101,20 @@ efp-app dev [directory] [--port N]            run it as the host does, without a
 efp-app dev [directory] --prefix my-app       run it under /my-app/ behind a local gateway; prints every request that leaves the app
 ```
 
+`pip install efp-app-sdk` takes the SDK from the company's package index.
+Where that index is not at hand and a checkout of this repository is,
+install from it: `pip install <checkout>/sdk`. That build leaves
+`sdk/build/` and `sdk/efp_app_sdk.egg-info/` in the checkout; git ignores
+both, so they are not a change of yours to that repository.
+
 Local settings go in `.env` in the app's directory (never committed):
 `EFP_APP_TOKEN` and `EFP_PORTAL_URL` (needed only for the model and the
 connectors), `EFP_DEV_VISITOR=<username>` or `anonymous` to choose who is
-visiting.
+visiting. You will usually have no token: set `EFP_DEV_VISITOR`, or there is
+no visitor at all and `require_visitor` answers 401. Without a token every
+model and connector call raises `ConfigurationError`; the app must turn that
+into its "not set up yet" sentence, and what happens when the call works is
+shown by tests (below), not by clicking.
 
 ### What to deliver
 
@@ -106,9 +124,14 @@ visiting.
   owner must turn on in the Portal (model, connectors, writing), every
   environment variable it needs, and what was left out of a conversion and
   why.
-- Tests for what you changed, where the project has tests. For code that
-  calls the SDK, use a stand-in for the Portal (`sdk/tests/conftest.py`,
-  `FakePortal`; `sdk/tests/example_support.py`).
+- Tests, in the app's own repository, for every route that calls the model
+  or a connector and for every check of identity. `efp_app.testing` is part
+  of the SDK and needs nothing from this repository: `testing.deployed(...)`
+  gives a test the environment of a deployed app and a stand-in Portal
+  (`portal.on("POST", "/llm/complete", testing.completion("..."))`),
+  `testing.visitor_headers("alice")` the signed header of a visitor
+  ([docs/SDK_REFERENCE.md](docs/SDK_REFERENCE.md), section 14; an example is
+  under "Verify" in the conversion guide).
 - A report that states which items of the
   [verification list](docs/CONVERTING_A_PROJECT.md#verify) you ran and what
   each showed, which you could not run and why, and the steps that only the

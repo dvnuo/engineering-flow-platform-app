@@ -301,7 +301,27 @@ A request that is not a page load (a `fetch`, for example) never gets a
 sign-in redirect. It gets JSON, `{"error": {"code": "...", "message": "..."}}`:
 `401 sign_in_required` when the visitor's session has ended (reload the
 page), `403 no_access`, `503 app_starting` (try again after `Retry-After`).
-The starters' scripts show how to handle that.
+The starters' scripts handle the first one: on a `401` they tell the visitor
+to reload the page, and for every other error they show `error.message`.
+They do not wait and try again on `503 app_starting`. A script rarely meets
+it, because the page it runs on was served by the running app; it happens
+when the app was stopped while the page stayed open. Add this where a
+request must not fail on it:
+
+```js
+async function patient(url, options) {
+  let response = await fetch(url, options);
+  for (let tries = 0; response.status === 503 && tries < 5; tries += 1) {
+    const wait = Number(response.headers.get("Retry-After")) || 2;
+    await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+    response = await fetch(url, options);
+  }
+  return response;
+}
+```
+
+Go by the status, not by the shape of the body: a `401` can also come from
+your own app (`require_visitor`, below), whose body is the framework's.
 
 All apps share one origin. `localStorage`, `sessionStorage` and IndexedDB of
 your pages can be read by the pages of every other app, so keep nothing
@@ -350,6 +370,15 @@ def greet(request: gr.Request):
 
 Good to know:
 
+- `require_visitor` refuses a guest with `401`, and the body is the
+  framework's own, not the gateway's JSON: FastAPI answers
+  `{"detail": "Sign in to use this app."}`, Flask its HTML error page
+  (register `@app.errorhandler(401)` for another body). Only an app whose
+  audience is "Anyone" ever has a guest.
+- "Only the owner" is a comparison of usernames on the server:
+  `who.username == app.info(cached=True).owner.username`. When `app.info`
+  raises (no token on your machine, the Portal out of reach), nobody is the
+  owner: refuse and show `exc.user_message`.
 - The value is valid for 60 seconds. Read the visitor while handling the
   request, not later in a thread or a queue.
 - Streamlit only sees the headers of the request that opened the browser
@@ -362,7 +391,9 @@ Good to know:
   owner of the app (asked from the Portal once). Every name is a visitor of
   its own, with an id made from the name, so you can try an app as alice
   and then as bob. `EFP_DEV_VISITOR=anonymous` shows the app as a visitor
-  who is not signed in.
+  who is not signed in. With neither `EFP_DEV_VISITOR` nor a token there is
+  nobody to return: every request is a guest's, and the SDK logs one line
+  that says so.
 
 ## The language model
 
@@ -580,7 +611,41 @@ What a deployed app gets, for reference: `EFP_APP_ID`, `EFP_APP_SLUG`,
 `EFP_VISITOR_KEY`, `EFP_APP_DATA_DIR` or `EFP_APP_STORAGE_SOCKET`, `PORT`,
 `HOME`, `TMPDIR`, plus the variables you define on the app's page (their
 names may not start with `EFP_` or be `PORT`, `HOME`, `TMPDIR`, `PATH`).
-Read your own settings from the environment; do not commit secrets.
+Read your own settings from the environment; do not commit secrets. List
+each of your own variables in `.env.example`, as a name without a value and
+a comment: that file is how the next developer learns what to put in `.env`.
+
+### Tests without a Portal
+
+`efp_app.testing` is part of the SDK. It gives a test what the host, the
+Portal and the gateway give a deployed app, so the app's own repository can
+test every route with nothing but the SDK and the app's requirements
+installed:
+
+```python
+from efp_app import testing
+
+
+def test_the_summary(tmp_path):
+    with testing.deployed(tmp_path) as portal:            # the host's environment, a stand-in Portal
+        portal.on("POST", "/llm/complete", testing.completion("Three bugs are open."))
+        from app import app                               # inside the block: the app reads its settings
+
+        client = app.test_client()                        # Flask; FastAPI: TestClient(app, root_path="/example")
+        answer = client.post("/api/summary", headers=testing.visitor_headers("alice"))
+        assert answer.get_json() == {"text": "Three bugs are open."}
+        assert portal.sent_to("/llm/complete")[0]["max_output_tokens"] <= 600
+
+        assert client.post("/api/summary").status_code == 401    # a guest: no header
+```
+
+`testing.connector_answer(...)` is what a connector call answers,
+`testing.error(429, "budget_exceeded")` a refusal, `testing.stream("a", "b")`
+a streamed answer; `testing.visitor_headers("alice")` is the owner of the
+stand-in app and every other name another member. Storage goes to the
+directory the test names. The whole module is in
+[SDK_REFERENCE.md](SDK_REFERENCE.md), section 14. What such a test cannot
+show is the path prefix: that is `efp-app dev --prefix`, next.
 
 ### Under the prefix, as when deployed
 
@@ -687,6 +752,13 @@ app's page in the Portal: only you, your group, every member, or anyone
   worker and eight threads, uvicorn without workers). Do not start worker
   processes of your own. Memory is capped (1 GiB by default); an app that
   goes over it is stopped and the reason shown in the Portal.
+- **Long requests are allowed, and they occupy a thread.** A request may
+  last up to an hour, and a model call alone may take minutes (the SDK
+  waits up to 600 seconds for one). A Flask app has eight threads: eight
+  slow requests at once and the ninth visitor waits. gunicorn's
+  `--timeout 120` is not a limit for one request there; with threads it
+  only ends a worker that has stopped responding altogether. Stream what
+  takes long (`llm.stream`), so the visitor sees it arrive.
 - **It stops when idle.** After a while without visitors (30 minutes by
   default) the app is stopped; the next visit starts it again and sees a
   "starting" page for a moment. So: no background jobs, no schedulers, no

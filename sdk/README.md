@@ -35,6 +35,7 @@ contracts are in `docs/CONTRACTS.md`.
 | `efp_app/storage.py` | files, the host's storage service, or a local folder |
 | `efp_app/integrations/` | FastAPI / Starlette, Flask, Streamlit, Gradio |
 | `efp_app/manifest.py`, `_check.py`, `cli.py` | `efp-app.json` and the command-line tool |
+| `efp_app/testing.py` | for an app's own tests: the environment of a deployed app, a stand-in Portal, the signed header of a visitor. A running app never imports it |
 | `efp_app/_templates/` | the starters `efp-app init` copies |
 
 Runtime dependency: `httpx` only. Python 3.9 or newer; Linux, macOS, Windows.

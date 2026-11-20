@@ -66,7 +66,7 @@ signed in. Check the project against this table before changing anything.
 | needs a server in another language at run time (Node, Java, Go, PHP, Ruby) | does not fit; only its static build output can be an app |
 | needs system packages (`apt-get`), a compiler at install time, a GPU or a browser binary | does not fit; dependencies are Python wheels only |
 | needs more than one process: workers, a queue consumer, a sidecar, its own database server | does not fit as it is; see sections 8 and 11 for what can replace them |
-| must do work when nobody is visiting: cron jobs, schedulers, watchers, bots that listen | does not fit; an idle app is stopped (section 11) |
+| must do work when nobody is visiting: cron jobs, schedulers, watchers, bots that listen | does not fit; an idle app is stopped (section 11). A job whose only purpose is to keep a copy fresh (a cache warmer, a periodic fetch) is not such a need: section 11 replaces it with "fetch when somebody asks and the copy is old" |
 | must be called by other programs with their own credentials (a public API, a webhook receiver) | does not fit, unless the audience "Anyone" is acceptable and the app checks the caller itself; the gateway lets in browsers with a session |
 | needs its own domain, TLS certificate, port, or raw TCP/UDP | does not fit |
 | holds more than about 1 GiB of data, single files over 64 MiB, or more than about 1 GiB of memory | does not fit by default; these are the platform's limits and only its operators can raise them |
@@ -113,7 +113,7 @@ not have to be the top of the repository.
 my-app/
   efp-app.json        the manifest (required)
   requirements.txt    Python dependencies (not for static)
-  .env.example        the two settings a developer's machine needs, empty
+  .env.example        what a developer puts in .env: every name, no value
   .gitignore          .env, .efp-data/, __pycache__/, .venv/
   main.py ...         the code
 ```
@@ -146,7 +146,11 @@ my-app/
 - Leave `"owners"` out unless only certain members should be able to publish
   this directory.
 - Copy `.env.example` and `.gitignore` from any starter (`efp-app init`), and
-  never commit `.env`.
+  never commit `.env`. The starter's `.env.example` has the SDK's settings
+  (`EFP_APP_TOKEN`, `EFP_PORTAL_URL`, `EFP_DEV_VISITOR`); add one line for
+  every variable of the app's own (section 7), as a name with an empty value
+  and a comment that says what it is. `efp-app dev` reads `.env`, so this
+  file is how the next developer learns what to put there.
 
 ## 4. Listen where the host expects
 
@@ -205,7 +209,7 @@ Then fix each kind:
 |---|---|---|
 | a page's assets | `<script src="/static/app.js">` | `<script src="static/app.js">` (or `url_for` in Flask, `{% static %}` in Django) |
 | a script's calls | `fetch("/api/items")` | `fetch("api/items")` |
-| a style sheet | `url(/img/bg.png)` | `url(../img/bg.png)`: relative to the style sheet's own address |
+| a style sheet | `url(/img/bg.png)` in `static/style.css` | `url(../img/bg.png)`: relative to the style sheet's own address, not the page's. A file beside the sheet is its bare name: `url(/static/bg.png)` becomes `url(bg.png)`. `efp-app check` prints this form for a sheet that is served at the path it has in the directory |
 | a form | `<form action="/save">` | `<form action="save">` |
 | a link | `<a href="/reports">` | `<a href="reports">` |
 | a redirect in Python | `RedirectResponse("/done")`, `redirect("/done")`, `HttpResponseRedirect("/done/")`; in FastAPI also `app.url_path_for("done")`, which has no prefix | `RedirectResponse(request.url_for("done"))` in FastAPI, `redirect(url_for("done"))` in Flask, `redirect("done")` (a URL name) in Django |
@@ -254,8 +258,8 @@ flow, or keep its own user table for authentication.
 |---|---|
 | a login page, a session cookie, `flask_login`, `fastapi-users`, OAuth or OIDC client code | delete it; read the visitor: `require_visitor` / `get_visitor` from `efp_app.integrations.<framework>`, or `efp_app.visitor.current(headers)` |
 | `current_user.id`, `request.user.username` | `visitor.id` (an integer, stable for the member), `visitor.username`, `visitor.name`, `visitor.group`, `visitor.group_id` |
-| "only signed-in users" | nothing to do for the audiences "Only the owner", "The owner's group" and "Every member": everyone who gets through is a member. With "Anyone", `get_visitor` returns `None` for a guest and `require_visitor` answers 401 |
-| "only admins" | compare with the app's owner on the server: `visitor.id == efp_app.app.info(cached=True).owner.id` ([`examples/setup-check`](../examples/setup-check/)), or with a list of usernames kept in an environment variable or in storage |
+| "only signed-in users" | nothing to do for the audiences "Only the owner", "The owner's group" and "Every member": everyone who gets through is a member. With "Anyone", `get_visitor` returns `None` for a guest and `require_visitor` answers 401 (the body is the framework's: `{"detail": "..."}` in FastAPI, an HTML error page in Flask; a page's script goes by the status) |
+| "only admins" | compare with the app's owner on the server, by username: `visitor.username == efp_app.app.info(cached=True).owner.username` ([`examples/setup-check`](../examples/setup-check/)), or with a list of usernames kept in an environment variable or in storage |
 | per-user data keyed by e-mail or by a user table | key it by `visitor.id` |
 | an API key header checked for programmatic callers | no equivalent; see the fit table |
 | a user id or name sent by the page (in JSON, a form field, a query) | never trust it; the server takes identity from the request's headers only |
@@ -263,9 +267,27 @@ flow, or keep its own user table for authentication.
 Who may open the app at all is not the app's business: the owner chooses the
 audience on the app's page in the Portal.
 
-Locally there is no gateway. Without the header the SDK returns the app's
-owner (asked from the Portal once the token is in `.env`), or the user named
-by `EFP_DEV_VISITOR`; `EFP_DEV_VISITOR=anonymous` shows the app to a guest.
+Three facts about the comparison with the owner:
+
+- A username is what to compare. It is unique in the Portal (at most 64
+  characters) and does not change once the member exists; compare it exactly
+  as the SDK gives it, and write the names of a list the same way the Portal
+  shows them. `visitor.id` is as stable, but on a developer's machine the
+  visitor named by `EFP_DEV_VISITOR` has a stand-in id, not the member's real
+  one, so a comparison of ids is never true there.
+- `app.info` asks the Portal. It raises `ConfigurationError` on a developer's
+  machine without a token, and another `EfpError` when the Portal cannot be
+  reached. In both cases nobody is the owner: catch the error, refuse, and
+  show `exc.user_message`. Never fall back to "everybody may".
+- `cached=True` asks once per process. The owner of an app does not change
+  while it runs.
+
+Locally there is no gateway. Without the header the SDK returns the user
+named by `EFP_DEV_VISITOR`, or else the app's owner (asked from the Portal,
+which needs the token in `.env`); `EFP_DEV_VISITOR=anonymous` shows the app
+to a guest. With neither a token nor `EFP_DEV_VISITOR` there is no visitor at
+all: every request is a guest's and `require_visitor` answers 401. For a
+first run put `EFP_DEV_VISITOR=<a username>` in `.env`.
 
 ## 7. Secrets and settings
 
@@ -282,8 +304,12 @@ by `EFP_DEV_VISITOR`; `EFP_DEV_VISITOR=anonymous` shows the app to a guest.
 - Never read `EFP_APP_TOKEN` yourself and never send it to the browser. The
   SDK uses it.
 - List every variable the app needs in the README, with what happens without
-  it. An app that needs a variable should say "not set up yet" on its page,
-  not crash at import.
+  it, and in `.env.example` as a name without a value (section 3). An app
+  that needs a variable should say "not set up yet" on its page, not crash at
+  import.
+- A secret that was ever committed stays in the repository's history, and
+  removing the line does not take it back. Say in the hand-over which secrets
+  were in the code, so that the owner revokes them.
 
 ## 8. State: files and databases
 
@@ -300,7 +326,7 @@ survive goes through `efp_app.storage`.
 | `functools.lru_cache` over something expensive | fine as a speed-up; it is empty after every restart. Keep results you paid for (model answers, slow reports) in storage instead ([`examples/release-notes`](../examples/release-notes/)) |
 | a counter, a "last updated" time, a small settings record | one JSON object each |
 | a table of records | one object per record, listed by prefix (`storage.list("items/")`); read them all for small sets, keep an index object for larger ones |
-| SQLite | `Path(storage.data_dir()) / "app.db"` on a host in sandbox mode only: default journal mode (never WAL), a busy timeout, one writer. An app that must run on every host uses objects instead |
+| SQLite | `Path(storage.data_dir()) / "app.db"` on a host in sandbox mode only: default journal mode (never WAL), a busy timeout, one writer. An app that must run on every host uses objects instead. Which mode a host runs is its operators' choice and cannot be seen from a developer's machine: ask them, or let the app find out when it runs (`storage.mode()` is `"sandbox"` there; on a host in the other mode, `"hidden"`, `storage.data_dir()` raises `DataDirUnavailableError`) and say so on its page |
 | PostgreSQL, MySQL, Redis, MongoDB started next to the app | not available. Objects in storage; or an existing server the cluster can reach, with its address and password in environment variables and a driver that installs as a wheel |
 
 Storage has no transactions and no locks across requests. Two saves of the
@@ -310,13 +336,42 @@ it cannot matter:
 - give every writer an object of its own (`votes/<poll>/<visitor id>.json`)
   and combine on reading ([`examples/team-poll`](../examples/team-poll/));
 - or give every item an object of its own and never rewrite a shared list;
-- or carry a version number in the object and refuse a save that is based on
-  an old one;
+- or, where one shared object cannot be avoided, guard the three steps
+  (load, change, save) with a `threading.Lock` of the module. The host runs
+  one process per app, so a lock inside the process is enough
+  ([SDK_REFERENCE.md](SDK_REFERENCE.md), 6.6);
 - an object that only one person can write (the owner's settings) needs none
   of this.
 
+The lock covers two requests that meet. It does not cover two pages that
+each loaded an object, changed it for a minute and now save: the second save
+would undo the first. Where one object can be edited from two pages (two
+tabs, two people), also keep a version number in it: a save names the
+version its page loaded and is refused with 409 when the stored one is
+newer, and the check and the save happen inside the lock
+([`examples/mind-map`](../examples/mind-map/)). A version number without the
+lock is not enough: storage has no "save only if unchanged", so the check and
+the save would still be two steps.
+
 Keys are 1 to 512 characters of `A-Z a-z 0-9 . _ - /`. Anything that came
 from a visitor and becomes part of a key is validated first.
+
+**The data the project already has.** Nothing can be copied into a deployed
+app's storage from outside: there is no shell, no upload and no shared disk.
+Two ways bring existing data along, and both are code of the app:
+
+- Reference data that may be read by everyone who can read the repository
+  and that changes with the code (a catalogue, a glossary): commit it as a
+  file in the entry directory and read it from there. It needs no storage.
+- Everything else (notes, votes, records people entered): give the app an
+  import that only the owner may use. The owner exports the old data to a
+  file (JSON or CSV), uploads it once on that page, and the app validates
+  each record and saves it as objects, reporting how many it took and which
+  it refused. Make the import safe to run twice (the same record gives the
+  same key). Never commit the export.
+
+Say in the hand-over which of the two applies, and that old data is not in
+the app until the owner has imported it.
 
 ## 9. Model calls
 
@@ -348,6 +403,22 @@ nothing to do; pass `visitor=`; catch `EfpError` and show `exc.user_message`
 that comes from a visitor, a log or another system is data: say so in the
 system prompt, and never execute what a model returns.
 
+Where the sentence goes depends on who asked. A route that a script calls
+answers JSON (`{"error": {"code": exc.code, "message": exc.user_message}}`,
+the shape the starters use) and the script shows the message. A route that
+the browser opens as a page (a link to an export, a download, a report)
+answers a small page with the sentence and a link back, with the status of
+the error: raw JSON in a browser tab is not an answer for a visitor.
+
+A model call may take minutes; the SDK waits up to 600 seconds for one. The
+request that makes it stays open that long, which the gateway allows (up to
+an hour). In a `flask` app the host runs gunicorn with one process and eight
+threads, so eight such requests at once occupy the whole app; its
+`--timeout 120` does not end a long request, because with threads gunicorn
+applies it to the worker as a whole and not to one request (gunicorn's
+documented behaviour; not run for this guide). Stream the answer
+(`llm.stream`) when a visitor would otherwise watch a blank page.
+
 ## 10. Calls to other systems
 
 For Jira, Confluence, GitHub, Jenkins, Nexus and Splunk the app does not keep
@@ -357,6 +428,7 @@ credentials. It calls the owner's connector:
 |---|---|
 | `requests.get(JIRA_URL + "/rest/api/2/issue/ABC-1", auth=(user, token))` | `connectors.get("jira", "/rest/api/2/issue/ABC-1", visitor=who)` |
 | query parameters | keyword arguments of `get`, or `query={...}` of `request` |
+| `timeout=30` | `connectors.request(type, "GET", path, query={...}, timeout=30, visitor=who)`. Not `connectors.get(..., timeout=30)`: every keyword of `get` except `visitor` is a query parameter, so that would send `?timeout=30` to the other system and wait the default 120 seconds |
 | `response.raise_for_status()` | check `answer.status` (or `answer.ok`): the other system's 404 or 401 is an answer, not an exception |
 | `response.json()` | `answer.json` (parsed when the body is JSON), `answer.text`, `answer.content` |
 | POST, PUT, DELETE | `connectors.request(type, "POST", path, json=...)`; refused unless the owner allowed writing for that connector |
@@ -401,6 +473,17 @@ must happen on its own.
 | a bot that listens to a chat system or a webhook | does not fit |
 | warm-up code that fills a cache at start | fill it on first use; keep the start short |
 
+"Refresh on the next request" has three cases, and a converted app handles
+all of them: the copy is fresh (use it); the copy is old and the fetch works
+(save the new one with its time, use it); the copy is old and the fetch
+fails. In the last case show the old copy, say when it was fetched and show
+the error as a sentence; when there is no copy yet, the sentence alone. Do
+not save a failed fetch over a good copy, and do not try again on every
+request of the next minute: remember the time of the failure too. Keep the
+copy in storage, not only in memory, or every start of the app begins with a
+fetch ([`examples/build-health`](../examples/build-health/) keeps every
+answer in storage with the time it was fetched).
+
 ## 12. Dependencies
 
 - `requirements.txt` lists what the app imports, nothing else. Development
@@ -409,7 +492,10 @@ must happen on its own.
   platform's package index. No Git URLs, no local paths, no `-e`, no index
   options in the file. `efp-app check` flags such lines.
 - Do not list `efp-app-sdk`; the host adds it. It also adds `uvicorn` for a
-  `fastapi` app and `gunicorn` for a `flask` app when they are missing.
+  `fastapi` app and `gunicorn` for a `flask` app when they are missing, so
+  both ways work. List them, as the starters and the examples do: the file
+  then says everything the app runs on, and you choose the version. A
+  WebSocket route needs `uvicorn[standard]` listed in any case.
 - Pin what the project already pins. Unpinned is acceptable for the
   framework itself.
 - Remove what the conversion made unnecessary: auth libraries, database
@@ -832,28 +918,84 @@ Streamlit above).
 Do all of these, in this order. Each has a pass condition.
 
 1. `efp-app check --strict` exits with 0.
-2. `efp-app dev` starts the app; the front page loads; without
-   `EFP_APP_TOKEN` in `.env` the page still loads and features that need the
-   Portal say "not set up yet" instead of failing.
+2. `efp-app dev` with `EFP_DEV_VISITOR=<a username>` in `.env` and no
+   `EFP_APP_TOKEN`: the app starts, the front page loads, and features that
+   need the Portal (the model, a connector, the owner check) say "not set up
+   yet" instead of failing. Without `EFP_DEV_VISITOR` and without a token
+   there is no visitor at all, and a 401 from `require_visitor` is then the
+   right answer, not a failure.
 3. `efp-app dev --prefix my-app`: open `http://127.0.0.1:8000/my-app/`, use
    every page and every button once. The console shows no "outside the app"
    line and no 404 of the app for a file of a page, and the browser's
-   network panel shows no request outside `/my-app/` and no failed one.
-4. With `EFP_DEV_VISITOR=alice` and then `EFP_DEV_VISITOR=bob`: each sees
-   their own data and cannot change the other's. With
-   `EFP_DEV_VISITOR=anonymous` (only if the audience may be "Anyone"):
+   network panel shows no request outside `/my-app/` and no failed one. One
+   line does not count: `outside the app: GET /favicon.ico`. A browser asks
+   for that address by itself when a page names no icon; give the page
+   `<link rel="icon" href="static/icon.png">` (or `href="data:,"`) to be rid
+   of it. A button that calls the model or a connector cannot succeed
+   without the app's token, which only the owner has: without one, such a
+   button must end in the "not set up" sentence here, and what it does when
+   the call works is shown by the tests of item 7. Say in the report which
+   buttons were used live and which only in tests.
+4. Identity, as far as the app has it. If it keeps data per visitor: with
+   `EFP_DEV_VISITOR=alice` and then `EFP_DEV_VISITOR=bob`, each sees their
+   own data and cannot change the other's. If visitors share data: what bob
+   adds carries bob's name, taken on the server. If a part is for the owner
+   only: bob is refused there, on the server, not just by a hidden button.
+   With `EFP_DEV_VISITOR=anonymous` (only if the audience may be "Anyone"):
    nothing that needs a member works, and nothing crashes.
 5. Stop and start the app: everything that should survive is still there
    (`.efp-data/` holds it locally).
-6. `grep` finds no secret, token, password or private address in the entry
-   directory, and no `currentUser()`, `@me` or `/user` in a connector path.
-7. The project's own tests still pass. Tests of the converted parts use a
-   stand-in for the Portal: see `sdk/tests/conftest.py` (`FakePortal`) and
-   `sdk/tests/example_support.py` for how the examples do it.
+6. No secret and no "me" in the entry directory. Run both, and read every
+   hit: the name of a variable is fine, a value is not.
+
+   ```
+   grep -rnEi "passw|secret|token|[_-]key|apikey|bearer|authorization|private key|://[^/ \"']*:[^/ \"']*@" --exclude-dir=.venv --exclude-dir=.efp-data --exclude-dir=node_modules --exclude=.env .
+   grep -rnE "currentUser\(\)|@me\b|/user([\"'?/]|$)|/myself\b" --include="*.py" .
+   ```
+
+   The first finds passwords, keys and addresses with a password in them;
+   also look for host names and IP addresses of internal systems that are
+   now connectors. The second finds what means "the account of the
+   connector" to Jira (`currentUser()`, `/myself`) and GitHub (`@me`,
+   `/user`). `.env` is not committed and may hold the token.
+7. The project's own tests still pass, and the converted parts have tests
+   that run without a Portal: `efp_app.testing`, which is part of the SDK
+   ([SDK_REFERENCE.md](SDK_REFERENCE.md), section 14), gives a test the
+   environment of a deployed app, a stand-in Portal that answers the model
+   and connector calls with what the test says, and the signed header of a
+   visitor. At least: one test per route that calls the model or a
+   connector (the call works; the call is refused), one for every check of
+   identity (a member, another member, the owner, a guest if there can be
+   one).
 8. After the first deployment, on the app's page in the Portal: every step of
    the deployment succeeded; the app answers at its address; **Logs** shows
    no error; a second member (and, if intended, a guest) sees what they
    should.
+
+A test of item 7, for a Flask app (FastAPI: `TestClient(app, root_path="/example")`
+in place of `app.test_client()`):
+
+```python
+from efp_app import testing
+
+
+def test_the_summary(tmp_path):
+    with testing.deployed(tmp_path) as portal:
+        portal.on("POST", "/llm/complete", testing.completion("Three bugs are open."))
+        from app import app                      # inside the block: the app reads its settings
+
+        client = app.test_client()
+        answer = client.post("/api/summary", headers=testing.visitor_headers("alice"))
+        assert answer.get_json() == {"text": "Three bugs are open."}
+        sent = portal.sent_to("/llm/complete")[0]                # what the app asked the model
+        assert sent["max_output_tokens"] <= 600 and sent["system"]
+
+        portal.on("POST", "/llm/complete", testing.error(429, "budget_exceeded"))
+        refused = client.post("/api/summary", headers=testing.visitor_headers("alice"))
+        assert refused.get_json()["error"]["code"] == "budget_exceeded"
+
+        assert client.post("/api/summary").status_code == 401    # a guest: no header
+```
 
 ## Definition of done
 
@@ -868,6 +1010,7 @@ Do all of these, in this order. Each has a pass condition.
 - [ ] Every connector call names people explicitly, validates what a visitor typed, and handles the other system's status.
 - [ ] No background thread, scheduler, queue or polling timer is left.
 - [ ] `requirements.txt` holds only what is imported, as wheels.
+- [ ] The parts that call the model, a connector or check identity have tests that run without a Portal (`efp_app.testing`).
 - [ ] The verification list above passed, and the README says how to run the app locally and what to turn on in the Portal.
 - [ ] Everything that was left out of the conversion is written down, with the reason.
 
@@ -887,3 +1030,7 @@ these; list them in the README or the pull request:
    from **Settings > App token** into `.env` as `EFP_APP_TOKEN`, with
    `EFP_PORTAL_URL`.
 5. Deploy again after every push (**Deploy latest**).
+6. Revoke every password, key and token that was in the old code or its
+   history (section 7); the converted app does not use them.
+7. Bring the old data along, if there is any: export it and import it once on
+   the app's import page (section 8). Until then the app starts empty.

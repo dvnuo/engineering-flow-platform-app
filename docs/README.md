@@ -5,6 +5,7 @@
 | write an app | [DEVELOPING_APPS.md](DEVELOPING_APPS.md): quick start, the manifest, app types and the path prefix, the SDK by topic, local development, limits, troubleshooting |
 | turn an existing project into an app | [CONVERTING_A_PROJECT.md](CONVERTING_A_PROJECT.md): the fit check, the procedure, a recipe per framework, the verification list |
 | look up an SDK name, a parameter, an error | [SDK_REFERENCE.md](SDK_REFERENCE.md): every module, function, class, environment variable and command |
+| test an app without a Portal | `efp_app.testing`, part of the SDK: [SDK_REFERENCE.md](SDK_REFERENCE.md), section 14; a first test is in [DEVELOPING_APPS.md](DEVELOPING_APPS.md#tests-without-a-portal) |
 | copy something that works | [the examples](../examples/README.md): complete apps, with an index of which one shows what |
 | give the work to an AI agent | [AGENTS.md](../AGENTS.md): what to read, the rules, the commands, what to deliver |
 | run the app host | [OPERATIONS.md](OPERATIONS.md): building the image, deploying, the isolation modes, settings, day-to-day operation |
