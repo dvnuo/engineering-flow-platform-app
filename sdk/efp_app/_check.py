@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import re
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -58,6 +59,23 @@ def _short(text: str, limit: int = 80) -> str:
 
 def _relative(url: str) -> str:
     return url.lstrip("/") or "./"
+
+
+def _from_sheet(url: str, sheet: str) -> str:
+    """``url`` as a style sheet writes it, the sheet being served at the path it has in the app.
+
+    A URL in a style sheet is resolved against the sheet's own address, not the page's:
+    ``/static/bg.png`` in ``static/style.css`` is ``bg.png``, and ``/img/bg.png`` there is
+    ``../img/bg.png``.
+    """
+    cut = min((url.index(mark) for mark in "?#" if mark in url), default=len(url))
+    target, rest = url[:cut].lstrip("/"), url[cut:]
+    path = posixpath.relpath(target or ".", posixpath.dirname(sheet) or ".")
+    if path == ".":
+        path = "./"
+    elif url[:cut].endswith("/"):
+        path += "/"
+    return path + rest
 
 
 # --- Files the manifest names -------------------------------------------------
@@ -195,7 +213,7 @@ def _scan_files(directory: Path) -> Iterator[Path]:
                 yield Path(current) / name
 
 
-def _findings(line: str, app_type: Optional[str]) -> Iterator[Tuple[int, str]]:
+def _findings(line: str, app_type: Optional[str], shown: str = "") -> Iterator[Tuple[int, str]]:
     for match in _ATTRIBUTE.finditer(line):
         attribute, url = match.group(1), match.group(3)
         advice = 'use a relative URL: %s="%s"' % (attribute, _short(_relative(url), 40))
@@ -212,17 +230,27 @@ def _findings(line: str, app_type: Optional[str]) -> Iterator[Tuple[int, str]]:
         )
     for match in _CSS_URL.finditer(line):
         url = match.group(2)
-        yield match.start(), "root-absolute URL url(%s): use a path relative to the style sheet: url(%s)" % (
-            _short(url),
-            _short(_relative(url), 40),
-        )
+        if shown.lower().endswith(".css"):
+            # Resolved against the sheet's own address, so the hint starts from where the sheet lies.
+            advice = "use a path relative to the style sheet: url(%s)" % _short(_from_sheet(url, shown), 40)
+        else:
+            # A style written into a page is resolved against the page.
+            advice = "use a relative URL: url(%s)" % _short(_relative(url), 40)
+        yield match.start(), "root-absolute URL url(%s): %s" % (_short(url), advice)
 
 
-def scan_urls(directory: Path, app_type: Optional[str] = None) -> List[Problem]:
-    """Root-absolute URLs in the pages, scripts and style sheets below ``directory``."""
+def scan_urls(directory: Path, app_type: Optional[str] = None, served_from: str = "") -> List[Problem]:
+    """Root-absolute URLs in the pages, scripts and style sheets below ``directory``.
+
+    ``served_from`` is the folder whose files are served at the top of the app
+    (the ``entry`` of a static app): the hint for a style sheet in it starts
+    from where the sheet is served, not from where it lies in the directory.
+    """
     problems: List[Problem] = []
+    inside = served_from.strip("/") + "/" if served_from.strip("/") else ""
     for path in _scan_files(directory):
         shown = path.relative_to(directory).as_posix()
+        served = shown[len(inside) :] if inside and shown.startswith(inside) else shown
         try:
             if path.stat().st_size > MAX_SCAN_BYTES:
                 continue
@@ -233,7 +261,7 @@ def scan_urls(directory: Path, app_type: Optional[str] = None) -> List[Problem]:
         for number, line in enumerate(text.splitlines(), 1):
             if "/" not in line:
                 continue
-            for column, message in _findings(line, app_type):
+            for column, message in _findings(line, app_type, served):
                 found.append((number, column, message))
         found.sort()
         for number, _column, message in found[:MAX_FINDINGS_PER_FILE]:
@@ -253,10 +281,15 @@ def check_directory(directory: Path) -> List[Problem]:
     directory = Path(directory)
     data, problems = _manifest.read(directory)
     app_type = None
+    served_from = ""
     if isinstance(data, dict):
         app_type = data.get("type") if data.get("type") in _manifest.TYPES else None
         if app_type:
             problems = problems + check_files(directory, data)
+        entry = data.get("entry")
+        if app_type == "static" and isinstance(entry, str):
+            folder = posixpath.normpath(entry.replace("\\", "/"))
+            served_from = "" if folder in (".", "/") or folder.startswith("..") else folder
     if directory.is_dir():
-        problems = problems + scan_urls(directory, app_type)
+        problems = problems + scan_urls(directory, app_type, served_from)
     return problems

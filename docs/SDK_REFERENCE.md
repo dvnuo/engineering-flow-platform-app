@@ -6,7 +6,8 @@ other package, `httpx` (0.24 or newer, below 1.0). It imports without any web
 framework installed.
 
 This file names every public part of the SDK: signature, parameters,
-defaults, limits, return value, errors. The guide is
+defaults, limits, return value, errors. Its last section, 14, is about
+testing an app in its own repository with `efp_app.testing`. The guide is
 [DEVELOPING_APPS.md](DEVELOPING_APPS.md); the wire formats are in
 [CONTRACTS.md](CONTRACTS.md). The code in `sdk/efp_app/` decides.
 `sdk/tests/test_sdk_reference.py` runs the examples of this file, compares
@@ -28,6 +29,7 @@ name is missing here.
 | `efp_app.config` | the settings read from the environment (section 2) |
 | `efp_app.manifest` | the rules of `efp-app.json` (section 11) |
 | `efp_app.cli` | the `efp-app` command: `init`, `dev`, `check` (section 12) |
+| `efp_app.testing` | an app's own tests: the host's environment, a fake Portal and the gateway's visitor header, with no Portal and no host (section 14). A running app never uses it |
 | `efp_app._check`, `efp_app._sse`, `efp_app._devgateway` | internal: what `efp-app check` looks at (12.4), the parser of streamed answers (4.6), the local gateway of `efp-app dev --prefix` (12.3) |
 
 The import lines of an app (the last one is for FastAPI; section 9 has the
@@ -70,8 +72,9 @@ print(app.base_path())                                 # "" on a developer's mac
 | `efp_app.Visitor` | the same class as `visitor.Visitor` |
 | `efp_app.__version__` | the version, a string: `"0.1.0"` |
 
-`efp_app.manifest`, `efp_app.cli` and the modules of `efp_app.integrations`
-are not imported by `import efp_app`: import them by their full name.
+`efp_app.manifest`, `efp_app.cli`, `efp_app.testing` and the modules of
+`efp_app.integrations` are not imported by `import efp_app`: import them by
+their full name.
 
 ### 1.2 Rules that hold everywhere
 
@@ -1993,7 +1996,7 @@ Most apps never do. The cases:
 |---|---|
 | another timeout for one call | pass `timeout=` to that call |
 | another timeout for every call | `client.configure(client=client.Client(timeout=30))` at start-up |
-| a stand-in for the Portal in a test | build a `client.Client` with `transport=httpx.MockTransport(...)` and pass it as `client=`, or `client.configure` it |
+| a stand-in for the Portal in a test | use `efp_app.testing` (section 14): `testing.deployed` and `testing.FakePortal` do the rest of this row for you. By hand: build a `client.Client` with `transport=httpx.MockTransport(...)` and pass it as `client=`, or `client.configure` it |
 | a call with another token or Portal address | build a `client.Client(token=..., portal_url=...)` and pass it as `client=` |
 | the shared client for a path this SDK has no function for | `client.get_client()` |
 
@@ -2109,6 +2112,11 @@ def reset() -> None:
 | `client.configure(client=, async_client=)` | Makes the given clients the shared ones. They stay until `client.reset()`, whatever the environment says. An argument left out changes nothing. Returns `None`. |
 | `client.reset()` | Closes the shared synchronous client and forgets both. The next call builds new ones from the environment. Returns `None`. |
 
+A test rarely calls these two itself. `testing.FakePortal.install` calls
+`client.configure` with clients that talk to a fake Portal, and
+`testing.deployed` calls `client.reset` when its block begins and when it
+ends (section 14).
+
 ### 8.5 `client.as_timeout` and `client.ca_bundle`
 
 <!-- signature: efp_app.client.as_timeout efp_app.client.ca_bundle -->
@@ -2153,7 +2161,8 @@ client.reset()                                         # closes it; the next cal
 assert client.get_client() is not mine
 ```
 
-A stand-in for the Portal in a test of your own:
+A stand-in for the Portal in a test of your own, built by hand
+(`efp_app.testing` has a ready one, with canned answers: section 14):
 
 <!-- runnable -->
 ```python
@@ -2231,6 +2240,18 @@ stand-in. Each module imports its framework only when a function is called;
 
 There is no `require_visitor` for Streamlit and Gradio.
 
+What the browser receives when `require_visitor` refuses an anonymous
+request differs by framework:
+
+| `require_visitor` of | Status | Body |
+|---|---|---|
+| `efp_app.integrations.fastapi` | `401` | JSON: `{"detail": "Sign in to use this app."}` |
+| `efp_app.integrations.flask` | `401` | HTML: Flask's standard error page, with the sentence `Sign in to use this app.` in it, unless the app registers `@app.errorhandler(401)` (9.2) |
+
+Neither body has the shape of the gateway's own refusals,
+`{"error": {"code": ..., "message": ...}}` (CONTRACTS.md, section 6.1). A
+script in a page should therefore go by the status `401`, not by the body.
+
 ### 9.1 FastAPI and Starlette: `efp_app.integrations.fastapi`
 
 <!-- signature: efp_app.integrations.fastapi.get_visitor efp_app.integrations.fastapi.require_visitor -->
@@ -2250,6 +2271,10 @@ WebSocket routes. In a plain Starlette app call `get_visitor(request)`.
 Without Starlette installed the module still imports;
 `efp_app.integrations.fastapi.HTTPConnection` is then an empty stand-in
 class.
+
+The `401` of `require_visitor` is FastAPI's usual answer to an
+`HTTPException`: the JSON body `{"detail": "Sign in to use this app."}`. It
+has no `error` object and no code.
 
 ```python
 from typing import Optional
@@ -2283,9 +2308,13 @@ def require_visitor() -> Visitor:
 | Function | Returns | Raises |
 |---|---|---|
 | `efp_app.integrations.flask.get_visitor` | the `Visitor` of the request being handled, or `None` | Flask's own error when called outside a request |
-| `efp_app.integrations.flask.require_visitor` | the `Visitor` | `flask.abort(401, description="Sign in to use this app.")` for an anonymous request |
+| `efp_app.integrations.flask.require_visitor` | the `Visitor` | for an anonymous request, what `flask.abort(401, description="Sign in to use this app.")` raises: `werkzeug.exceptions.Unauthorized`. Flask answers it with `401` and its standard HTML error page, unless the app registers `@app.errorhandler(401)` |
 
 Both read `flask.request.headers`.
+
+The standard page is `text/html`: the title `401 Unauthorized` and the
+sentence `Sign in to use this app.` in a paragraph. It is not JSON, so
+`response.json()` in a page's script fails on it; test `response.status`.
 
 ```python
 from flask import Flask, jsonify
@@ -2306,6 +2335,24 @@ def add_note():
     who = require_visitor()                                     # aborts with 401 for an anonymous visitor
     return jsonify(saved_for=who.username)
 ```
+
+An app that wants one shape for all its errors, the gateway's, registers a
+handler. It answers every `401` the app aborts with, not only the one of
+`require_visitor`:
+
+```python
+from flask import Flask, jsonify
+
+app = Flask(__name__)
+
+
+@app.errorhandler(401)
+def sign_in_required(error):                                    # error.description: "Sign in to use this app."
+    return jsonify(error={"code": "sign_in_required", "message": error.description}), 401
+```
+
+The anonymous request then gets `401` with
+`{"error": {"code": "sign_in_required", "message": "Sign in to use this app."}}`.
 
 ### 9.3 Streamlit: `efp_app.integrations.streamlit`
 
@@ -2966,7 +3013,8 @@ With nothing to report it prints one line:
 | the requirements do not list the framework of the type | `does not list "<package>", which a <type> app needs` |
 | a root-absolute URL in an attribute: `src`, `href`, `action`, `formaction`, `poster` | `root-absolute URL src="/static/app.js": use a relative URL: src="static/app.js"`; in a `flask` app followed by `or {{ url_for(...) }}` |
 | a root-absolute URL in a call: `fetch(...)`, `EventSource(...)`, `axios(...)`, `axios.get(...)` and the like | `root-absolute URL fetch("/api/items"): use a relative URL: fetch("api/items")` |
-| a root-absolute URL in a style sheet | `root-absolute URL url(/img/bg.png): use a path relative to the style sheet: url(img/bg.png)` |
+| a root-absolute URL in a `url(...)` of a style sheet, a `.css` file (here `static/style.css`) | `root-absolute URL url(/img/bg.png): use a path relative to the style sheet: url(../img/bg.png)` |
+| a root-absolute URL in a `url(...)` of any other file: a `style` attribute or a `<style>` element of a page or a template | `root-absolute URL url(/img/bg.png): use a relative URL: url(img/bg.png)` |
 | more than 20 such URLs in one file | `<N> more root-absolute URLs in this file` |
 
 How it looks:
@@ -2984,6 +3032,20 @@ How it looks:
   with one `/`; `//host/...` and `https://...` do not. Folders whose name
   starts with a dot, and `node_modules`, `__pycache__`, `venv`, `env` and
   `site-packages`, are skipped; so is a file of more than 2 MiB.
+- A `url(...)` in a `.css` file: a browser resolves it against the address
+  of the style sheet, not of the page, so the hint is written as the sheet
+  sees it. The sheet is taken to be served at the path it has in the app's
+  directory. `url(/static/bg.png)` in `static/style.css` gives
+  `url(bg.png)`; `url(/img/bg.png)` there gives `url(../img/bg.png)`, and in
+  a `style.css` at the top of the directory `url(img/bg.png)`. A query
+  string or a fragment is kept. In a `static` app the path starts from the
+  served folder, the manifest's `entry`: with `"entry": "public"`,
+  `url(/img/bg.png)` in `public/style.css` gives `url(img/bg.png)`. When the
+  app serves the sheet at another address, work the path out from that
+  address.
+- A `url(...)` in any other file (a `style` attribute or a `<style>` element
+  of a page or a template) is resolved against the page. The hint is the
+  URL without its leading `/`: `use a relative URL: url(img/bg.png)`.
 - Python files are not searched. A URL that the code puts together at run
   time is not found. A flagged line that never reaches a browser is
   harmless.
@@ -3052,7 +3114,7 @@ The checks of `efp-app check` are functions of the internal module
 def check_directory(directory: Path) -> List[Problem]:
 def check_files(directory: Path, data: Dict[str, Any]) -> List[Problem]:
 def check_requirements(path: Path, shown: str, app_type: str) -> List[Problem]:
-def scan_urls(directory: Path, app_type: Optional[str] = None) -> List[Problem]:
+def scan_urls(directory: Path, app_type: Optional[str] = None, served_from: str = "") -> List[Problem]:
 ```
 
 | Function | What it returns |
@@ -3060,7 +3122,7 @@ def scan_urls(directory: Path, app_type: Optional[str] = None) -> List[Problem]:
 | `_check.check_directory(directory)` | Everything `efp-app check` reports for the directory. |
 | `_check.check_files(directory, data)` | The problems with the files a decoded manifest names. |
 | `_check.check_requirements(path, shown, app_type)` | The problems of one requirements file; `shown` is the name to report it under. |
-| `_check.scan_urls(directory, app_type=None)` | The root-absolute URLs below the directory. |
+| `_check.scan_urls(directory, app_type=None, served_from="")` | The root-absolute URLs below the directory. `served_from` is the folder whose files are served at the top of the app (the `entry` of a `static` app); the hint for a style sheet in it starts from there. |
 
 <!-- runnable -->
 ```python
@@ -3223,3 +3285,816 @@ What a reader of the signatures alone would get wrong.
 49. **`efp-app check` reads text, not behaviour.** It does not import the
     app, does not search Python files and does not find a URL built at run
     time.
+
+## 14. Testing an app: `efp_app.testing`
+
+Deployed, an app gets three things from outside. This module has a stand-in
+for each, so an app can be tested in its own repository with nothing
+installed but the SDK and the app's own requirements: no Portal, no host,
+no gateway.
+
+| Deployed, the app gets | From | In a test |
+|---|---|---|
+| its environment: the variables of 2.1 | the host | `testing.deployed` sets them, and puts back what was there |
+| the answers to its model calls, its connector calls and `app.info` | the Portal | `testing.FakePortal`, with the canned answers `testing.completion`, `testing.stream`, `testing.connector_answer`, `testing.error` and `testing.app_info` |
+| the signed header that names the visitor | the gateway | `testing.visitor_headers` |
+
+Everything else in a test is the real thing: `llm.complete` builds its real
+request, `visitor.current` verifies a real signature, `storage` writes real
+files. Only the far end is replaced, and no request leaves the process.
+
+A running app never uses this module. `import efp_app` does not import it:
+write `from efp_app import testing`. The module needs no test runner; the
+examples here use pytest.
+
+Its names: `testing.deployed`, `testing.environment`, `testing.FakePortal`,
+`testing.app_info`, `testing.completion`, `testing.stream`,
+`testing.connector_answer`, `testing.error`, `testing.visitor_headers` and
+the constants `testing.APP_ID`, `testing.VISITOR_KEY`, `testing.TOKEN`,
+`testing.PORTAL_URL` and `testing.APPS_URL` (14.7).
+
+The examples of this section bring their own Portal: inside a
+`testing.deployed` block the fake Portal of 1.3 is not asked.
+
+### 14.1 A first test
+
+A Flask app, `app.py`. It asks the model for a summary, keeps the summary
+per visitor, and lets only the owner hide a bug:
+
+```python
+from flask import Flask, jsonify
+
+from efp_app import app as efp, errors, llm, storage
+from efp_app.integrations.flask import require_visitor
+
+app = Flask(__name__)
+
+
+@app.post("/api/summary")
+def summary():
+    who = require_visitor()                                     # 401 for an anonymous visitor
+    try:
+        answer = llm.complete("Summarise the bugs.", max_output_tokens=200, visitor=who)
+    except errors.EfpError as exc:
+        return jsonify(error={"code": exc.code, "message": exc.user_message}), 502
+    storage.save_json("summaries/%d.json" % who.id, {"text": answer.text})
+    return jsonify(text=answer.text, by=who.username)
+
+
+@app.post("/api/hide")
+def hide():
+    who = require_visitor()
+    if who.id != efp.info(cached=True).owner.id:
+        return jsonify(error={"code": "owner_only", "message": "Only the owner may hide a bug."}), 403
+    return jsonify(ok=True)
+```
+
+Its tests, `test_app.py` next to it. The fixture `portal` runs each test as
+a deployed app would run; the fixture `client` imports the app inside it:
+
+```python
+import pytest
+from flask.testing import FlaskClient
+
+from efp_app import storage, testing, visitor
+
+
+@pytest.fixture
+def portal(tmp_path):
+    with testing.deployed(tmp_path) as portal:                  # the host's environment and a fake Portal
+        yield portal                                            # both are taken back after the test
+
+
+@pytest.fixture
+def client(portal) -> FlaskClient:
+    from app import app                                         # imported while the environment is the host's
+
+    return app.test_client()
+
+
+def test_a_member_gets_a_summary(portal, client):
+    portal.on("POST", "/llm/complete", testing.completion("Three bugs are open."))
+
+    answer = client.post("/api/summary", headers=testing.visitor_headers("bob"))
+
+    assert answer.status_code == 200
+    assert answer.get_json() == {"text": "Three bugs are open.", "by": "bob"}
+    [sent] = portal.sent_to("/llm/complete")                    # what the app asked the model
+    assert sent["messages"][-1] == {"role": "user", "content": "Summarise the bugs."}
+    assert sent["max_output_tokens"] == 200
+    bob = visitor.dev_visitor_id("bob")                         # the id visitor_headers("bob") carries
+    assert storage.load_json("summaries/%d.json" % bob) == {"text": "Three bugs are open."}
+
+
+def test_a_guest_is_refused(portal, client):
+    assert client.post("/api/summary").status_code == 401       # no header: nobody is signed in
+    assert portal.count("POST", "/llm/complete") == 0
+
+
+def test_only_the_owner_may_hide(client):
+    assert client.post("/api/hide", headers=testing.visitor_headers("bob")).status_code == 403
+    assert client.post("/api/hide", headers=testing.visitor_headers("alice")).get_json() == {"ok": True}
+
+
+def test_a_used_up_budget_ends_as_a_sentence(portal, client):
+    portal.on("POST", "/llm/complete", testing.error(429, "budget_exceeded", headers={"Retry-After": "3600"}))
+
+    refused = client.post("/api/summary", headers=testing.visitor_headers("bob"))
+
+    assert refused.status_code == 502
+    assert refused.get_json()["error"]["code"] == "budget_exceeded"
+    assert refused.get_json()["error"]["message"].startswith("This app has used up its AI budget for today.")
+```
+
+What the four tests use:
+
+| In the test | What it stands for |
+|---|---|
+| `testing.deployed(tmp_path)` | the host: the app is deployed, its storage is `tmp_path`, its Portal is the `FakePortal` the block gives (14.2) |
+| `portal.on("POST", "/llm/complete", ...)` | the Portal's answer to a model call (14.3, 14.4) |
+| `testing.completion(...)`, `testing.error(...)` | an answer and a refusal of the Portal (14.5) |
+| `testing.visitor_headers("bob")` | the gateway: the header of the signed-in member `bob`. No headers: a guest. `"alice"` is the owner of the app (14.6) |
+| `portal.sent_to(...)`, `portal.count(...)` | what the app sent to the Portal (14.3) |
+
+The same for a FastAPI app, `main.py`:
+
+```python
+from typing import Optional
+
+from fastapi import Depends, FastAPI
+
+from efp_app import Visitor, connectors
+from efp_app.integrations.fastapi import get_visitor, require_visitor
+
+app = FastAPI()
+
+
+@app.get("/api/me")
+def me(who: Optional[Visitor] = Depends(get_visitor)):
+    return {"username": who.username if who else None}
+
+
+@app.get("/api/bugs")
+async def bugs(who: Visitor = Depends(require_visitor)):        # 401 for an anonymous visitor
+    found = await connectors.aget("jira", "/rest/api/2/search", visitor=who, jql="project = SHOP")
+    return {"keys": [issue["key"] for issue in found.json["issues"]] if found.ok else []}
+```
+
+Its tests, `test_main.py`. `TestClient(app, root_path=...)` gives the app
+the path prefix the way the host does, which starts a `fastapi` app with
+`--root-path /{slug}` (12.3); the requests themselves are written without
+the prefix:
+
+```python
+import pytest
+from fastapi.testclient import TestClient
+
+from efp_app import app as efp, testing
+
+
+@pytest.fixture
+def portal(tmp_path):
+    with testing.deployed(tmp_path) as portal:
+        yield portal
+
+
+@pytest.fixture
+def client(portal):
+    from main import app
+
+    with TestClient(app, root_path=efp.base_path()) as client:  # "/example"
+        yield client
+
+
+def test_who_is_visiting(client):
+    assert client.get("/api/me").json() == {"username": None}   # a guest
+    assert client.get("/api/me", headers=testing.visitor_headers("bob")).json() == {"username": "bob"}
+
+
+def test_the_bugs_come_from_jira(portal, client):
+    issues = {"issues": [{"key": "SHOP-1"}, {"key": "SHOP-2"}]}
+    portal.on("POST", "/connectors/jira/request", testing.connector_answer(issues))
+
+    refused = client.get("/api/bugs")
+    assert refused.status_code == 401 and refused.json() == {"detail": "Sign in to use this app."}
+    answer = client.get("/api/bugs", headers=testing.visitor_headers("bob"))
+
+    assert answer.json() == {"keys": ["SHOP-1", "SHOP-2"]}
+    [sent] = portal.sent_to("/connectors/jira/request")         # the one call the app made
+    assert (sent["method"], sent["path"], sent["query"]) == ("GET", "/rest/api/2/search", {"jql": "project = SHOP"})
+
+
+def test_jira_answers_with_an_error(portal, client):
+    portal.on("POST", "/connectors/jira/request", testing.connector_answer({"errorMessages": ["down"]}, status=503))
+
+    assert client.get("/api/bugs", headers=testing.visitor_headers("bob")).json() == {"keys": []}
+```
+
+Run either with `python -m pytest` in the app's directory, with the app's
+requirements, the SDK and pytest installed.
+
+### 14.2 `testing.deployed` and `testing.environment`
+
+<!-- signature: efp_app.testing.deployed efp_app.testing.environment -->
+```python
+def deployed(data_dir: Union[str, Path], *, slug: str = "example", info: Optional[Dict[str, Any]] = None) -> Iterator[FakePortal]:
+def environment(data_dir: Union[str, Path], *, slug: str = "example") -> Dict[str, str]:
+```
+
+`testing.deployed` is a context manager: `with testing.deployed(...) as
+portal:` runs the block as a deployed app would run and gives the
+`testing.FakePortal` (14.3) that answers it.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `data_dir` | required | Where the app's storage goes, as a `str` or a `Path`. Give each test a fresh directory: pytest's `tmp_path`. It need not exist yet. |
+| `slug` | `"example"` | The slug of the app. The base path is `"/" + slug`. |
+| `info` | `None` | What `GET /app` answers, so what `app.info()` returns: a `dict` such as `testing.app_info(...)` gives (14.5). `None`: `testing.app_info()` with the `slug` and the address of this block. An `info` of your own is answered as it is: its `"slug"` and `"url"` do not follow `slug=`. |
+
+| Function | Returns | Raises |
+|---|---|---|
+| `testing.deployed(data_dir, slug=, info=)` | a context manager; its `with` statement gives the `testing.FakePortal` | nothing of its own; an error of the block passes through, after everything is put back |
+| `testing.environment(data_dir, slug=)` | a `dict`: the eight variables of the table below, with the values the block gets. It sets nothing | nothing |
+
+What `testing.deployed` does when the block begins:
+
+1. It builds a `testing.FakePortal` and gives it the answer of `GET /app`.
+2. It removes ten variables from the environment of the process: the
+   eight of the table below, `EFP_APP_STORAGE_SOCKET` and `EFP_DEV_VISITOR`.
+3. It sets the eight to what `testing.environment(data_dir, slug=slug)`
+   returns.
+4. It calls `client.reset()` and `visitor.reset_dev_visitor()`.
+5. It makes the fake Portal the Portal of the SDK's shared clients
+   (`install()`, 14.3), and gives it to the block.
+
+| Variable | Value in the block |
+|---|---|
+| `EFP_APP_ID` | `testing.APP_ID` |
+| `EFP_APP_SLUG` | `slug` |
+| `EFP_APP_TOKEN` | `testing.TOKEN` |
+| `EFP_APP_BASE_PATH` | `"/" + slug`: `/example` |
+| `EFP_APP_PUBLIC_URL` | `testing.APPS_URL`, the slug and a slash: `https://apps.test/example/` |
+| `EFP_PORTAL_URL` | `testing.PORTAL_URL` |
+| `EFP_VISITOR_KEY` | `testing.VISITOR_KEY` |
+| `EFP_APP_DATA_DIR` | `str(data_dir)` |
+
+When the block ends, also when it ends with an error (a failed `assert`
+included): `client.reset()` and `visitor.reset_dev_visitor()` again, and
+each of the ten variables gets the value it had before the block. One that
+was not set is removed. Other variables, `PORT` among them, are never
+touched.
+
+What follows from that inside the block:
+
+- **The app is deployed.** `app.is_deployed()` is `True`, `app.slug()` is
+  the slug, `app.base_path()` is `"/" + slug` and `app.public_url()` is
+  `https://apps.test/{slug}/`.
+- **Storage goes to `data_dir`.** `storage.mode()` is `"sandbox"`: objects
+  are files under `{data_dir}/objects/` and `storage.data_dir()` is
+  `data_dir` (6.1). Another test with another directory sees none of it.
+- **A request without the header is a guest.** `EFP_DEV_VISITOR` is
+  removed, and a deployed app has no local stand-in anyway (3.2):
+  `visitor.current` returns `None` unless the request carries a header of
+  `testing.visitor_headers` (14.6).
+- **Every call to the Portal goes to the fake one.** `GET /app` is
+  answered; any other route answers what the test gives with `portal.on`
+  (14.3, 14.4).
+- **The shared clients are new ones.** A client that was made the shared
+  one with `client.configure` before the block is dropped by the
+  `client.reset()` of step 4 and is not put back at the end: after the
+  block the next call builds a client from the environment (8.4).
+
+`testing.deployed` changes the process, not one thread: its environment and
+its shared clients. Run one block at a time in a process.
+
+**Import the app inside the block** when it reads settings while it is
+imported (a module-level `app.base_path()`, `storage.data_dir()` or
+`os.environ[...]`): outside the block the environment is not the host's.
+Python imports a module once per process, so such an app keeps what the
+first test gave it; an app that reads its settings while it handles a
+request has no such problem. The SDK itself reads the environment at each
+call (1.2).
+
+`testing.environment` is for a test that wants the variables without the
+rest: `config.load(testing.environment(tmp_path))` is the `config.Settings`
+of a deployed app, with nothing changed in the process.
+
+### 14.3 `testing.FakePortal`
+
+A Portal for tests: canned answers for the routes an app calls, and a
+record of every request the app made. `testing.deployed` gives one that is
+already installed. It has no rules of its own: it does not know which model
+is allowed, which connector is turned on or what the budget is. It answers
+what the test told it to answer.
+
+<!-- signature: efp_app.testing.FakePortal.__init__ efp_app.testing.FakePortal.on efp_app.testing.FakePortal.sent_to efp_app.testing.FakePortal.count efp_app.testing.FakePortal.body -->
+```python
+def __init__(self) -> None:
+def on(self, method: str, path: str, answer: Any) -> "FakePortal":
+def sent_to(self, path: str) -> List[Any]:
+def count(self, method: str, path: str) -> int:
+def body(self, index: int = -1) -> Any:
+```
+
+<!-- signature: efp_app.testing.FakePortal.client efp_app.testing.FakePortal.async_client efp_app.testing.FakePortal.install efp_app.testing.FakePortal.handler -->
+```python
+def client(self, **options: Any) -> _client.Client:
+def async_client(self, **options: Any) -> _client.AsyncClient:
+def install(self) -> "FakePortal":
+def handler(self, request: httpx.Request) -> httpx.Response:
+```
+
+| Member | Returns | What it does |
+|---|---|---|
+| `on(method, path, answer)` | the `FakePortal` itself, so calls can be chained | Answers `method path` with `answer` from now on. `method` may be in any letter case. `path` is the route below `/api/app-sdk/v1`, written out in full: there are no patterns. Another `on` for the same route replaces the answer. |
+| `sent_to(path)` | a `list` | The decoded JSON bodies of the requests to `path`, in order: what the app sent to one route. A request without a body (a `GET`) is `None` in the list. |
+| `count(method, path)` | an `int` | How many requests went to `method path`. `0` says that the app did not call. |
+| `body(index=-1)` | the decoded JSON body of one request | The latest request, or the one at position `index` of `requests`. `None` when the request had no body. Raises `IndexError` when there is no such request. |
+| `last` | an `httpx.Request` | A property: the latest request, with its `method`, `url`, `headers` and `content`. Raises `IndexError` before the first request. |
+| `requests` | a `list` of `httpx.Request` | Every request the SDK made, in order, those without an answer included. |
+| `routes` | a `dict` | `(METHOD, path)` to the answer: what `on` has filled. |
+| `client(**options)` | a `client.Client` | A client of the SDK whose requests come to this Portal, for code that takes `client=`. `options` are those of `client.Client` (8.2), without `transport`. Outside `testing.deployed` pass `token=` and `portal_url=`, or the two variables must be set: else `ConfigurationError`, as 8.2 says. |
+| `async_client(**options)` | a `client.AsyncClient` | The same for asynchronous code. |
+| `install()` | the `FakePortal` itself | Makes the SDK's shared clients talk to this Portal: `client.configure(client=self.client(), async_client=self.async_client())`. `client.reset()` undoes it. `testing.deployed` calls it for you. |
+| `handler(request)` | an `httpx.Response` | What `httpx.MockTransport` calls for each request: it records the request and finds the answer. A test does not call it; `httpx.MockTransport(portal.handler)` is the transport of a client you build yourself. |
+
+`testing.FakePortal()` takes no arguments and starts with no answers and no
+requests.
+
+**The forms of `answer`.**
+
+| `answer` is | The app's call gets |
+|---|---|
+| a `dict`, or another value that `json` can encode, a `list` excepted | status `200` with the value as its JSON body: `testing.completion(...)`, `testing.connector_answer(...)`, `testing.app_info(...)` |
+| an `httpx.Response` | that response: `testing.stream(...)`, `testing.error(...)`, or one built by hand. One response can answer any number of calls |
+| an exception (an instance) | The exception is raised where the SDK sends the request, as a broken connection would be. An `httpx.ConnectError` reaches the app as `PortalUnreachableError`, an `httpx.ReadTimeout` as `PortalTimeoutError` (8.3). On a `GET` route the SDK tries a failed connection three times before it gives up, with its usual pauses, and the three requests are recorded |
+| a callable | It is called with the `httpx.Request`. What it returns is used as one of the three forms above |
+| a `list` of these | One item per call, in order. The last item stays: it answers every later call. `on` copies the list, so the one you passed stays as it is; an empty list is refused with `ValueError` |
+
+**A route without an answer** gets status `404` with the body
+`{"error": {"code": "not_found", "message": "the test gave no answer for METHOD /path"}}`.
+The SDK raises it as a plain `EfpError` with `code == "not_found"` and
+`status == 404`: `not_found` is not a code of the Portal's SDK API, so no
+class of `errors` stands for it (10.5). The message names the route, so the
+test says which `portal.on` is missing. The request is recorded like any
+other. An app that catches `EfpError` answers it as it answers any failed
+call: an error answer that a test did not expect often means a route
+without an answer.
+
+### 14.4 The routes an app's calls arrive at
+
+Every call of the SDK to the Portal is one of four routes. The second
+column is how `on`, `count` and `sent_to` name them.
+
+| The app calls | Route | Give it |
+|---|---|---|
+| `llm.complete`, `llm.acomplete` | `("POST", "/llm/complete")`; the body has `"stream": false` | `testing.completion(...)` |
+| `llm.stream`, `llm.astream` | `("POST", "/llm/complete")`; the body has `"stream": true` | `testing.stream(...)` |
+| `connectors.request`, `connectors.get`, `connectors.arequest`, `connectors.aget` | `("POST", "/connectors/<type>/request")`, for example `("POST", "/connectors/jira/request")` | `testing.connector_answer(...)` |
+| `connectors.available`, `connectors.aavailable` | `("GET", "/connectors")` | `{"connectors": [{"type": "jira", "base_url": "https://jira.example.com", "write": False}]}` |
+| `app.info`, `app.ainfo` | `("GET", "/app")` | answered by `testing.deployed`; change it with `info=` |
+
+- The two kinds of model call share one route. An app that makes both in
+  one test gets a callable that looks at `"stream"` in the body, or a list
+  in the order of the calls (14.8).
+- A connector call is a `POST` to the Portal whatever the method at the
+  other system is. The type is in the route; the rest is in the body:
+  `"method"`, `"path"`, `"query"`, `"headers"`, `"json"` and
+  `"body_base64"`.
+- The body of a model call has `"messages"`, `"system"`, `"model"`,
+  `"max_output_tokens"`, `"temperature"` and `"stream"`, and
+  `"reasoning_effort"` when the call names one. What the call did not give
+  is `null`.
+- A refusal can be given on every route: `testing.error(...)`.
+
+### 14.5 The canned answers
+
+<!-- signature: efp_app.testing.app_info efp_app.testing.completion efp_app.testing.stream efp_app.testing.connector_answer efp_app.testing.error -->
+```python
+def app_info(owner: str = "alice", **changes: Any) -> Dict[str, Any]:
+def completion(text: str = "Hello.", **changes: Any) -> Dict[str, Any]:
+def stream(*pieces: str, **done: Any) -> httpx.Response:
+def connector_answer(body: Any = None, *, status: int = 200, text: Optional[str] = None, truncated: bool = False) -> Dict[str, Any]:
+def error(status: int, code: str, message: str = "refused by the test", headers: Optional[Dict[str, str]] = None) -> httpx.Response:
+```
+
+Each builds one answer in the form the Portal sends it (CONTRACTS.md,
+section 9) and does nothing else: it calls nobody and changes nothing in
+the process.
+
+| Function | Returns | The app sees |
+|---|---|---|
+| `testing.app_info(owner="alice", **changes)` | a `dict`: the body of `GET /app` | `app.info()`: the app `example`, named `Example`, at `https://apps.test/example/`, with the id `testing.APP_ID`. Its owner is `owner`: id `visitor.dev_visitor_id(owner)`, display name `owner.capitalize()`, group `QA` with id 3. The model is on, with `gpt-5.4` as the default and the only model. No connector. A budget of 50 credits and 2,000,000 tokens a day, nothing used. |
+| `testing.completion(text="Hello.", **changes)` | a `dict`: the body of a completion | `llm.complete(...)`: the text, model `gpt-5.4`, `finish_reason` `"stop"`, 12 input tokens, 4 output tokens, 0.001 credits. |
+| `testing.stream(*pieces, **done)` | an `httpx.Response` with a `text/event-stream` body | `llm.stream(...)`: one piece per argument, then the closing event: model `gpt-5.4`, `finish_reason` `"stop"`, 12 input tokens, as many output tokens as there are pieces, 0.001 credits. Without pieces the answer is empty. |
+| `testing.connector_answer(body=None, *, status=200, text=None, truncated=False)` | a `dict`: the Portal's answer to a connector call | A `connectors.ConnectorResponse` (5.4) with the other system's `status`, `body` as its `json`, and `truncated`. With `text=` in place of `body`, the other system answered something that is not JSON (a page, a log): `json` is `None`, `text` and `content` hold the text, and the content type is `text/plain` instead of `application/json`. |
+| `testing.error(status, code, message="refused by the test", headers=None)` | an `httpx.Response`: a refusal of the Portal | The exception of `code` (10.2) with this `status` and `message`. `headers={"Retry-After": "3600"}` gives `retry_after` to the two classes that have it (10.3). A code the SDK has no class for is a plain `EfpError`. |
+
+- `changes` of `testing.app_info` and `testing.completion` replace keys of
+  the answer, each as a whole: `testing.app_info(llm={"enabled": False})`
+  is an app whose `llm` has no default model and no models,
+  `testing.app_info(connectors=[{"type": "jira", "write": False}])` one
+  with a connector, `testing.completion("...", finish_reason="length")` an
+  answer that was cut. `done` of `testing.stream` replaces keys of the
+  closing event in the same way.
+- `testing.app_info` describes the app; it switches nothing on or off. A
+  connector that is missing from it still answers when the test gave the
+  route an answer. What the Portal would refuse, the test refuses:
+  `testing.error(403, "connector_disabled")`,
+  `testing.error(403, "llm_disabled")`,
+  `testing.error(403, "method_not_allowed")`,
+  `testing.error(429, "budget_exceeded", headers={"Retry-After": "3600"})`.
+  The table of 10.2 has the status of each code.
+- The `status` of `testing.connector_answer` is the other system's. The
+  Portal's own answer is a success, so the SDK returns the
+  `ConnectorResponse` and raises nothing, also for a `404` or a `500`
+  (5.5).
+- An error event inside a stream is not among the canned answers. Build
+  the `httpx.Response` yourself from the events of 4.6.1.
+
+### 14.6 The visitor: `testing.visitor_headers`
+
+<!-- signature: efp_app.testing.visitor_headers -->
+```python
+def visitor_headers(
+    username: str = "bob",
+    *,
+    id: Optional[int] = None,
+    name: Optional[str] = None,
+    group: Optional[str] = "QA",
+    group_id: Optional[int] = 3,
+    expires_in: int = 60,
+) -> Dict[str, str]:
+```
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `username` | `"bob"` | The Portal username of the member. |
+| `id` | `None` | The member's id. `None`: `visitor.dev_visitor_id(username)` (3.6). |
+| `name` | `None` | The display name. `None`: `username.capitalize()`, `"Bob"`. |
+| `group` | `"QA"` | The name of the member's group. `None`: a member without a group. |
+| `group_id` | `3` | The id of that group, or `None`. |
+| `expires_in` | `60` | Seconds until the value expires; 60 is what the gateway gives. A negative number makes a header that has expired already. |
+
+Returns a `dict` with one item, `{"X-EFP-Visitor": "v1.<payload>.<signature>"}`:
+the header the gateway adds for a signed-in visitor (section 3;
+CONTRACTS.md, section 6.4). Pass it as the `headers` of a request of the
+framework's test client.
+
+- **It is signed for the app of the block.** The value names the app in
+  `EFP_APP_ID` and is signed with the key in `EFP_VISITOR_KEY`, as they are
+  when the function is called; without these variables it uses
+  `testing.APP_ID` and `testing.VISITOR_KEY`, which are also what
+  `testing.deployed` sets. `visitor.current` verifies it like a header of
+  the real gateway.
+- **The owner.** Without `id` the member has the id
+  `visitor.dev_visitor_id(username)`. `testing.app_info(owner=...)` gives
+  its owner the same id, and the owner of the default app is `alice`. So
+  `testing.visitor_headers("alice")` is the owner of the app, and any other
+  name is a member who is not.
+- **A guest** of an app open to anyone has no header at all: pass no
+  headers.
+- **An expired header is a guest too**, like every header that fails the
+  check (3.2): `testing.visitor_headers("bob", expires_in=-5)` makes
+  `visitor.current` return `None`.
+- **Make the header in the test.** It is valid for 60 seconds, so one made
+  when the test module is imported can be too old when a later test uses
+  it.
+- **`visitor=` of a model or connector call does not take the dict.** It
+  takes a `Visitor` (`visitor.current(headers)`, or what `require_visitor`
+  and `get_visitor` return) or the header's value
+  (`headers["X-EFP-Visitor"]`). The dict is left out without an error, like
+  every other value that is not a well-formed header value (3.7).
+
+### 14.7 Constants
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `testing.APP_ID` | `"0b0f3a4e-0000-4000-8000-000000000001"` | The id of the app: `EFP_APP_ID` in the block, the `"id"` of `testing.app_info`, the app a visitor header is made for. |
+| `testing.VISITOR_KEY` | `"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"` | The key visitor headers are signed with, as `EFP_VISITOR_KEY` holds it: the base64url text of the 32 bytes 0 to 31. |
+| `testing.TOKEN` | `"efpa_"` and 43 times `t` | The app token, `EFP_APP_TOKEN`. No Portal knows it. |
+| `testing.PORTAL_URL` | `"https://portal.test"` | `EFP_PORTAL_URL`. Nothing is ever sent there. |
+| `testing.APPS_URL` | `"https://apps.test"` | The address of the apps: the app's public address is `https://apps.test/{slug}/`. |
+
+### 14.8 Examples
+
+These need no web framework. Each runs in an empty directory, so
+`testing.deployed("data")` keeps the storage in `./data`; in a pytest test
+write `testing.deployed(tmp_path)`.
+
+A completion, and what the app sent:
+
+<!-- runnable -->
+```python
+from efp_app import llm, testing, visitor
+
+with testing.deployed("data") as portal:
+    portal.on("POST", "/llm/complete", testing.completion("Three bugs are open.", model="gpt-5.4-mini"))
+    bob = testing.visitor_headers("bob")
+
+    answer = llm.complete("Summarise the bugs.", system="Be short.", max_output_tokens=200, visitor=visitor.current(bob))
+
+    assert (answer.text, answer.model, answer.finish_reason) == ("Three bugs are open.", "gpt-5.4-mini", "stop")
+    assert (answer.usage.input_tokens, answer.usage.output_tokens, answer.usage.credits) == (12, 4, 0.001)
+    [sent] = portal.sent_to("/llm/complete")               # the JSON body of the one call
+    assert sent["messages"][-1] == {"role": "user", "content": "Summarise the bugs."}
+    assert (sent["system"], sent["max_output_tokens"], sent["stream"]) == ("Be short.", 200, False)
+    assert portal.count("POST", "/llm/complete") == 1 and portal.body() == sent
+    assert portal.last.headers["X-EFP-Visitor"] == bob["X-EFP-Visitor"]     # the Portal learns who caused the call
+```
+
+A streamed answer:
+
+<!-- runnable -->
+```python
+from efp_app import llm, testing
+
+with testing.deployed("data") as portal:
+    portal.on("POST", "/llm/complete", testing.stream("Three ", "bugs."))
+    with llm.stream("Summarise the bugs.") as reply:
+        assert list(reply) == ["Three ", "bugs."]
+        assert (reply.text, reply.finish_reason, reply.usage.output_tokens) == ("Three bugs.", "stop", 2)
+    assert portal.body()["stream"] is True
+
+    portal.on("POST", "/llm/complete", testing.stream("Cut", finish_reason="length"))     # replaces the answer of the route
+    assert llm.stream("Again.").completion().finish_reason == "length"
+```
+
+Both kinds of model call in one test: a callable that reads the request:
+
+<!-- runnable -->
+```python
+import json
+
+from efp_app import llm, testing
+
+
+def model(request):                                        # the httpx.Request of each call
+    if json.loads(request.content)["stream"]:
+        return testing.stream("Hel", "lo.")
+    return testing.completion("Hello.")
+
+
+with testing.deployed("data") as portal:
+    portal.on("POST", "/llm/complete", model)
+    assert llm.complete("Say hello.").text == "Hello."
+    assert list(llm.stream("Say hello.")) == ["Hel", "lo."]
+```
+
+Connector answers: JSON, something that is not JSON, and the list of
+connectors:
+
+<!-- runnable -->
+```python
+from efp_app import connectors, testing
+
+with testing.deployed("data") as portal:
+    portal.on("POST", "/connectors/jira/request", testing.connector_answer({"issues": [{"key": "SHOP-1"}]}))
+    found = connectors.get("jira", "/rest/api/2/search", jql="project = SHOP")
+    assert found.ok and found.status == 200 and found.json == {"issues": [{"key": "SHOP-1"}]}
+    [sent] = portal.sent_to("/connectors/jira/request")
+    assert (sent["method"], sent["path"], sent["query"]) == ("GET", "/rest/api/2/search", {"jql": "project = SHOP"})
+
+    # A log is not JSON: text= in place of the body. The other system's 404 is an answer, not an error.
+    portal.on("POST", "/connectors/jenkins/request", testing.connector_answer(text="BUILD FAILED", status=404, truncated=True))
+    log = connectors.get("jenkins", "/job/shop/1/consoleText")
+    assert (log.status, log.ok, log.json, log.text, log.truncated) == (404, False, None, "BUILD FAILED", True)
+    assert log.headers == {"content-type": "text/plain"}
+
+    turned_on = {"connectors": [{"type": "jira", "base_url": "https://jira.example.com", "write": False}]}
+    portal.on("GET", "/connectors", turned_on)
+    assert [(item.type, item.write) for item in connectors.available()] == [("jira", False)]
+```
+
+A refusal of the Portal is raised as the error of its code:
+
+<!-- runnable -->
+```python
+from efp_app import connectors, errors, llm, testing
+
+with testing.deployed("data") as portal:
+    portal.on("POST", "/llm/complete", testing.error(429, "budget_exceeded", headers={"Retry-After": "3600"}))
+    caught = None
+    try:
+        llm.complete("Hello")
+    except errors.BudgetExceededError as exc:
+        caught = exc
+    assert (caught.status, caught.retry_after, caught.message) == (429, 3600, "refused by the test")
+    assert caught.user_message == "This app has used up its AI budget for today. Try again in about 60 minutes."
+
+    portal.on("POST", "/connectors/jira/request", testing.error(403, "connector_disabled", "jira is not turned on"))
+    try:
+        connectors.get("jira", "/rest/api/2/issue/SHOP-1")
+    except errors.ConnectorDisabledError as exc:
+        caught = exc
+    assert str(caught) == "connector_disabled: jira is not turned on"
+```
+
+Answers in turn, and a broken connection:
+
+<!-- runnable -->
+```python
+import httpx
+
+from efp_app import errors, llm, testing
+
+with testing.deployed("data") as portal:
+    portal.on("POST", "/llm/complete", [testing.error(502, "provider_error"), testing.completion("Second try.")])
+    caught = None
+    try:
+        llm.complete("Hello")                              # the first answer of the list
+    except errors.ProviderError as exc:
+        caught = exc
+    assert caught is not None
+    assert llm.complete("Hello").text == "Second try."     # the second
+    assert llm.complete("Hello").text == "Second try."     # the last answer stays
+    assert portal.count("POST", "/llm/complete") == 3
+
+    for broken, raised in (
+        (httpx.ConnectError("no route to the Portal"), errors.PortalUnreachableError),
+        (httpx.ReadTimeout("the Portal is silent"), errors.PortalTimeoutError),
+    ):
+        portal.on("POST", "/llm/complete", broken)         # an exception: raised where the SDK sends the request
+        try:
+            llm.complete("Hello")
+        except errors.EfpError as exc:
+            caught = exc
+        assert type(caught) is raised
+```
+
+A route the test gave no answer for:
+
+<!-- runnable -->
+```python
+from efp_app import connectors, errors, testing
+
+with testing.deployed("data") as portal:
+    caught = None
+    try:
+        connectors.get("github", "/repos/acme/app")
+    except errors.EfpError as exc:
+        caught = exc
+    assert type(caught) is errors.EfpError and (caught.code, caught.status) == ("not_found", 404)
+    assert caught.message == "the test gave no answer for POST /connectors/github/request"
+    assert portal.count("POST", "/connectors/github/request") == 1     # recorded all the same
+```
+
+The visitor: the owner, a member, a guest:
+
+<!-- runnable -->
+```python
+from efp_app import app, testing, visitor
+
+with testing.deployed("data"):
+    owner = app.info().owner
+    assert (owner.username, owner.display_name, owner.group_name) == ("alice", "Alice", "QA")
+    assert visitor.current(testing.visitor_headers("alice")).id == app.info().owner.id     # the owner
+    bob = visitor.current(testing.visitor_headers("bob"))
+    assert bob.id != owner.id and bob.id == visitor.dev_visitor_id("bob")                   # a member who is not
+    assert (bob.username, bob.name, bob.group, bob.group_id) == ("bob", "Bob", "QA", 3)
+
+    dana = visitor.current(testing.visitor_headers("dana", id=77, name="Dana K", group=None, group_id=None))
+    assert (dana.id, dana.name, dana.group, dana.group_id) == (77, "Dana K", None, None)
+
+    assert visitor.current({}) is None                                                      # no header: a guest
+    assert visitor.current(testing.visitor_headers("bob", expires_in=-5)) is None           # expired: a guest too
+
+# An app of another owner, with a connector:
+with testing.deployed("data", info=testing.app_info(owner="dana", connectors=[{"type": "jira", "write": False}])):
+    info = app.info()
+    assert info.owner.username == "dana" and [grant.type for grant in info.connectors] == ["jira"]
+    assert visitor.current(testing.visitor_headers("dana")).id == info.owner.id
+```
+
+What `visitor=` takes:
+
+<!-- runnable -->
+```python
+from efp_app import llm, testing, visitor
+
+with testing.deployed("data") as portal:
+    portal.on("POST", "/llm/complete", testing.completion())
+    headers = testing.visitor_headers("bob")
+    assert list(headers) == ["X-EFP-Visitor"]
+
+    llm.complete("Hello", visitor=visitor.current(headers))            # a Visitor
+    assert portal.last.headers["X-EFP-Visitor"] == headers["X-EFP-Visitor"]
+    llm.complete("Hello", visitor=headers["X-EFP-Visitor"])            # the header's value
+    assert portal.last.headers["X-EFP-Visitor"] == headers["X-EFP-Visitor"]
+    llm.complete("Hello", visitor=headers)                             # the dict: left out, without an error
+    assert "X-EFP-Visitor" not in portal.last.headers
+```
+
+The environment of the block, and what is left of it afterwards:
+
+<!-- runnable -->
+```python
+import os
+
+from efp_app import app, config, storage, testing
+
+assert testing.environment("data", slug="triage") == {
+    "EFP_APP_ID": testing.APP_ID,
+    "EFP_APP_SLUG": "triage",
+    "EFP_APP_TOKEN": testing.TOKEN,
+    "EFP_APP_BASE_PATH": "/triage",
+    "EFP_APP_PUBLIC_URL": testing.APPS_URL + "/triage/",
+    "EFP_PORTAL_URL": testing.PORTAL_URL,
+    "EFP_VISITOR_KEY": testing.VISITOR_KEY,
+    "EFP_APP_DATA_DIR": "data",
+}
+assert not config.is_deployed()                            # environment() sets nothing
+
+os.environ["EFP_DEV_VISITOR"] = "carol"
+with testing.deployed("data", slug="triage"):
+    assert app.is_deployed() and (app.slug(), app.base_path()) == ("triage", "/triage")
+    assert app.public_url() == "https://apps.test/triage/"
+    assert (app.info().slug, app.info().url) == ("triage", "https://apps.test/triage/")
+    assert "EFP_DEV_VISITOR" not in os.environ             # a request without the header is a guest
+    assert storage.mode() == "sandbox"
+    storage.save_json("notes/1.json", {"text": "hello"})
+    assert str(storage.data_dir()) == "data" and os.path.isfile("data/objects/notes/1.json")
+assert os.environ["EFP_DEV_VISITOR"] == "carol"            # what was there before is there again
+assert "EFP_APP_ID" not in os.environ and not config.is_deployed()
+```
+
+The asynchronous calls arrive at the same routes:
+
+<!-- runnable -->
+```python
+import asyncio
+
+from efp_app import connectors, llm, testing
+
+
+async def main():
+    answer = await llm.acomplete("Summarise the bugs.")
+    found = await connectors.aget("jira", "/rest/api/2/search", jql="project = SHOP")
+    pieces = [piece async for piece in llm.astream("Again.")]
+    return answer.text, found.json, pieces
+
+
+with testing.deployed("data") as portal:
+    portal.on("POST", "/llm/complete", [testing.completion("Three bugs are open."), testing.stream("Three ", "bugs.")])
+    portal.on("POST", "/connectors/jira/request", testing.connector_answer({"issues": []}))
+    assert asyncio.run(main()) == ("Three bugs are open.", {"issues": []}, ["Three ", "bugs."])
+    assert portal.count("POST", "/llm/complete") == 2
+```
+
+A `testing.FakePortal` without `testing.deployed`, for code that takes
+`client=`. No variable is set here, so the client is given the token and
+the address:
+
+<!-- environment: no-token -->
+<!-- runnable -->
+```python
+from efp_app import app, testing
+
+portal = testing.FakePortal().on("GET", "/app", testing.app_info(name="Mine"))
+with portal.client(token=testing.TOKEN, portal_url=testing.PORTAL_URL) as mine:      # a client.Client
+    assert app.info(client=mine).name == "Mine"
+assert portal.last.url == testing.PORTAL_URL + "/api/app-sdk/v1/app"
+assert portal.last.headers["Authorization"] == "Bearer " + testing.TOKEN
+assert len(portal.requests) == 1 and list(portal.routes) == [("GET", "/app")]
+assert not app.is_deployed()                               # the environment is untouched
+```
+
+`install()` by hand, on a developer's machine with a token and an address
+(the environment `local` of 1.3):
+
+<!-- runnable -->
+```python
+from efp_app import app, client, testing
+
+portal = testing.FakePortal().on("GET", "/app", testing.app_info(name="Mine")).install()
+assert app.info().name == "Mine"                           # the shared client asks the fake Portal
+assert portal.count("GET", "/app") == 1
+client.reset()                                             # undoes install()
+```
+
+### 14.9 What this does not check
+
+A test with `efp_app.testing` shows that the app's own code does the right
+thing with the answers it is given. It does not show:
+
+- **The path prefix and the gateway.** A test client calls the app
+  directly. Nothing adds or removes `/{slug}`, nothing redirects, no cookie
+  is confined to the app's path, and no page is loaded by a browser. A URL
+  that starts with `/` passes every test here and breaks once deployed. Use
+  `efp-app check` (12.4) and `efp-app dev --prefix NAME` (12.3) for that.
+- **Sign-in.** `testing.visitor_headers` is the result of a sign-in, not
+  the sign-in: who may open the app is decided by the gateway and the
+  Portal.
+- **What the real model answers** to the app's prompt, and how long it
+  takes. A canned answer is the text the test wrote.
+- **How the other system behaves**: its paths, its fields, its permissions,
+  its errors. `testing.connector_answer` returns what the test thinks Jira
+  answers.
+- **The Portal's rules.** The fake Portal refuses nothing by itself: not a
+  model the app may not use, not a connector that is off, not a write
+  through a read-only connector, not a used-up budget. The checks the SDK
+  makes before a call still run, because the SDK is the real one.
+- **The host's install of the requirements.** The tests run in your
+  environment, with your packages. Whether the host can install
+  `requirements.txt` from its package index is seen when the app is
+  deployed; `efp-app check` warns about lines it cannot install (12.4).

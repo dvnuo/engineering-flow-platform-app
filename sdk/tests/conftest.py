@@ -1,4 +1,4 @@
-"""Shared fixtures: a clean environment and a fake Portal behind httpx.MockTransport."""
+"""Shared fixtures: a clean environment and the fake Portal of ``efp_app.testing`` behind httpx.MockTransport."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import httpx
 import pytest
@@ -21,6 +21,7 @@ if str(SDK_ROOT) not in sys.path:
 
 from efp_app import client as sdk_client  # noqa: E402
 from efp_app import visitor as sdk_visitor  # noqa: E402
+from efp_app.testing import FakePortal  # noqa: E402  (the one an app's own tests use)
 
 TOKEN = "efpa_" + "t" * 43
 PORTAL = "https://portal.test"
@@ -68,52 +69,6 @@ def sse(*events: Any, blank_lines: bool = True) -> httpx.Response:
             lines.append("")
     body = "\n".join(lines) + "\n"
     return httpx.Response(200, content=body.encode("utf-8"), headers={"content-type": "text/event-stream"})
-
-
-class FakePortal:
-    """Routes ``(method, path-below-the-prefix)`` to canned answers and records the requests."""
-
-    def __init__(self) -> None:
-        self.requests: List[httpx.Request] = []
-        self.routes: Dict[tuple, Any] = {}
-
-    def on(self, method: str, path: str, answer: Any) -> "FakePortal":
-        """``answer`` is a response, a JSON-able value, an exception, a callable or a list of those."""
-        self.routes[(method, path)] = answer
-        return self
-
-    def handler(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        assert request.url.path.startswith(PREFIX), request.url.path
-        key = (request.method, request.url.path[len(PREFIX) :])
-        if key not in self.routes:
-            return httpx.Response(404, json={"error": {"code": "not_found", "message": "no such route"}})
-        answer = self.routes[key]
-        if isinstance(answer, list):
-            answer = answer.pop(0) if len(answer) > 1 else answer[0]
-        if callable(answer) and not isinstance(answer, httpx.Response):
-            answer = answer(request)
-        if isinstance(answer, BaseException):
-            raise answer
-        if isinstance(answer, httpx.Response):
-            return answer
-        return httpx.Response(200, json=answer)
-
-    @property
-    def last(self) -> httpx.Request:
-        return self.requests[-1]
-
-    def body(self, index: int = -1) -> Any:
-        return json.loads(self.requests[index].content.decode("utf-8"))
-
-    def count(self, method: str, path: str) -> int:
-        return sum(1 for r in self.requests if r.method == method and r.url.path == PREFIX + path)
-
-    def client(self, **options: Any) -> sdk_client.Client:
-        return sdk_client.Client(transport=httpx.MockTransport(self.handler), **options)
-
-    def async_client(self, **options: Any) -> sdk_client.AsyncClient:
-        return sdk_client.AsyncClient(transport=httpx.MockTransport(self.handler), **options)
 
 
 @pytest.fixture

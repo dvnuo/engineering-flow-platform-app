@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -399,8 +400,8 @@ def test_check_finds_root_absolute_urls(tmp_path, capsys):
         'warning static/app.js:2: root-absolute URL fetch("/api/more"): use a relative URL: fetch("api/more")',
         'warning static/app.js:3: root-absolute URL fetch("/api/${id}"): use a relative URL: fetch("api/${id}")',
         'warning static/app.js:4: root-absolute URL EventSource("/events"): use a relative URL: EventSource("events")',
-        "warning static/style.css:1: root-absolute URL url(/img/bg.png): use a path relative to the style sheet: url(img/bg.png)",
-        "warning static/style.css:2: root-absolute URL url(/img/a.png): use a path relative to the style sheet: url(img/a.png)",
+        "warning static/style.css:1: root-absolute URL url(/img/bg.png): use a path relative to the style sheet: url(../img/bg.png)",
+        "warning static/style.css:2: root-absolute URL url(/img/a.png): use a path relative to the style sheet: url(../img/a.png)",
         'warning templates/page.jinja2:1: root-absolute URL href="/{{ slug }}/x": use a relative URL: href="{{ slug }}/x"',
     ]
     for line in expected:
@@ -467,6 +468,61 @@ def test_errors_are_printed_before_warnings(tmp_path, capsys):
     assert "1 error, 1 warning" in out
 
 
+@pytest.mark.parametrize(
+    "sheet, url, advice",
+    [
+        # Beside the sheet: the directory's name is not repeated.
+        ("static/style.css", "/static/bg.png", "bg.png"),
+        ("static/css/site.css", "/static/img/bg.png", "../img/bg.png"),
+        ("static/css/site.css", "/static/css/fonts/a.woff2", "fonts/a.woff2"),
+        # Outside the sheet's directory.
+        ("static/style.css", "/img/bg.png", "../img/bg.png"),
+        ("style.css", "/img/bg.png", "img/bg.png"),
+        # What follows the path stays as written.
+        ("static/style.css", "/static/font.woff2?v=3#iefix", "font.woff2?v=3#iefix"),
+        ("static/style.css", "/static/", "./"),
+        ("static/style.css", "/img/", "../img/"),
+        ("static/style.css", "/", "../"),
+    ],
+)
+def test_check_writes_a_style_sheet_url_as_the_sheet_sees_it(tmp_path, capsys, sheet, url, advice):
+    app = write_app(good_app(tmp_path / "app"), None, {sheet: "body { background: url(%s); }\n" % url})
+    code, out, _err = run_cli(capsys, "check", str(app))
+    assert code == 0
+    assert "warning %s:1: root-absolute URL url(%s): use a path relative to the style sheet: url(%s)" % (sheet, url, advice) in out
+
+
+@pytest.mark.parametrize(
+    "entry, sheet, advice",
+    [
+        # The served folder is the top of the app: the sheet is at /style.css, not /public/style.css.
+        ("public", "public/style.css", "img/bg.png"),
+        ("public/", "public/css/site.css", "../img/bg.png"),
+        ("./public", "public/style.css", "img/bg.png"),
+        (".", "css/site.css", "../img/bg.png"),
+        (..., "style.css", "img/bg.png"),
+        # A sheet outside the served folder is not served at all; the hint is the plain one.
+        ("public", "other/style.css", "../img/bg.png"),
+    ],
+)
+def test_check_starts_from_the_served_folder_of_a_static_app(tmp_path, capsys, entry, sheet, advice):
+    data = {"name": "Links", "type": "static", "entry": entry}
+    data = {key: value for key, value in data.items() if value is not ...}
+    files = {"public/index.html": "<p>x</p>\n", "index.html": "<p>x</p>\n", sheet: "body { background: url(/img/bg.png); }\n"}
+    app = write_app(tmp_path / "app", data, files)
+    code, out, _err = run_cli(capsys, "check", str(app))
+    assert code == 0
+    assert "warning %s:1: root-absolute URL url(/img/bg.png): use a path relative to the style sheet: url(%s)" % (sheet, advice) in out
+
+
+def test_check_writes_a_style_in_a_page_as_the_page_sees_it(tmp_path, capsys):
+    page = '<div style="background: url(/img/bg.png)">x</div>\n'
+    app = write_app(good_app(tmp_path / "app"), None, {"templates/page.html": page})
+    code, out, _err = run_cli(capsys, "check", str(app))
+    assert code == 0
+    assert "warning templates/page.html:1: root-absolute URL url(/img/bg.png): use a relative URL: url(img/bg.png)" in out
+
+
 # --- efp-app init ------------------------------------------------------------------------------
 
 
@@ -491,6 +547,28 @@ def test_init_creates_a_starter(tmp_path, capsys, app_type):
     # A fresh starter has nothing left to fill in before it can be registered.
     code, out, _err = run_cli(capsys, "check", str(target))
     assert code == 0 and "no problems found" in out
+
+
+@pytest.mark.parametrize("folder", [".venv", "__pycache__", ".efp-data"])
+def test_init_works_when_the_sdk_is_installed_below_a_skipped_name(tmp_path, capsys, monkeypatch, folder):
+    # pip puts the package under .venv/Lib/site-packages: only names below the starter are skipped.
+    installed = tmp_path / folder / "Lib" / "site-packages" / "efp_app" / "_templates"
+    shutil.copytree(cli.templates_dir(), installed)
+    (installed / "flask" / "__pycache__").mkdir()
+    (installed / "flask" / "__pycache__" / "app.cpython-311.pyc").write_bytes(b"x")
+    (installed / "flask" / ".efp-data").mkdir()
+    (installed / "flask" / ".efp-data" / "left-over.json").write_text("{}", encoding="utf-8")
+    expected = sorted(path.as_posix() for path in cli.template_files("flask"))
+    monkeypatch.setattr(cli, "templates_dir", lambda: installed)
+
+    assert sorted(path.as_posix() for path in cli.template_files("flask")) == expected
+    assert "efp-app.json" in expected and "app.py" in expected
+
+    target = tmp_path / "new-app"
+    code, _out, err = run_cli(capsys, "init", "flask", str(target))
+    assert code == 0 and err == ""
+    created = sorted(path.relative_to(target).as_posix() for path in target.rglob("*") if path.is_file())
+    assert created == expected
 
 
 def test_init_fills_in_owner_and_name(tmp_path, capsys):

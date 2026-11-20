@@ -81,10 +81,13 @@ def templates_dir() -> Path:
 def template_files(app_type: str) -> List[Path]:
     """The files of a starter, relative to its directory."""
     source = templates_dir() / app_type
+    # Only what lies below the starter decides: the package itself is often installed
+    # under a directory named .venv, which must not hide every file of the starter.
+    found = (path.relative_to(source) for path in source.rglob("*") if path.is_file())
     return sorted(
-        path.relative_to(source)
-        for path in source.rglob("*")
-        if path.is_file() and not _SKIP_COPY_DIRS.intersection(path.parts) and path.suffix != ".pyc"
+        relative
+        for relative in found
+        if not _SKIP_COPY_DIRS.intersection(relative.parts) and relative.suffix != ".pyc"
     )
 
 

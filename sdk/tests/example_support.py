@@ -7,9 +7,10 @@ rules every example follows; each example's own behaviour is tested in
 
 The canned answers are what the Portal sends on the wire for a connector call
 (``connector_answer``), a completion (``COMPLETION``) and a streamed
-completion (``STREAMED``). The fake Portal itself is ``conftest.FakePortal``
-(the ``portal`` fixture); ``deployed`` (also in ``conftest``) gives a test the
-environment of an app on a sandbox host.
+completion (``STREAMED``). The fake Portal itself is
+``efp_app.testing.FakePortal``, the one the SDK ships for an app's own tests
+(the ``portal`` fixture of ``conftest`` installs it); ``deployed`` (also in
+``conftest``) gives a test the environment of an app on a sandbox host.
 """
 
 import base64
