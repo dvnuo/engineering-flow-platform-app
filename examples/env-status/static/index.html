@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Environment status</title>
+  <!-- Relative URLs only. This app is served under /{slug}/ once deployed, and for a
+       "command" app the prefix is part of every request that reaches the server. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Environment status</h1>
+      <p id="who" class="muted">Loading...</p>
+    </header>
+
+    <div class="bar">
+      <p id="headline" class="headline" role="status"></p>
+      <button type="button" class="primary" id="check" disabled>Check now</button>
+    </div>
+    <p id="status" class="muted" role="status"></p>
+
+    <div id="groups"></div>
+    <p id="empty" class="muted" hidden>No environment is listed. The owner of this app adds them to targets.json.</p>
+
+    <p class="muted small">
+      Up and down are also told by the shape of the mark: a dot is up, a square is down, a ring has not been checked.
+      Nothing here refreshes by itself; press "Check now".
+    </p>
+  </main>
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

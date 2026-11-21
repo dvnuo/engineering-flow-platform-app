@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {"en": "software", "zh-Hans": "\u8f6f\u4ef6", "zh-Hant-HK": "\u8edf\u4ef6", "note": ""},
+    {"en": "network", "zh-Hans": "\u7f51\u7edc", "zh-Hant-HK": "\u7db2\u7d61", "note": ""},
+    {"en": "server", "zh-Hans": "\u670d\u52a1\u5668", "zh-Hant-HK": "\u4f3a\u670d\u5668", "note": ""},
+    {"en": "database", "zh-Hans": "\u6570\u636e\u5e93", "zh-Hant-HK": "\u6578\u64da\u5eab", "note": ""},
+    {"en": "user account", "zh-Hans": "\u7528\u6237\u5e10\u53f7", "zh-Hant-HK": "\u7528\u6236\u5e33\u6236", "note": ""},
+    {"en": "default", "zh-Hans": "\u9ed8\u8ba4", "zh-Hant-HK": "\u9810\u8a2d", "note": ""},
+    {"en": "deployment", "zh-Hans": "\u90e8\u7f72", "zh-Hant-HK": "\u90e8\u7f72", "note": "the act of releasing to an environment"},
+    {"en": "rollback", "zh-Hans": "\u56de\u6eda", "zh-Hant-HK": "\u56de\u6efe", "note": ""},
+    {"en": "release", "zh-Hans": "\u53d1\u5e03", "zh-Hant-HK": "\u767c\u4f48", "note": "a version that went out; not a press release"},
+    {"en": "test case", "zh-Hans": "\u6d4b\u8bd5\u7528\u4f8b", "zh-Hant-HK": "\u6e2c\u8a66\u500b\u6848", "note": ""},
+    {"en": "incident", "zh-Hans": "\u4e8b\u6545", "zh-Hant-HK": "\u4e8b\u6545", "note": "an outage or a degradation, not a security event"},
+    {"en": "on-call engineer", "zh-Hans": "\u503c\u73ed\u5de5\u7a0b\u5e08", "zh-Hant-HK": "\u7576\u503c\u5de5\u7a0b\u5e2b", "note": ""}
+  ]
+}

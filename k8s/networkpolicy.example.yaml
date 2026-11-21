@@ -1,0 +1,37 @@
+# OPTIONAL. Only has an effect on a cluster whose network plugin enforces
+# NetworkPolicy; EFP's cluster is flat today, so this is here for the day it
+# is not.
+#
+# - the gateway (8080) is reached from the ingress controller;
+# - the manager API (9000) is reached from the Portal only.
+#
+# Adjust the two selectors to where your ingress controller and the Portal run.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: efp-app-host-ingress
+  namespace: efp-apps
+spec:
+  podSelector:
+    matchLabels:
+      app: efp-app-host
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+          podSelector:
+            matchLabels:
+              app: efp-portal-app
+      ports:
+        - protocol: TCP
+          port: 9000

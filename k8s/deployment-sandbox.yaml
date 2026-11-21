@@ -1,0 +1,160 @@
+# The app host in isolation mode "sandbox" (the preferred mode).
+#
+# Every app process gets a filesystem view that holds only its own directory
+# of the volume. Which mechanism builds that view depends on what the cluster
+# allows; run k8s/probe first and take the variant it names:
+#
+#   bwrap         this file as it is: the capability SYS_ADMIN.
+#   bwrap-userns  remove SYS_ADMIN and SYS_CHROOT from "add", keep
+#                 seccompProfile Unconfined, set EFP_HOST_SANDBOX_BACKEND to
+#                 "bwrap-userns".
+#   landlock      use the securityContext of deployment-hidden.yaml and set
+#                 EFP_HOST_SANDBOX_BACKEND to "landlock".
+#
+# When none works, deploy deployment-hidden.yaml instead.
+#
+# One replica, strategy Recreate: two hosts must never write the same volume.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: efp-app-host
+  namespace: efp-apps
+  labels:
+    app: efp-app-host
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: efp-app-host
+  template:
+    metadata:
+      labels:
+        app: efp-app-host
+      # Nodes with AppArmor (Ubuntu) and the "bwrap" backend: load the profile
+      # k8s/apparmor/efp-app-host on the nodes and name it below
+      # (securityContext.appArmorProfile). The runtime's default profile
+      # forbids mount; "Unconfined" is not enough on Ubuntu 24.04 and later,
+      # where the node's own profile for /usr/bin/bwrap then takes every
+      # capability from what bubblewrap starts (docs/OPERATIONS.md, section 4).
+    spec:
+      # Member code runs in this pod: it gets no Kubernetes credentials.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: host
+          image: ghcr.io/dvnuo/engineering-flow-platform-app:latest
+          imagePullPolicy: Always
+          ports:
+            - name: gateway
+              containerPort: 8080
+            - name: admin
+              containerPort: 9000
+          env:
+            - name: EFP_HOST_ISOLATION_MODE
+              value: "sandbox"
+            - name: EFP_HOST_SANDBOX_BACKEND
+              value: "bwrap" # what k8s/probe printed; "auto" tries bwrap, bwrap-userns, landlock
+            - name: EFP_HOST_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: efp-app-host
+                  key: EFP_HOST_API_TOKEN
+            - name: EFP_PORTAL_INTERNAL_URL
+              value: "http://efp-portal-service.default.svc.cluster.local"
+            - name: EFP_PORTAL_PUBLIC_URL
+              value: "https://efp.example.com"
+            - name: EFP_APPS_PUBLIC_URL
+              value: "https://app.example.com"
+            # The private package index deployments install from.
+            - name: PIP_INDEX_URL
+              valueFrom:
+                secretKeyRef:
+                  name: efp-app-host
+                  key: PIP_INDEX_URL
+                  optional: true
+            # - name: PIP_CERT
+            #   value: /etc/ssl/certs/corporate-ca.pem
+            # The Portal is a cluster service: never send its calls to a proxy.
+            # - name: HTTPS_PROXY
+            #   value: "http://proxy.example.com:3128"
+            # - name: NO_PROXY
+            #   value: ".svc,.cluster.local,127.0.0.1,localhost"
+          securityContext:
+            runAsUser: 0 # the host gives each app its own user; apps never run as root
+            runAsGroup: 0
+            # Kubernetes refuses "false" together with SYS_ADMIN. Every app
+            # process is started with no_new_privs and the image holds no
+            # setuid program.
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop: ["ALL"]
+              add:
+                - SYS_ADMIN # bubblewrap: mount namespace, bind mounts, pivot_root
+                - SYS_CHROOT # bubblewrap
+                - SETUID # switch to the app's user; nginx workers
+                - SETGID
+                - SETPCAP
+                - CHOWN # give an app its data and tmp directories
+                - DAC_OVERRIDE # root reads and removes files of the app users
+                - FOWNER
+                - KILL # stop processes of the app users
+            # Unconfined is what the image is tested with. Most runtimes allow
+            # the mount calls under RuntimeDefault once SYS_ADMIN is granted:
+            # k8s/probe tells (its container "bwrap-default-seccomp").
+            seccompProfile:
+              type: Unconfined
+            # Nodes with AppArmor only (see the top of this file):
+            # appArmorProfile:
+            #   type: Localhost
+            #   localhostProfile: efp-app-host
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          startupProbe:
+            httpGet:
+              path: /_efp/health
+              port: gateway
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /_efp/health
+              port: gateway
+            periodSeconds: 10
+            timeoutSeconds: 3
+          # Asks the manager itself: a manager that still holds the port
+          # but no longer answers serves nobody (nginx needs it for every
+          # request), and only a restart brings it back.
+          livenessProbe:
+            httpGet:
+              path: /_efp/health
+              port: admin
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
+          volumeMounts:
+            - name: store
+              mountPath: /var/lib/efp-host/store
+            - name: local
+              mountPath: /srv/efp-apps
+            - name: run
+              mountPath: /run/efp-host
+      volumes:
+        - name: store
+          persistentVolumeClaim:
+            claimName: efp-apps-store
+        # Private tmp of every app, build scratch space.
+        - name: local
+          emptyDir:
+            sizeLimit: 20Gi
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi

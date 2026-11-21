@@ -1,0 +1,8 @@
+{
+  "name": "Repo pulse",
+  "description": "Example: the activity of a GitHub repository in four charts: commits, hours, contributors and waiting pull requests.",
+  "type": "flask",
+  "entry": "app:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

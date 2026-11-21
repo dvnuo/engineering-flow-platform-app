@@ -1,0 +1,23 @@
+# One Service, two ports:
+#   8080  the gateway: what the Ingress routes to.
+#   9000  the manager API: for the Portal only, from inside the cluster
+#         (APPS_HOST_INTERNAL_URL = http://efp-app-host.efp-apps.svc.cluster.local:9000).
+#         Never put it behind an Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: efp-app-host
+  namespace: efp-apps
+  labels:
+    app: efp-app-host
+spec:
+  type: ClusterIP
+  selector:
+    app: efp-app-host
+  ports:
+    - name: gateway
+      port: 8080
+      targetPort: gateway
+    - name: admin
+      port: 9000
+      targetPort: admin

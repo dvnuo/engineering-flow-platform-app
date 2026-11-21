@@ -1,0 +1,384 @@
+# The EFP app gateway (docs/CONTRACTS.md, section 6).
+#
+# This is a template. `python -m efp_app_host.gateway.render_nginx` fills the
+# double-brace placeholders and prints the final nginx.conf.
+# The result holds the gateway secret: keep the file readable by root only.
+#
+# Written for Debian bookworm: nginx 1.22 with libnginx-mod-http-js (njs 0.7).
+# Start it in the foreground with:  nginx -g 'daemon off;'
+# (this file sets no "daemon" directive, so that the option cannot clash).
+
+# Debian keeps one snippet per installed dynamic module here; the njs module
+# (ngx_http_js_module) is loaded by 50-mod-http-js.conf.
+include /etc/nginx/modules-enabled/*.conf;
+
+# Workers drop to this user when the master runs as root. They must be able
+# to read the directories of static apps and to write to the access-log socket.
+user www-data;
+worker_processes 2;
+pid {{PID_FILE}};
+error_log stderr warn;
+
+events {
+    worker_connections 4096;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    server_tokens off;
+    # sendfile stays off (the default): the files of static apps may live on
+    # a network file system.
+
+    # Redirects made by nginx itself ("/dir" -> "/dir/") stay relative: nginx
+    # sees neither the public scheme nor the public port.
+    absolute_redirect off;
+
+    # Everything is proxied with HTTP/1.1 (WebSocket needs it).
+    proxy_http_version 1.1;
+    # Room for the manager's answer to the access check, which carries the
+    # visitor's cookies and the request target. The three sizes must agree:
+    # nginx refuses a busy size above (number of buffers - 1) * buffer size.
+    proxy_buffer_size 32k;
+    proxy_buffers 8 32k;
+    proxy_busy_buffers_size 64k;
+    proxy_headers_hash_max_size 1024;
+    proxy_headers_hash_bucket_size 128;
+
+    access_log off;
+
+    js_import efp from {{NJS_SCRIPT}};
+    # "1" when the client sent a header whose name starts with X-EFP-.
+    js_set $efp_reserved_header efp.reservedRequestHeader;
+
+    # One line per request that reached an app; the manager adds them up.
+    # "k" tells the manager that the line is nginx's own. No path, no query,
+    # no cookie and no token is ever written here.
+    log_format efp_access escape=json
+        '{"k":"{{ACCESS_LOG_KEY}}","t":$msec,"app":"$efp_app","slug":"$efp_app_slug",'
+        '"status":$status,"rt":$request_time,"uht":"$upstream_header_time",'
+        '"user":"$efp_user","bytes":$bytes_sent}';
+
+    # WebSocket: hand the upgrade to the app; otherwise one request per
+    # upstream connection.
+    map $http_upgrade $efp_connection {
+        default upgrade;
+        ""      close;
+    }
+
+    # The client's address. An ingress stands in front of this gateway and
+    # appends the address it saw to X-Forwarded-For, so the last entry is the
+    # one to trust; without the header it is the peer itself.
+    map $http_x_forwarded_for $efp_client_addr {
+        default                           $remote_addr;
+        "~(?<efp_xff_last>[^, ]+) *$"     $efp_xff_last;
+    }
+
+    # The scheme the browser used (the ingress terminates TLS).
+    map $http_x_forwarded_proto $efp_forwarded_proto {
+        default $scheme;
+        https   https;
+        http    http;
+    }
+
+    # The host the browser used.
+    map $http_host $efp_public_host {
+        default $http_host;
+        ""      $host;
+    }
+
+    # A static app is recognised by the directory the access check names.
+    # Such a request goes to the "static" server below, which is selected by
+    # this Host and unlocked by the gateway secret. An app with a process of
+    # its own gets the public host and never the secret.
+    # "volatile": both are derived from a value that only exists once the
+    # access check has answered, so they must not be remembered earlier.
+    map $efp_static_root $efp_upstream_host {
+        volatile;
+        default {{STATIC_HOST}};
+        ""      $efp_public_host;
+    }
+    map $efp_static_root $efp_static_secret {
+        volatile;
+        default "{{GATEWAY_SECRET}}";
+        ""      "";
+    }
+
+    # ---- the gateway: what browsers reach -------------------------------------
+    server {
+        listen {{GATEWAY_PORT}} default_server;
+        server_name _;
+
+        client_max_body_size 100m;
+
+        access_log syslog:server=unix:{{ACCESS_LOG_SOCKET}},nohostname,tag=efp_gateway efp_access if=$efp_app;
+
+        # No client may send X-EFP-* headers: they are how the gateway talks
+        # to the manager and to apps. nginx cannot remove headers by pattern,
+        # so such a request is refused as a whole.
+        if ($efp_reserved_header) {
+            return 400;
+        }
+
+        # proxy_pass with a variable sends exactly this path, whatever the
+        # location is (a named location may not name a path in any other way).
+        set $efp_deny_uri /_efp/deny;
+
+        # Answered here, so that it tells whether nginx itself is up.
+        location = /_efp/health {
+            access_log off;
+            default_type text/plain;
+            return 200 "ok";
+        }
+
+        # The sign-in hand-off (section 6.3) is the manager's.
+        location = /_efp/callback {
+            proxy_pass http://{{MANAGER_ADDR}};
+            proxy_set_header Host $efp_public_host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $efp_forwarded_proto;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 60s;
+        }
+        location = /_efp/logout {
+            proxy_pass http://{{MANAGER_ADDR}};
+            proxy_set_header Host $efp_public_host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $efp_forwarded_proto;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 60s;
+        }
+
+        # The icons of the app center (section 6.5): the manager checks the
+        # visitor's session and asks the Portal for the image.
+        location ^~ /_efp/icon/ {
+            proxy_pass http://{{MANAGER_ADDR}};
+            proxy_method GET;
+            proxy_pass_request_body off;
+            proxy_pass_request_headers off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-EFP-Gateway-Secret "{{GATEWAY_SECRET}}";
+            proxy_set_header Cookie $http_cookie;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 30s;
+        }
+
+        # Nothing else under /_efp/ exists for a browser. "^~" keeps the
+        # regular-expression locations below from being tried.
+        location ^~ /_efp/ {
+            return 404;
+        }
+
+        # The access check. "internal": only auth_request below gets here.
+        # Nothing of the client's request is passed on except what is named.
+        location = /_efp_internal/auth {
+            internal;
+            proxy_pass http://{{MANAGER_ADDR}}/_efp/auth;
+            proxy_pass_request_body off;
+            proxy_pass_request_headers off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-EFP-Gateway-Secret "{{GATEWAY_SECRET}}";
+            proxy_set_header X-EFP-Original-URI $request_uri;
+            proxy_set_header X-EFP-Method $request_method;
+            proxy_set_header X-EFP-Source $efp_client_addr;
+            proxy_set_header Cookie $http_cookie;
+            proxy_set_header Accept $http_accept;
+            proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 30s;
+        }
+
+        # "/{slug}" -> "/{slug}/"
+        location ~ ^/(?<efp_slug>[a-z0-9][a-z0-9-]*[a-z0-9])$ {
+            return 301 /$efp_slug/$is_args$args;
+        }
+
+        # "/{slug}/...": ask the manager, then send the request where it says.
+        location ~ ^/(?<efp_slug>[a-z0-9][a-z0-9-]*[a-z0-9])/ {
+            auth_request /_efp_internal/auth;
+            # What the manager answered (routes.py lists the headers). These
+            # are set for a refusal as well, before nginx looks at the status.
+            auth_request_set $efp_app         $upstream_http_x_efp_app;
+            auth_request_set $efp_app_slug    $upstream_http_x_efp_slug;
+            auth_request_set $efp_upstream    $upstream_http_x_efp_upstream;
+            auth_request_set $efp_uri         $upstream_http_x_efp_upstream_uri;
+            auth_request_set $efp_cookie      $upstream_http_x_efp_cookie;
+            auth_request_set $efp_visitor     $upstream_http_x_efp_visitor;
+            auth_request_set $efp_set_cookie  $upstream_http_x_efp_set_cookie;
+            auth_request_set $efp_user        $upstream_http_x_efp_user;
+            auth_request_set $efp_static_root $upstream_http_x_efp_static_root;
+            auth_request_set $efp_reason      $upstream_http_x_efp_reason;
+            auth_request_set $efp_detail      $upstream_http_x_efp_detail;
+
+            # 401 / 403: the access check refused. 500: it could not be asked.
+            # 502 / 504: the app did not take the connection. In each case the
+            # manager writes the answer. Answers of the app itself, whatever
+            # their status, are not touched (proxy_intercept_errors is off).
+            error_page 401 403 500 502 504 = @efp_deny;
+
+            # Drops and rewrites the app's cookies, adds the renewed session
+            # cookie (efp_gateway.js).
+            js_header_filter efp.filterResponseHeaders;
+
+            # The address is a literal IP and port, so no resolver is needed.
+            # With variables nginx sends $efp_uri exactly as given: it already
+            # carries the query and has the prefix removed where the app wants that.
+            proxy_pass http://$efp_upstream$efp_uri;
+
+            # Streaming in both directions, long-lived connections.
+            proxy_buffering off;
+            proxy_request_buffering off;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
+
+            proxy_set_header Host $efp_upstream_host;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $efp_connection;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $efp_forwarded_proto;
+            proxy_set_header X-Forwarded-Host $efp_public_host;
+            proxy_set_header X-Forwarded-Prefix /$efp_app_slug;
+            # The client's cookies without the gateway session; an empty
+            # value removes the header.
+            proxy_set_header Cookie $efp_cookie;
+            # Signed by the manager for a signed-in visitor, absent otherwise.
+            proxy_set_header X-EFP-Visitor $efp_visitor;
+            # Empty for an app with a process of its own (see the maps above).
+            proxy_set_header X-EFP-Gateway-Secret $efp_static_secret;
+            proxy_set_header X-EFP-Static-Root $efp_static_root;
+
+            # An app's answer steers nothing in the gateway. X-Accel-Redirect
+            # would otherwise send the request on to a location of the app's
+            # choosing, the "internal" access check above among them, whose
+            # answer (the visitor's signed header, a renewed session cookie)
+            # would then reach the page's script.
+            proxy_ignore_headers X-Accel-Redirect X-Accel-Expires X-Accel-Limit-Rate X-Accel-Buffering X-Accel-Charset;
+
+            # Section 6.2: what the gateway takes from and adds to the answer.
+            # The app's own values of the added headers are dropped first, so
+            # that each appears once. The reporting and Clear-Site-Data headers
+            # act on the whole hostname, which an app shares with every other.
+            proxy_hide_header NEL;
+            proxy_hide_header Report-To;
+            proxy_hide_header Reporting-Endpoints;
+            proxy_hide_header Clear-Site-Data;
+            proxy_hide_header Service-Worker-Allowed;
+            proxy_hide_header X-Content-Type-Options;
+            proxy_hide_header X-Robots-Tag;
+            proxy_hide_header Referrer-Policy;
+            proxy_hide_header Permissions-Policy;
+            add_header X-Content-Type-Options nosniff always;
+            add_header X-Robots-Tag noindex always;
+            add_header Referrer-Policy same-origin always;
+            add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), display-capture=()" always;
+        }
+
+        # The manager turns a reason into a redirect, a page or a JSON error.
+        # Without a reason (nginx's own 500 / 502 / 504) it answers "unavailable".
+        location @efp_deny {
+            proxy_pass http://{{MANAGER_ADDR}}$efp_deny_uri;
+            proxy_method GET;
+            proxy_pass_request_body off;
+            proxy_pass_request_headers off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-EFP-Gateway-Secret "{{GATEWAY_SECRET}}";
+            proxy_set_header X-EFP-Reason $efp_reason;
+            proxy_set_header X-EFP-Detail $efp_detail;
+            proxy_set_header X-EFP-Original-URI $request_uri;
+            # For the state of a sign-in another tab has already started.
+            proxy_set_header Cookie $http_cookie;
+            proxy_set_header Accept $http_accept;
+            proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;
+            proxy_set_header Accept-Language $http_accept_language;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 30s;
+        }
+
+        # The root of the hostname is the app center (section 6.5): the apps
+        # this visitor may open, or the way to sign in. The manager writes it.
+        set $efp_home_uri /_efp/home;
+        location = / {
+            proxy_pass http://{{MANAGER_ADDR}}$efp_home_uri;
+            proxy_method GET;
+            proxy_pass_request_body off;
+            proxy_pass_request_headers off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-EFP-Gateway-Secret "{{GATEWAY_SECRET}}";
+            proxy_set_header X-EFP-Original-URI $request_uri;
+            proxy_set_header Cookie $http_cookie;
+            proxy_set_header Accept $http_accept;
+            proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;
+            proxy_set_header Accept-Language $http_accept_language;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 30s;
+        }
+
+        # Anything that is not shaped like an app address.
+        location / {
+            proxy_pass http://{{MANAGER_ADDR}}$efp_deny_uri;
+            proxy_method GET;
+            proxy_pass_request_body off;
+            proxy_pass_request_headers off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-EFP-Gateway-Secret "{{GATEWAY_SECRET}}";
+            proxy_set_header X-EFP-Reason app_not_found;
+            proxy_set_header X-EFP-Original-URI $request_uri;
+            proxy_set_header Accept $http_accept;
+            proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;
+            proxy_set_header Accept-Language $http_accept_language;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 30s;
+        }
+    }
+
+    # ---- static apps: files, served only to the gateway above -----------------
+    # Same port, another Host. The server above sends a request here after the
+    # access check let it through (proxy_pass to 127.0.0.1 on this port).
+    # Whoever else finds this server (an app that connects to the port, a
+    # client that sends this Host) lacks the gateway secret and gets 404.
+    server {
+        listen {{GATEWAY_PORT}};
+        server_name {{STATIC_HOST}};
+
+        access_log off;
+        charset utf-8;
+
+        # The gateway server connects from this machine; nobody else has to.
+        allow 127.0.0.1;
+        deny all;
+
+        if ($http_x_efp_gateway_secret != "{{GATEWAY_SECRET}}") {
+            return 404;
+        }
+        # Without a directory the "alias" below would start at "/".
+        if ($http_x_efp_static_root = "") {
+            return 404;
+        }
+
+        # A symbolic link anywhere below the app's directory is not followed,
+        # so a link in an app's files cannot lead out of them.
+        disable_symlinks on from=$http_x_efp_static_root;
+
+        # Files whose name starts with a dot are not published.
+        location ~ /\. {
+            return 404;
+        }
+
+        # The request still has its public path "/{slug}/...": the first
+        # segment is dropped here, the rest is looked up below the directory
+        # the access check named. nginx has resolved "." and ".." and decoded
+        # the path before it matches, so the rest cannot climb out; and
+        # because the public path is kept, the redirect nginx makes for a
+        # directory without the final slash is correct for the browser.
+        location ~ ^/[^/]+(?<efp_static_path>/.*)$ {
+            alias $http_x_efp_static_root$efp_static_path;
+            index index.html index.htm;
+        }
+
+        location / {
+            return 404;
+        }
+    }
+}

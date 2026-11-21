@@ -1,0 +1,494 @@
+/* Light and dark from one set of variables: light-dark() picks by the visitor's setting. */
+:root {
+  color-scheme: light dark;
+  --page: light-dark(#f5f6f8, #14161a);
+  --panel: light-dark(#ffffff, #1d2026);
+  --text: light-dark(#1c2026, #e7e9ee);
+  --muted: light-dark(#5d6673, #9ba4b3);
+  --line: light-dark(#d5d9e0, #343943);
+  --edge: light-dark(#9aa3b0, #5b6472);
+  --accent: light-dark(#2456c9, #8db0ff);
+  --needs: light-dark(#1f5fd0, #7fb0ff);
+  --users: light-dark(#c2560a, #ffa860);
+  --cycle: light-dark(#b3261e, #ff8a80);
+  --team-0: light-dark(#4a78d6, #6f9cf5);
+  --team-1: light-dark(#2f9e77, #4cc79b);
+  --team-2: light-dark(#c9862a, #e2a64e);
+  --team-3: light-dark(#8a63d2, #a98bea);
+  --team-4: light-dark(#c8507c, #e57aa2);
+  --team-5: light-dark(#3a9bb5, #5fc2dc);
+  --team-6: light-dark(#7a8a2e, #a9bb55);
+  --team-7: light-dark(#8b7355, #b89f80);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  max-width: 82rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+  background: var(--page);
+  color: var(--text);
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.2rem;
+  overflow-wrap: anywhere;
+}
+
+h3 {
+  margin: 1rem 0 0.1rem;
+  font-size: 1rem;
+}
+
+h4 {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+p {
+  margin: 0.25rem 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  margin-top: 1rem;
+}
+
+.field {
+  display: block;
+}
+
+.label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+input[type="search"],
+select,
+button {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+}
+
+input[type="search"] {
+  width: 14rem;
+  max-width: 100%;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+.buttons {
+  display: flex;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.buttons button {
+  min-width: 2.4rem;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.status {
+  min-height: 1.5rem; /* keeps its place while empty, so the map does not jump */
+  margin: 0.5rem 0 0.25rem;
+  color: var(--muted);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  gap: 1rem;
+  align-items: start;
+}
+
+.map-area {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+#map {
+  display: block;
+  width: 100%;
+  height: min(70vh, 44rem);
+  min-height: 22rem;
+  cursor: grab;
+  touch-action: none; /* the map handles drags and pinches itself */
+  user-select: none;
+}
+
+#map:active {
+  cursor: grabbing;
+}
+
+.empty {
+  position: absolute;
+  inset: 40% 1rem auto;
+  text-align: center;
+}
+
+/* --- The drawing --- */
+
+.edge line {
+  stroke: var(--edge);
+  stroke-width: 1.3;
+}
+
+.edge .head {
+  fill: var(--edge);
+}
+
+.node {
+  cursor: pointer;
+}
+
+.node circle {
+  stroke: var(--panel);
+  stroke-width: 2;
+}
+
+.node .tier {
+  fill: light-dark(#ffffff, #10131a);
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.node .name {
+  fill: var(--text);
+  font-size: 12px;
+  text-anchor: middle;
+  /* a halo in the background colour keeps a label readable across an arrow */
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.node:focus-visible {
+  outline: none;
+}
+
+.node:focus-visible circle {
+  stroke: var(--accent);
+  stroke-width: 4;
+}
+
+.team-0 circle,
+.swatch.team-0 {
+  fill: var(--team-0);
+  background: var(--team-0);
+}
+
+.team-1 circle,
+.swatch.team-1 {
+  fill: var(--team-1);
+  background: var(--team-1);
+}
+
+.team-2 circle,
+.swatch.team-2 {
+  fill: var(--team-2);
+  background: var(--team-2);
+}
+
+.team-3 circle,
+.swatch.team-3 {
+  fill: var(--team-3);
+  background: var(--team-3);
+}
+
+.team-4 circle,
+.swatch.team-4 {
+  fill: var(--team-4);
+  background: var(--team-4);
+}
+
+.team-5 circle,
+.swatch.team-5 {
+  fill: var(--team-5);
+  background: var(--team-5);
+}
+
+.team-6 circle,
+.swatch.team-6 {
+  fill: var(--team-6);
+  background: var(--team-6);
+}
+
+.team-7 circle,
+.swatch.team-7 {
+  fill: var(--team-7);
+  background: var(--team-7);
+}
+
+.is-hidden {
+  display: none;
+}
+
+.is-dimmed {
+  opacity: 0.18;
+}
+
+.node.is-match .name {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.node.is-chosen circle {
+  stroke: var(--text);
+  stroke-width: 4;
+}
+
+.node.is-chosen .name {
+  font-weight: 700;
+}
+
+/* What the chosen service needs is blue, what needs it is orange; a solid
+   line is a direct dependency, a dashed one runs through other services. */
+.node.needs circle,
+.edge.needs line {
+  stroke: var(--needs);
+}
+
+.node.users circle,
+.edge.users line {
+  stroke: var(--users);
+}
+
+.edge.needs .head {
+  fill: var(--needs);
+}
+
+.edge.users .head {
+  fill: var(--users);
+}
+
+.node.direct circle {
+  stroke-width: 4;
+}
+
+.node.far circle {
+  stroke-width: 3;
+  stroke-dasharray: 4 3;
+}
+
+.edge.direct line {
+  stroke-width: 2.6;
+}
+
+.edge.far line {
+  stroke-width: 1.6;
+  stroke-dasharray: 5 4;
+}
+
+.edge.cycle line {
+  stroke: var(--cycle);
+  stroke-dasharray: 2 3;
+}
+
+.edge.cycle .head {
+  fill: var(--cycle);
+}
+
+.node.in-cycle circle,
+.edge.in-cycle line {
+  stroke: var(--cycle);
+  stroke-width: 4;
+}
+
+.edge.in-cycle line {
+  stroke-width: 2.6;
+}
+
+/* --- Legend, panel, lists --- */
+
+.legend {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+  margin: 0.15rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chips li,
+.meta {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+}
+
+.key {
+  display: inline-block;
+  width: 1.4rem;
+}
+
+.key.arrow {
+  border-top: 2px solid var(--edge);
+}
+
+.key.arrow.cycle {
+  border-top: 2px dotted var(--cycle);
+}
+
+.key.ring {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 3px solid var(--needs);
+  border-radius: 50%;
+}
+
+.key.ring.users {
+  border-color: var(--users);
+}
+
+.key.ring.far {
+  border: 2px dashed var(--muted);
+}
+
+.panel,
+.block {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--panel);
+}
+
+.block {
+  margin-top: 1rem;
+}
+
+.badge {
+  margin-left: auto;
+  padding: 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  font-size: 0.85rem;
+}
+
+.links,
+.names,
+.plain {
+  margin: 0.25rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.links,
+.names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.5rem;
+}
+
+.links a {
+  color: var(--accent);
+}
+
+button.link {
+  padding: 0.1rem 0.5rem;
+  border-radius: 1rem;
+  font-size: 0.9rem;
+}
+
+.relatives.needs h3 {
+  border-left: 0.25rem solid var(--needs);
+  padding-left: 0.5rem;
+}
+
+.relatives.users h3 {
+  border-left: 0.25rem solid var(--users);
+  padding-left: 0.5rem;
+}
+
+.warning {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--cycle);
+  border-left-width: 0.25rem;
+  border-radius: 0.4rem;
+  overflow-wrap: anywhere;
+}
+
+.panel > button {
+  margin-top: 1rem;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Narrow screens: the details go under the map. */
+@media (max-width: 56rem) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #map {
+    height: 60vh;
+  }
+
+  .buttons {
+    margin-left: 0;
+  }
+}
+
+/* Dimming is the only transition, and it is dropped for visitors who want less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .node,
+  .edge {
+    transition: opacity 0.15s;
+  }
+}

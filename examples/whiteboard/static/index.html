@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Whiteboard</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Whiteboard</h1>
+      <p id="who" class="muted"></p>
+    </header>
+
+    <section aria-label="The board">
+      <div class="toolbar" role="toolbar" aria-label="Drawing">
+        <div id="tools" class="group" role="group" aria-label="Tool">
+          <button type="button" data-tool="pen" aria-pressed="true" title="Pen (P)">Pen</button>
+          <button type="button" data-tool="eraser" aria-pressed="false" title="Eraser (E)">Eraser</button>
+          <button type="button" data-tool="line" aria-pressed="false" title="Line (L)">Line</button>
+          <button type="button" data-tool="rectangle" aria-pressed="false" title="Rectangle (R)">Box</button>
+          <button type="button" data-tool="ellipse" aria-pressed="false" title="Ellipse (O)">Ellipse</button>
+          <button type="button" data-tool="arrow" aria-pressed="false" title="Arrow (A)">Arrow</button>
+          <button type="button" data-tool="text" aria-pressed="false" title="Text (T)">Text</button>
+        </div>
+        <div id="colors" class="group" role="group" aria-label="Colour">
+          <input type="color" id="custom-color" value="#1c2024" title="Another colour" aria-label="Another colour">
+        </div>
+        <div id="widths" class="group" role="group" aria-label="Width of the line"></div>
+        <div class="group">
+          <button type="button" id="undo" title="Undo (Ctrl+Z)" disabled>Undo</button>
+          <button type="button" id="redo" title="Redo (Ctrl+Y)" disabled>Redo</button>
+          <button type="button" id="clear" title="Wipe the board (can be undone)" disabled>Clear</button>
+        </div>
+      </div>
+
+      <div id="paper" class="paper">
+        <canvas id="board" width="1600" height="1000" role="img" aria-label="The drawing board"></canvas>
+        <input type="text" id="text-entry" class="text-entry" maxlength="120" aria-label="Text to put on the board" autocomplete="off" hidden>
+      </div>
+
+      <form id="save-form" class="save-row">
+        <label for="title" class="visually-hidden">Title of the drawing</label>
+        <input type="text" id="title" maxlength="80" placeholder="A title for the gallery" autocomplete="off">
+        <button type="submit" id="save" class="primary" disabled>Save to the gallery</button>
+        <button type="button" id="download">Download PNG</button>
+      </form>
+      <p id="status" class="status" role="status"></p>
+    </section>
+
+    <section aria-labelledby="gallery-heading">
+      <div class="section-head">
+        <h2 id="gallery-heading">Gallery</h2>
+        <span id="count" class="muted"></span>
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+      <p id="gallery-status" class="status" role="status"></p>
+      <ul id="gallery" class="gallery"></ul>
+      <p id="gallery-empty" class="empty" hidden>No drawings yet. Draw something above and save it.</p>
+    </section>
+  </main>
+
+  <dialog id="viewer" class="viewer" aria-labelledby="viewer-title">
+    <h2 id="viewer-title"></h2>
+    <img id="viewer-image" alt="">
+    <p id="viewer-facts" class="muted"></p>
+    <div class="dialog-actions">
+      <button type="button" id="viewer-delete" class="danger">Delete</button>
+      <button type="button" id="viewer-continue">Continue on the board</button>
+      <button type="button" id="viewer-close" class="primary">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="confirm" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title">Delete this drawing?</h2>
+      <p id="confirm-text"></p>
+      <div class="dialog-actions">
+        <button type="button" id="confirm-cancel">Cancel</button>
+        <button type="submit" class="primary danger" value="ok">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

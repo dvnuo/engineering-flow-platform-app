@@ -1,0 +1,41 @@
+{
+  "targets": [
+    {
+      "id": "qa-web",
+      "name": "QA web",
+      "group": "QA",
+      "url": "https://qa.example.com/health",
+      "expect": 200
+    },
+    {
+      "id": "qa-api",
+      "name": "QA API",
+      "group": "QA",
+      "url": "https://api.qa.example.com/health",
+      "expect": 200,
+      "contains": "\"status\":\"UP\""
+    },
+    {
+      "id": "staging-web",
+      "name": "Staging web",
+      "group": "Staging",
+      "url": "https://staging.example.com/health",
+      "expect": 200
+    },
+    {
+      "id": "staging-api",
+      "name": "Staging API",
+      "group": "Staging",
+      "url": "https://api.staging.example.com/health",
+      "expect": 200,
+      "contains": "\"status\":\"UP\""
+    },
+    {
+      "id": "perf-login",
+      "name": "Performance login page",
+      "group": "Performance",
+      "url": "https://perf.example.com/login",
+      "expect": 200
+    }
+  ]
+}

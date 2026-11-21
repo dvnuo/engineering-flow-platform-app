@@ -1,0 +1,457 @@
+:root {
+  color-scheme: light dark;
+  --page: light-dark(#f4f5f7, #121417);
+  --surface: light-dark(#ffffff, #1b1e23);
+  --line: light-dark(#d5dae1, #353b45);
+  --text: light-dark(#1c2024, #e7e9ec);
+  --muted: light-dark(#5b6675, #9aa5b4);
+  --accent: light-dark(#2f5fd0, #8fb2ff);
+  --on-accent: light-dark(#ffffff, #0e1830);
+  --problem: light-dark(#b3261e, #f2b8b5);
+  --focus: light-dark(#1a4fd6, #a9c4ff);
+  --radius: 0.5rem;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+h1,
+h2 {
+  margin: 0;
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: 1.6rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+}
+
+p {
+  margin: 0.25rem 0 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.problem {
+  color: var(--problem);
+}
+
+.status {
+  min-height: 1.5rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button,
+.button,
+summary {
+  display: inline-block;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+button:hover:not(:disabled),
+.button:hover,
+summary:hover {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+button.danger {
+  color: var(--problem);
+}
+
+button.primary.danger {
+  border-color: var(--problem);
+  background: var(--problem);
+  color: var(--surface);
+}
+
+input[type="text"] {
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* --- The list of maps --- */
+
+.page {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.page section,
+.page form {
+  margin-top: 1.75rem;
+}
+
+.page label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+}
+
+.field-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.field-row input {
+  flex: 1;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card-title {
+  color: var(--accent);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.card .group {
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+
+.card button {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.badge {
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 1rem;
+  color: var(--accent);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 1.5rem 1rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  text-align: center;
+}
+
+/* --- The editor --- */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.bar .title {
+  flex: 1 1 12rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.bar .title:read-only {
+  border-color: transparent;
+  background: transparent;
+}
+
+.tools button,
+.tools summary {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.swatches {
+  display: inline-flex;
+  gap: 0.2rem;
+  margin: 0 0.25rem;
+}
+
+.swatch {
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border-radius: 50%;
+  /* "No colour of its own": a white disc with a stroke through it. */
+  background: linear-gradient(135deg, transparent 45%, var(--muted) 45%, var(--muted) 55%, transparent 55%) #ffffff;
+}
+
+.swatch[aria-pressed="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu summary {
+  list-style: none;
+}
+
+.menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu-items {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  display: grid;
+  gap: 0.25rem;
+  min-width: 12rem;
+  margin: 0;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 0.4rem 1.2rem rgb(0 0 0 / 0.18);
+}
+
+.menu-items button {
+  text-align: left;
+}
+
+.keys {
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.75rem;
+  min-width: 18rem;
+  font-size: 0.9rem;
+}
+
+.keys dt {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.keys dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* The page handles every touch on the map itself: one finger moves it, two zoom. */
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+#canvas.dragging {
+  cursor: grabbing;
+}
+
+#canvas:focus-visible {
+  outline-offset: -2px;
+}
+
+.node {
+  cursor: pointer;
+}
+
+/* A style sheet rule wins over the attributes the drawing sets, so the
+   marks below exist on the page only and never reach an exported file. */
+.node.selected rect {
+  stroke: var(--focus);
+  stroke-width: 3.5;
+}
+
+.node.moving {
+  opacity: 0.45;
+}
+
+.node.drop rect {
+  stroke: var(--focus);
+  stroke-width: 3.5;
+  stroke-dasharray: 5 4;
+}
+
+.node-editor {
+  position: absolute;
+  z-index: 2;
+  border-color: var(--focus) !important;
+}
+
+.hint {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.5rem;
+  max-width: calc(100% - 1.5rem);
+  margin: 0;
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  color: var(--muted);
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+.hint.problem {
+  color: var(--problem);
+}
+
+/* --- The dialog --- */
+
+dialog {
+  width: min(26rem, calc(100vw - 2rem));
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+dialog input {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 40rem) {
+  .bar {
+    padding: 0.4rem 0.5rem;
+  }
+
+  .menu-items {
+    right: auto;
+    left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

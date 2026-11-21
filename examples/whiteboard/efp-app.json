@@ -1,0 +1,8 @@
+{
+  "name": "Whiteboard",
+  "description": "Example: a drawing board whose pictures are kept as binary objects and shown in a team gallery.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

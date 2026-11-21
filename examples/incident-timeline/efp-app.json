@@ -1,0 +1,8 @@
+{
+  "name": "Incident timeline",
+  "description": "Example: from the chat and notes of an incident to a timeline you can correct, keep and export as a post-mortem skeleton.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

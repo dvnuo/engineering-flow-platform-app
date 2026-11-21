@@ -1,0 +1,6 @@
+# The host installs these from its package index (wheels only) on every deployment.
+# efp-app-sdk is not listed: the host adds it by itself. On your own machine: pip install efp-app-sdk
+fastapi>=0.110
+# "[standard]" brings the WebSocket library. Plain uvicorn serves pages only
+# and answers a WebSocket handshake with an error.
+uvicorn[standard]>=0.29

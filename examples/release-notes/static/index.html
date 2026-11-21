@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Release notes</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <h1>Release notes</h1>
+    <p class="muted">A first draft from the commits between two tags. GitHub is read with the app owner's connector.</p>
+
+    <form id="notes-form">
+      <label for="repository">Repository</label>
+      <input type="text" id="repository" placeholder="owner/name" maxlength="220" autocomplete="off" required>
+      <div class="row">
+        <div>
+          <label for="base">From (the previous release)</label>
+          <input type="text" id="base" placeholder="v1.3.0" maxlength="200" list="tags" autocomplete="off" required>
+        </div>
+        <div>
+          <label for="head">To (the new release)</label>
+          <input type="text" id="head" placeholder="v1.4.0 or main" maxlength="200" list="tags" autocomplete="off" required>
+        </div>
+      </div>
+      <datalist id="tags"></datalist>
+      <button type="submit" id="draft-button">Draft the notes</button>
+      <button type="button" id="again-button" hidden>Write again</button>
+      <button type="button" id="copy-button" hidden>Copy</button>
+    </form>
+
+    <p id="status" class="muted" role="status"></p>
+    <pre id="notes" aria-live="polite"></pre>
+  </main>
+  <script src="static/app.js"></script>
+</body>
+</html>

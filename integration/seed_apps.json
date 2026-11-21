@@ -1,0 +1,15 @@
+[
+  {
+    "id": "seed-0001",
+    "slug": "seeded",
+    "name": "Seeded by the Portal",
+    "owner_username": "alice",
+    "visibility": "private",
+    "enabled": true,
+    "disabled_reason": null,
+    "current_sha": null,
+    "visitor_key": "c2VlZGVkLXZpc2l0b3Ita2V5LXNlZWRlZC12aXNpdG9yLWs",
+    "env": {"EFP_APP_TOKEN": "efpa_seeded-token-0000000000000000000000000000000"},
+    "limits": {"memory_mb": null, "data_mb": null}
+  }
+]

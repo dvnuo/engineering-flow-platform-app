@@ -1,0 +1,323 @@
+:root {
+  color-scheme: light dark;
+  --ink: light-dark(#1f2633, #e9ecf2);
+  --muted: light-dark(#5b6676, #a3adbd);
+  --page: light-dark(#ffffff, #0f1216);
+  --surface: light-dark(#f6f7fa, #151920);
+  --line: light-dark(#d3d9e3, #2c3440);
+  --accent: light-dark(#2f5fc4, #8fb0f5);
+  --on-accent: light-dark(#ffffff, #0f1216);
+  --good: light-dark(#1d7a46, #6fd29a);
+  --bad: light-dark(#b3261e, #f2b8b5);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--page);
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+header p {
+  margin: 0.15rem 0 1rem;
+}
+
+section {
+  margin-top: 2.25rem;
+}
+
+button {
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button.primary {
+  padding: 0.6rem 1.75rem;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The numbers above the board */
+
+.hud {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stat .label {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.stat .value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.streak {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.timebar {
+  height: 0.35rem;
+  margin: 0.5rem 0;
+  border-radius: 0.2rem;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.timebar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left;
+}
+
+/* The board */
+
+.stage {
+  position: relative;
+  height: clamp(18rem, 60vh, 36rem);
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none; /* a tap is a squash, not the start of a scroll or a zoom */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: crosshair;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  text-align: center;
+}
+
+.overlay[hidden] {
+  display: none;
+}
+
+.overlay p {
+  margin: 0;
+  max-width: 30rem;
+}
+
+.overlay-title {
+  font-size: clamp(1.4rem, 5vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.overlay.count {
+  background: transparent;
+  pointer-events: none;
+}
+
+.overlay.count .overlay-title {
+  font-size: clamp(4rem, 20vw, 7rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.options label {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+#status {
+  min-height: 1.5rem;
+  margin: 0.5rem 0 0;
+}
+
+/* The result, the rules, the leaderboard */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: baseline;
+}
+
+thead th {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+tbody th {
+  font-weight: 400;
+}
+
+.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+td.note {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+tr.you {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-weight: 600;
+}
+
+#verdict {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
+.legend canvas {
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+.legend .text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.legend .worth {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.legend .worth.bad {
+  color: var(--bad);
+}
+
+.notes {
+  margin: 1rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.heading-row h2 {
+  margin: 0;
+}
+
+@media (max-width: 30rem) {
+  .stat .value {
+    font-size: 1.3rem;
+  }
+
+  .streak {
+    display: block;
+  }
+}

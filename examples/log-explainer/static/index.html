@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log explainer</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <h1>Log explainer</h1>
+    <p class="muted">
+      Paste the log of a failed build, test run or deployment. The end of it
+      (about the last 12,000 characters) goes to the model, with passwords
+      and tokens masked.
+    </p>
+    <form id="explain-form">
+      <textarea id="log" rows="14" spellcheck="false" placeholder="Paste a log here" required></textarea>
+      <button type="submit" id="explain-button">Explain</button>
+    </form>
+    <pre id="answer" aria-live="polite"></pre>
+  </main>
+  <script src="static/app.js"></script>
+</body>
+</html>

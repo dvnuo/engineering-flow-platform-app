@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flaky tests</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <h1>Flaky tests</h1>
+    <p class="lede">Tests that pass in one build and fail in the next. Jenkins is read with the app owner's connector; the report of a finished build is fetched once and kept.</p>
+
+    <form id="choose" class="controls">
+      <div class="wide">
+        <label for="job">Job</label>
+        <select id="job" required></select>
+      </div>
+      <div>
+        <label for="builds">Finished builds</label>
+        <select id="builds"></select>
+      </div>
+      <button type="submit" id="show">Show</button>
+    </form>
+    <p id="status" role="status"></p>
+
+    <div id="result" hidden>
+      <dl id="tiles" class="tiles"></dl>
+
+      <section class="card" aria-labelledby="matrix-title">
+        <h2 id="matrix-title">Tests that changed between passing and failing</h2>
+        <div class="controls">
+          <div class="wide">
+            <label for="package">Package</label>
+            <select id="package"></select>
+          </div>
+          <div class="wide">
+            <label for="text">Class or test contains</label>
+            <input type="search" id="text" maxlength="100" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <ul id="legend" class="legend" aria-label="What the squares mean"></ul>
+        <p id="shown" class="quiet"></p>
+        <table id="matrix">
+          <thead>
+            <tr>
+              <th scope="col">Test</th>
+              <th scope="col" id="columns"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p id="spoken" class="spoken" aria-live="polite"></p>
+      </section>
+
+      <div class="lists">
+        <section class="card" aria-labelledby="flaky-title">
+          <h2 id="flaky-title">Most flaky</h2>
+          <ol id="flaky"></ol>
+        </section>
+        <section class="card" aria-labelledby="new-title">
+          <h2 id="new-title">Newly failing</h2>
+          <ol id="new-failures"></ol>
+        </section>
+        <section class="card" aria-labelledby="slow-title">
+          <h2 id="slow-title">Slowest</h2>
+          <ol id="slowest"></ol>
+        </section>
+      </div>
+    </div>
+  </main>
+  <div id="tooltip" class="tooltip" hidden></div>
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

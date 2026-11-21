@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Type sprint</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Type sprint</h1>
+      <p id="who" class="muted">Loading...</p>
+    </header>
+
+    <section id="setup" aria-labelledby="setup-title">
+      <h2 id="setup-title" class="visually-hidden">Start</h2>
+      <fieldset class="topics" id="topics">
+        <legend>What do you want to type for a minute?</legend>
+      </fieldset>
+      <button type="button" class="primary" id="start" disabled>Start a sprint</button>
+      <p id="status" class="muted" role="status"></p>
+    </section>
+
+    <section id="sprint" aria-labelledby="sprint-title" hidden>
+      <h2 id="sprint-title" class="visually-hidden">The sprint</h2>
+      <div class="meters">
+        <div class="stat">
+          <span class="label">Seconds left</span>
+          <span class="value" id="time">-</span>
+        </div>
+        <div class="stat">
+          <span class="label">Words a minute</span>
+          <span class="value" id="wpm">-</span>
+        </div>
+        <div class="stat">
+          <span class="label">Accuracy</span>
+          <span class="value" id="accuracy">-</span>
+        </div>
+      </div>
+      <div class="timebar" aria-hidden="true"><span id="timebar"></span></div>
+      <!-- The line is shown character by character; a screen reader gets it as the label of the box below. -->
+      <p class="line" id="line" aria-hidden="true"></p>
+      <input type="text" id="typing" class="typing" aria-label="Type the line" autocomplete="off" autocapitalize="off"
+             autocorrect="off" spellcheck="false" inputmode="text" maxlength="80">
+      <p id="hint" class="muted" role="status"></p>
+      <button type="button" id="stop">Stop this sprint</button>
+    </section>
+
+    <section id="result" tabindex="-1" aria-labelledby="result-title" hidden>
+      <h2 id="result-title">Your sprint</h2>
+      <p class="headline" id="headline"></p>
+      <p id="verdict" role="status"></p>
+      <h3 id="speed-title">Speed over the minute</h3>
+      <svg id="speed-chart" class="chart" role="img" aria-labelledby="speed-title speed-text"></svg>
+      <p id="speed-text" class="muted"></p>
+      <h3>The line that cost you the most</h3>
+      <p id="worst"></p>
+    </section>
+
+    <section id="history" aria-labelledby="history-title" hidden>
+      <h2 id="history-title">Your last sprints</h2>
+      <p id="history-note" class="muted"></p>
+      <svg id="history-chart" class="chart" role="img" aria-labelledby="history-title history-note" hidden></svg>
+      <p id="history-key" class="muted key" hidden>
+        <span class="swatch"></span> ranked
+        <span class="swatch hollow"></span> under <span id="key-accuracy"></span>% accuracy, not ranked
+        <span class="swatch best"></span> your best
+      </p>
+    </section>
+
+    <section aria-labelledby="leaders-title">
+      <div class="heading-row">
+        <h2 id="leaders-title">Leaderboard</h2>
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+      <p id="board-note" class="muted" role="status">Loading...</p>
+      <div class="scroll">
+        <table id="leaders" hidden>
+          <thead>
+            <tr>
+              <th scope="col" class="number">Rank</th>
+              <th scope="col">Member</th>
+              <th scope="col" class="number">Words a minute</th>
+              <th scope="col" class="number">Accuracy</th>
+              <th scope="col">Topic</th>
+            </tr>
+          </thead>
+          <tbody id="leader-rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

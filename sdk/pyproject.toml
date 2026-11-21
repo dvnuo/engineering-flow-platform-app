@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "efp-app-sdk"
+version = "0.1.0"
+description = "Python SDK and command-line tool for EFP Apps: LLM, connectors, storage and visitor identity."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "httpx>=0.24,<1",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+efp-app = "efp_app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["efp_app*"]
+
+# efp_app/_templates mirrors the top-level templates/ directory (see setup.py
+# and sync_templates.py). The second pattern names dot files explicitly.
+[tool.setuptools.package-data]
+efp_app = ["py.typed", "_templates/**/*", "_templates/**/.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

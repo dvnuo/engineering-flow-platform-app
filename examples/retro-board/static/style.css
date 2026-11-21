@@ -1,0 +1,322 @@
+:root {
+  color-scheme: light dark;
+  --page: light-dark(#f4f5f7, #121417);
+  --surface: light-dark(#ffffff, #1b1e23);
+  --line: light-dark(#d5dae1, #353b45);
+  --text: light-dark(#1c2024, #e7e9ec);
+  --muted: light-dark(#5b6675, #9aa5b4);
+  --accent: light-dark(#2f5fd0, #8fb2ff);
+  --on-accent: light-dark(#ffffff, #0e1830);
+  --problem: light-dark(#b3261e, #f2b8b5);
+  --focus: light-dark(#1a4fd6, #a9c4ff);
+  --mine: light-dark(#fff7d6, #33301c);
+  --radius: 0.5rem;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+main {
+  max-width: 90rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+h1,
+h2 {
+  margin: 0;
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: 1.6rem;
+}
+
+h2 {
+  font-size: 1.05rem;
+}
+
+p {
+  margin: 0.25rem 0 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.problem {
+  color: var(--problem);
+}
+
+.status {
+  min-height: 1.5rem;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+select {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled,
+select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+button.danger {
+  color: var(--problem);
+}
+
+button.primary.danger {
+  border-color: var(--problem);
+  background: var(--problem);
+  color: var(--surface);
+}
+
+textarea {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+
+/* --- Above the board --- */
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+}
+
+.votes-left {
+  padding: 0.2rem 0.8rem;
+  border: 1px solid var(--accent);
+  border-radius: 1rem;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 1rem;
+}
+
+.bar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.bar select {
+  max-width: 16rem;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.banner {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+/* --- The board --- */
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 60%, var(--page));
+}
+
+.count {
+  padding: 0 0.5rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.cards {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card.mine {
+  background: var(--mine);
+}
+
+.card-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.card-foot button {
+  padding: 0.1rem 0.55rem;
+  font-size: 0.85rem;
+}
+
+.by {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.vote {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 1rem;
+}
+
+.dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+}
+
+.vote[aria-pressed="true"] {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.vote[aria-pressed="true"] .dot {
+  background: var(--accent);
+}
+
+.empty {
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.add,
+.edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.add button,
+.edit button,
+.edit select {
+  padding: 0.2rem 0.7rem;
+  font-size: 0.9rem;
+}
+
+/* --- The dialog --- */
+
+dialog {
+  width: min(26rem, calc(100vw - 2rem));
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

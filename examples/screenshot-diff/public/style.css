@@ -1,0 +1,366 @@
+/* Light and dark from one set of variables: light-dark() picks by the visitor's setting. */
+:root {
+  color-scheme: light dark;
+  --page: light-dark(#f5f6f8, #14161a);
+  --panel: light-dark(#ffffff, #1d2026);
+  --text: light-dark(#1c2026, #e7e9ee);
+  --muted: light-dark(#5d6673, #9ba4b3);
+  --line: light-dark(#d5d9e0, #343943);
+  --accent: light-dark(#2456c9, #8db0ff);
+  --on-accent: light-dark(#ffffff, #0f1320);
+  --bad: light-dark(#b3261e, #f2b8b5);
+  --box: #1f6feb; /* the outlines lie on screenshots, not on the page: one colour for both themes */
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  max-width: 86rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+  background: var(--page);
+  color: var(--text);
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+h3 {
+  margin: 1rem 0 0.25rem;
+  font-size: 1rem;
+}
+
+p {
+  margin: 0.25rem 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.privacy {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 0.25rem solid var(--accent);
+  border-radius: 0.4rem;
+  background: var(--panel);
+  font-size: 0.95rem;
+}
+
+.inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.drop {
+  padding: 1rem;
+  border: 2px dashed var(--line);
+  border-radius: 0.6rem;
+  background: var(--panel);
+}
+
+.drop.over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+
+.drop input {
+  max-width: 100%;
+  margin-top: 0.5rem;
+  font: inherit;
+}
+
+.drop p {
+  overflow-wrap: anywhere;
+}
+
+.row,
+.controls,
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+
+.row {
+  margin-top: 0.75rem;
+}
+
+button {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+button.link {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.status {
+  min-height: 1.5rem; /* keeps its place while empty */
+  margin-top: 1rem;
+  font-weight: 600;
+}
+
+.problem {
+  color: var(--bad);
+}
+
+progress {
+  display: block;
+  width: 100%;
+  height: 0.5rem;
+  accent-color: var(--accent);
+}
+
+.controls {
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--panel);
+}
+
+.field {
+  display: block;
+}
+
+.label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.field input[type="range"] {
+  display: block;
+  width: 14rem;
+  max-width: 100%;
+  accent-color: var(--accent);
+}
+
+.check {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice legend {
+  padding: 0;
+}
+
+.buttons {
+  gap: 0.35rem;
+}
+
+.buttons output {
+  min-width: 3.2rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.buttons button {
+  min-width: 2.4rem;
+}
+
+.result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 19rem;
+  gap: 1rem;
+  align-items: start;
+  margin-top: 1rem;
+}
+
+/* The stage scrolls in both directions once the images are zoomed past it. */
+.stage {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  max-height: 82vh;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  /* a checkerboard, so transparent parts of a screenshot can be told from white ones */
+  background:
+    repeating-conic-gradient(color-mix(in srgb, var(--line) 45%, transparent) 0% 25%, transparent 0% 50%) 0 0 / 1rem 1rem,
+    var(--panel);
+  overflow: auto;
+}
+
+.pane {
+  flex: none;
+  margin: 0;
+}
+
+.pane figcaption {
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.frame {
+  position: relative;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.frame canvas,
+.frame .boxes {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.frame canvas.crisp {
+  image-rendering: pixelated;
+}
+
+.frame .boxes {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.boxes rect {
+  fill: none;
+  stroke: var(--box);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke; /* two screen pixels at every zoom */
+}
+
+.boxes rect.current {
+  stroke-width: 4;
+  stroke-dasharray: 6 3;
+}
+
+/* The line between "expected" and "actual" in the swipe view: wide enough to grab. */
+.divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1.5rem;
+  margin-left: -0.75rem;
+  cursor: ew-resize;
+  touch-action: none;
+  background: linear-gradient(to right, transparent 45%, var(--box) 45%, var(--box) 55%, transparent 55%);
+}
+
+.report {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--panel);
+}
+
+dl {
+  margin: 0.5rem 0 0;
+}
+
+dt {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+dd {
+  margin: 0 0 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+ol {
+  max-height: 22rem;
+  margin: 0.5rem 0;
+  padding-left: 1.75rem;
+  overflow-y: auto;
+}
+
+ol li {
+  margin: 0.25rem 0;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.key {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 0.15rem;
+}
+
+.key.changed {
+  background: rgb(226 0 116);
+}
+
+.key.blend {
+  background: rgb(247 201 72);
+}
+
+.key.only {
+  background: repeating-linear-gradient(135deg, rgb(70 120 210) 0 3px, rgb(176 202 244) 3px 6px);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Narrow screens: the numbers go under the images. */
+@media (max-width: 56rem) {
+  .result {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stage {
+    max-height: 70vh;
+  }
+}

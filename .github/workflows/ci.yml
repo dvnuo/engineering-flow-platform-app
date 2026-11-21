@@ -1,0 +1,175 @@
+name: CI
+
+# What runs where:
+#
+#   host-unit, sdk-unit   pure logic, on the runner (Python 3.11)
+#   manifests             the Kubernetes manifests parse and say what the docs say
+#   image                 builds the Dockerfile (which runs "nginx -t" on the rendered gateway config)
+#   image-tests           the Linux-only unit tests as root inside the image:
+#                         dropping privileges, bubblewrap, Landlock, supervisord
+#   smoke                 the real container next to a stub Portal, once per
+#                         isolation variant: deploys the starter templates, an
+#                         example app (examples/team-poll) and a probe app,
+#                         and checks them through the gateway
+#
+# The smoke job is the only place where the Linux parts of the host run for
+# real. When it fails, open its last step ("What happened"): container log,
+# app logs, deployment logs.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: efp-app-host:ci
+
+jobs:
+  host-unit:
+    name: host unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          python -m pip install --upgrade pip
+          python -m pip install -e "host[dev]"
+      - name: Test
+        working-directory: host
+        run: python -m pytest -rs
+
+  sdk-unit:
+    name: sdk unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "sdk[dev]"
+          # The tests of the FastAPI and Flask helpers and of the starter
+          # apps skip themselves when the framework is missing: have them run.
+          python -m pip install fastapi flask
+      - name: Test
+        working-directory: sdk
+        run: python -m pytest -rs
+
+  manifests:
+    name: manifests and scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Kubernetes manifests
+        run: |
+          python -m pip install pyyaml
+          python scripts/check_manifests.py
+      - name: Shell scripts
+        run: |
+          for script in host/bin/entrypoint.sh host/bin/efp-app-launch integration/ci.sh integration/check_bwrap_root.sh k8s/probe/run.sh k8s/probe/probe.sh; do
+            sh -n "$script"
+            if grep -q "$(printf '\r')" "$script"; then echo "$script has CRLF line endings"; exit 1; fi
+          done
+
+  image:
+    name: build the image
+    needs: [host-unit, sdk-unit, manifests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: docker build -t "$IMAGE" .
+      - name: What is in it
+        run: |
+          docker run --rm --entrypoint sh "$IMAGE" -c 'python3 --version; nginx -v; bwrap --version; setpriv --version; supervisord --version; ls -l /opt/efp/wheels /opt/efp/bin'
+      - name: Save
+        run: docker save "$IMAGE" | gzip > efp-app-host.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: image
+          path: efp-app-host.tar.gz
+          retention-days: 1
+
+  image-tests:
+    name: isolation tests inside the image
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: image
+      - name: Load the image
+        run: gunzip -c efp-app-host.tar.gz | docker load
+      - name: Linux-only tests, as root, with the privileges of the sandbox variant
+        run: sh integration/ci.sh image-tests
+      - name: This machine
+        if: always()
+        run: sh integration/ci.sh host-info
+
+  smoke:
+    name: smoke (${{ matrix.variant }})
+    needs: image
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # hidden / sandbox: the two isolation modes, started the plain way.
+        # *-k8s: the same with exactly the capabilities of k8s/*.yaml.
+        # sandbox-landlock / sandbox-userns: the other two sandbox backends.
+        # A sandbox variant is skipped, with a warning, on a runner whose
+        # kernel or security policy cannot do its backend (the step "Can this
+        # runner do the variant?" shows what was tried).
+        variant: [hidden, sandbox, hidden-k8s, sandbox-k8s, sandbox-landlock, sandbox-userns]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install pyyaml
+      - uses: actions/download-artifact@v8
+        with:
+          name: image
+      - name: Load the image
+        run: gunzip -c efp-app-host.tar.gz | docker load
+      - name: Can this runner do the variant?
+        id: can
+        run: |
+          result="$(sh integration/ci.sh available "${{ matrix.variant }}")"
+          echo "$result" >> "$GITHUB_OUTPUT"
+          if [ "$result" != "available=true" ]; then
+            echo "::warning title=smoke (${{ matrix.variant }}) not run::this runner cannot do this isolation (see the output of this step); the variant was skipped, not tested"
+          fi
+      - name: Start the stub Portal and the host
+        if: steps.can.outputs.available == 'true'
+        run: |
+          sh integration/ci.sh start-portal
+          sh integration/ci.sh start-host "${{ matrix.variant }}"
+      - name: "Smoke test: deploy, isolation, gateway, rollback"
+        if: steps.can.outputs.available == 'true'
+        run: sh integration/ci.sh smoke first "${{ matrix.variant }}"
+      - name: A new container on the same volume
+        if: steps.can.outputs.available == 'true'
+        run: sh integration/ci.sh recreate-host "${{ matrix.variant }}"
+      - name: "Smoke test: everything comes back"
+        if: steps.can.outputs.available == 'true'
+        run: sh integration/ci.sh smoke after-recreate "${{ matrix.variant }}"
+      - name: What happened
+        if: always() && steps.can.outputs.available == 'true'
+        run: sh integration/ci.sh diagnostics

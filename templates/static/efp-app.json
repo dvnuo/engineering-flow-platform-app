@@ -1,0 +1,6 @@
+{
+  "name": "My static app",
+  "description": "Starter: a plain page with its own style sheet, script and data.",
+  "type": "static",
+  "entry": "public"
+}

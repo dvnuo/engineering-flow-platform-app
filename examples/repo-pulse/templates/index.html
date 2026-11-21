@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Repo pulse</title>
+  {# Every URL comes from url_for(): it adds the /{slug} prefix once deployed. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main data-pulse-url="{{ url_for('read_pulse') }}" data-refresh-url="{{ url_for('refresh') }}">
+    <h1>Repo pulse</h1>
+    <p class="lede">A year of commits, the hours they are made in, who makes them, and how long pull requests wait. GitHub is read with the app owner's connector, and what it says is kept for an hour.</p>
+
+    <form id="choose" class="controls">
+      <div class="wide">
+        <label for="repository">Repository</label>
+        <input type="text" id="repository" placeholder="owner/name" maxlength="140" autocomplete="off" spellcheck="false" required>
+      </div>
+      <button type="submit" id="show">Show</button>
+      {% if visitor %}
+        {# Asking GitHub again is for members: the server checks it too. #}
+        <button type="button" id="refresh" disabled>Refresh</button>
+      {% endif %}
+    </form>
+    <p id="status" role="status">Enter a repository to see its pulse.</p>
+
+    <div id="result" hidden>
+      <dl id="tiles" class="tiles"></dl>
+
+      <section class="card" aria-labelledby="commits-title">
+        <h2 id="commits-title">Commits, day by day</h2>
+        <div id="commits"></div>
+      </section>
+
+      <div class="pair">
+        <section class="card" aria-labelledby="punch-title">
+          <h2 id="punch-title">When commits are made</h2>
+          <div id="punch-card"></div>
+        </section>
+        <section class="card" aria-labelledby="people-title">
+          <h2 id="people-title">Top contributors</h2>
+          <div id="contributors"></div>
+        </section>
+      </div>
+
+      <section class="card" aria-labelledby="pulls-title">
+        <h2 id="pulls-title">Open pull requests by age</h2>
+        <div id="pulls"></div>
+      </section>
+    </div>
+    <p id="spoken" class="spoken" aria-live="polite"></p>
+  </main>
+  <div id="tooltip" class="tooltip" hidden></div>
+  <script type="module" src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

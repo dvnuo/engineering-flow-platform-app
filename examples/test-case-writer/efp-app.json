@@ -1,0 +1,8 @@
+{
+  "name": "Test case writer",
+  "description": "Example: from a Jira story or a pasted one to test scenarios in Gherkin, written by the model.",
+  "type": "gradio",
+  "entry": "app.py",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

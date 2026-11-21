@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dev toolbox</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Dev toolbox</h1>
+    <p class="privacy">
+      <strong>Nothing leaves this tab.</strong>
+      This app has no backend. Every tool runs in your browser; what you paste is not sent, stored or logged anywhere.
+    </p>
+  </header>
+  <div class="layout">
+    <nav id="tools" aria-label="Tools"></nav>
+    <main id="stage">
+      <p class="muted">Loading the tools... If this line stays, the browser is too old for this page or JavaScript is switched off.</p>
+    </main>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

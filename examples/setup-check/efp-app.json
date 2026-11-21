@@ -1,0 +1,8 @@
+{
+  "name": "Setup check",
+  "description": "Example: what the app may use (model, budget, connectors), and a place to try a connector path.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

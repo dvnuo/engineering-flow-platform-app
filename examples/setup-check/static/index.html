@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Setup check</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <h1>Setup check</h1>
+    <p id="status" class="muted" role="status">Asking the Portal...</p>
+
+    <div id="content" hidden>
+      <section>
+        <h2>The app</h2>
+        <table><tbody id="facts"></tbody></table>
+      </section>
+
+      <section>
+        <h2>The language model</h2>
+        <table><tbody id="model"></tbody></table>
+        <button type="button" id="ping-button">Send a test call</button>
+        <span id="ping-result" class="muted" role="status"></span>
+      </section>
+
+      <section>
+        <h2>Connectors</h2>
+        <table id="connectors">
+          <thead><tr><th>Type</th><th>Address</th><th>The app may</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <form id="try-form">
+          <label for="type">Try a path</label>
+          <select id="type" required></select>
+          <input type="text" id="path" maxlength="2000" autocomplete="off" spellcheck="false" required>
+          <button type="submit" id="try-button">GET</button>
+        </form>
+        <p id="try-status" class="muted" role="status"></p>
+        <pre id="try-body"></pre>
+      </section>
+    </div>
+  </main>
+  <script src="static/app.js"></script>
+</body>
+</html>

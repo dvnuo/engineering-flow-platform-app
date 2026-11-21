@@ -1,0 +1,7 @@
+{
+  "jobs": [
+    {"name": "Web app: main", "path": "team/web-app/main"},
+    {"name": "API: main", "path": "team/api/main"},
+    {"name": "Mobile: nightly", "path": "team/mobile/nightly"}
+  ]
+}

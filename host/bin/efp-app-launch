@@ -1,0 +1,8 @@
+#!/bin/sh
+# What supervisord runs for an app:  efp-app-launch /run/efp-host/launch/app-<id>.json
+#
+# The file (written by the manager, readable by root only) describes the
+# process completely: command, environment, user, isolation. The launcher
+# reads it, builds the isolation and replaces itself with the app. Nothing of
+# this script's own environment reaches the app.
+exec /usr/local/bin/python3 -m efp_app_host.launcher "$@"

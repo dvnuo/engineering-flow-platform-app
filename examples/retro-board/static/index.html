@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Retro board</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <header class="head">
+      <div>
+        <h1 id="board-title">Retro board</h1>
+        <p id="who" class="muted"></p>
+      </div>
+      <p id="votes-left" class="votes-left" hidden></p>
+    </header>
+
+    <div class="bar">
+      <label id="past-label" hidden>Past boards
+        <select id="past"></select>
+      </label>
+      <label>Order
+        <select id="sort">
+          <option value="time">As written</option>
+          <option value="votes">Most votes first</option>
+        </select>
+      </label>
+      <span id="totals" class="muted"></span>
+      <span class="spacer"></span>
+      <button type="button" id="reveal" hidden>Reveal the authors</button>
+      <button type="button" id="close" hidden>Close the board</button>
+      <button type="button" id="export">Export as Markdown</button>
+      <button type="button" id="refresh">Refresh</button>
+    </div>
+
+    <p id="banner" class="banner" hidden></p>
+    <p id="status" class="status" role="status"></p>
+
+    <div id="columns" class="columns"></div>
+  </main>
+
+  <dialog id="confirm" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-text"></p>
+      <div class="dialog-actions">
+        <button type="button" id="confirm-cancel">Cancel</button>
+        <button type="submit" id="confirm-ok" class="primary" value="ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

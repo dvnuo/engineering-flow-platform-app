@@ -1,0 +1,7 @@
+{
+  "items": [
+    "Pages, style sheets, scripts and images are served as files",
+    "Every URL is relative to the page",
+    "Access is checked by the gateway before a file is sent"
+  ]
+}

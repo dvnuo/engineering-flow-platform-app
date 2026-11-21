@@ -1,0 +1,119 @@
+# A throwaway pod that finds out which isolation the app host can use on this
+# cluster, on the real EFS volume. Run it with k8s/probe/run.sh, which
+# also reads the answer; delete it afterwards.
+#
+# Four containers, each with the privileges of one deployment variant and its
+# own directory on the volume:
+#
+#   bwrap-default-seccomp  SYS_ADMIN, seccomp RuntimeDefault
+#   bwrap                  SYS_ADMIN, seccomp Unconfined   (deployment-sandbox.yaml as it is)
+#   userns                 no SYS_ADMIN, seccomp Unconfined
+#   plain                  no SYS_ADMIN, seccomp RuntimeDefault (deployment-hidden.yaml)
+#
+# The image is the app host's own (it holds bubblewrap, setpriv and the
+# host's probe). IMAGE_PLACEHOLDER is filled in by run.sh.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: efp-isolation-probe
+  namespace: efp-apps
+  labels:
+    app: efp-isolation-probe
+  # Nodes with AppArmor (Ubuntu): the runtime's default profile forbids mount,
+  # so the two bwrap containers fail under it. Load k8s/apparmor/efp-app-host
+  # on the nodes and probe again with these (Kubernetes 1.30+ takes
+  # securityContext.appArmorProfile {type: Localhost, localhostProfile: efp-app-host}):
+  # annotations:
+  #   container.apparmor.security.beta.kubernetes.io/bwrap-default-seccomp: localhost/efp-app-host
+  #   container.apparmor.security.beta.kubernetes.io/bwrap: localhost/efp-app-host
+  # "unconfined" instead is enough on nodes whose AppArmor policy has no
+  # profile for /usr/bin/bwrap; the output of each container says which it is.
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  terminationGracePeriodSeconds: 5
+  containers:
+    - name: bwrap-default-seccomp
+      image: IMAGE_PLACEHOLDER
+      imagePullPolicy: Always
+      command: ["/bin/sh", "/probe/probe.sh", "bwrap-default-seccomp"]
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        allowPrivilegeEscalation: true
+        capabilities:
+          drop: ["ALL"]
+          add: ["SYS_ADMIN", "SYS_CHROOT", "SETUID", "SETGID", "SETPCAP", "CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL"]
+        seccompProfile:
+          type: RuntimeDefault
+      volumeMounts:
+        - name: store
+          mountPath: /var/lib/efp-host/store
+          subPath: probe-bwrap-default-seccomp
+        - name: script
+          mountPath: /probe
+    - name: bwrap
+      image: IMAGE_PLACEHOLDER
+      imagePullPolicy: Always
+      command: ["/bin/sh", "/probe/probe.sh", "bwrap"]
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        allowPrivilegeEscalation: true
+        capabilities:
+          drop: ["ALL"]
+          add: ["SYS_ADMIN", "SYS_CHROOT", "SETUID", "SETGID", "SETPCAP", "CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL"]
+        seccompProfile:
+          type: Unconfined
+      volumeMounts:
+        - name: store
+          mountPath: /var/lib/efp-host/store
+          subPath: probe-bwrap
+        - name: script
+          mountPath: /probe
+    - name: userns
+      image: IMAGE_PLACEHOLDER
+      imagePullPolicy: Always
+      command: ["/bin/sh", "/probe/probe.sh", "userns"]
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+          add: ["SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL"]
+        seccompProfile:
+          type: Unconfined
+      volumeMounts:
+        - name: store
+          mountPath: /var/lib/efp-host/store
+          subPath: probe-userns
+        - name: script
+          mountPath: /probe
+    - name: plain
+      image: IMAGE_PLACEHOLDER
+      imagePullPolicy: Always
+      command: ["/bin/sh", "/probe/probe.sh", "plain"]
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+          add: ["SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL"]
+        seccompProfile:
+          type: RuntimeDefault
+      volumeMounts:
+        - name: store
+          mountPath: /var/lib/efp-host/store
+          subPath: probe-plain
+        - name: script
+          mountPath: /probe
+  volumes:
+    - name: store
+      persistentVolumeClaim:
+        claimName: efp-apps-store
+    - name: script
+      configMap:
+        name: efp-isolation-probe

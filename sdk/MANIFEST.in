@@ -1,0 +1,5 @@
+include README.md
+include sync_templates.py
+graft efp_app/_templates
+global-exclude __pycache__
+global-exclude *.py[cod]

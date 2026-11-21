@@ -1,0 +1,8 @@
+{
+  "name": "Stand-up wheel",
+  "description": "Example: a wheel that decides who speaks next in the stand-up; the server chooses, the owner edits the team.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "sprint-42",
+  "title": "Sprint 42 retrospective",
+  "votes_per_member": 5,
+  "columns": [
+    {"id": "well", "title": "Went well"},
+    {"id": "improve", "title": "To improve"},
+    {"id": "ideas", "title": "Ideas"},
+    {"id": "actions", "title": "Actions"}
+  ]
+}

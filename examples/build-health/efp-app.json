@@ -1,0 +1,8 @@
+{
+  "name": "Build health",
+  "description": "Example: the health of a list of Jenkins jobs, with the last 30 builds of each one.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

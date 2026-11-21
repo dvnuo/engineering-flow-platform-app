@@ -1,0 +1,8 @@
+{
+  "name": "Mind map",
+  "description": "Example: mind maps that every member draws for themselves and can show to the others.",
+  "type": "fastapi",
+  "entry": "main:app",
+  "requirements": "requirements.txt",
+  "health_path": "/"
+}

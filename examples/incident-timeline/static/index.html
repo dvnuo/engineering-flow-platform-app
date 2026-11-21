@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Incident timeline</title>
+  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Incident timeline</h1>
+      <p class="muted">
+        Paste the chat, the log lines or your notes of an incident. The model
+        picks out the events; you correct them, keep the timeline and take a
+        post-mortem skeleton with you.
+      </p>
+    </header>
+
+    <p id="notice" class="notice" role="status" hidden></p>
+
+    <section aria-labelledby="notes-heading">
+      <h2 id="notes-heading">1. The notes</h2>
+      <form id="notes-form">
+        <label for="notes">Chat export, log lines or notes</label>
+        <textarea id="notes" rows="10" spellcheck="false"
+          placeholder="09:02 monitoring: checkout 5xx above 5%&#10;09:05 bob: looking at it, last deploy was 08:55&#10;09:20 bob: rolled back, errors are gone"></textarea>
+        <p class="hint muted">
+          Passwords, tokens and keys are masked before the notes go to the
+          model. Still, leave out what a model should not read.
+          <span id="notes-count"></span>
+        </p>
+        <div class="bar">
+          <button type="submit" id="extract-button" class="primary">Extract the timeline</button>
+          <button type="button" id="blank-button">Start an empty timeline</button>
+        </div>
+      </form>
+      <p id="extract-status" class="status" role="status"></p>
+    </section>
+
+    <section id="timeline-section" aria-labelledby="timeline-heading" hidden>
+      <h2 id="timeline-heading">2. The timeline</h2>
+      <label for="title">Title</label>
+      <input type="text" id="title" maxlength="120" autocomplete="off" placeholder="Checkout outage of 12 November">
+
+      <ul id="legend" class="legend" aria-label="Kinds of events"></ul>
+      <div id="drawing" class="drawing"></div>
+      <p id="empty" class="empty muted" hidden>No events to draw yet. Add one below.</p>
+
+      <h3 id="events-heading">Correct the events</h3>
+      <ol id="events" class="events" aria-labelledby="events-heading"></ol>
+      <div class="bar">
+        <button type="button" id="add-button">Add an event</button>
+        <button type="button" id="undo-button" hidden>Undo the removal</button>
+      </div>
+
+      <div class="bar actions">
+        <button type="button" id="save-button" class="primary">Save</button>
+        <button type="button" id="export-button">Download the post-mortem (.md)</button>
+        <button type="button" id="copy-button">Copy as Markdown</button>
+      </div>
+      <p id="timeline-status" class="status" role="status"></p>
+    </section>
+
+    <section aria-labelledby="saved-heading">
+      <h2 id="saved-heading">Your saved timelines</h2>
+      <p id="saved-status" class="muted" role="status">Loading...</p>
+      <ul id="saved" class="saved"></ul>
+      <button type="button" id="refresh-button" hidden>Refresh the list</button>
+    </section>
+  </main>
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

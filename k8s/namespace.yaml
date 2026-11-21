@@ -1,0 +1,8 @@
+# The app host lives in a namespace of its own. Member code runs here: keep
+# anything that holds credentials out of it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: efp-apps
+  labels:
+    app.kubernetes.io/part-of: efp
