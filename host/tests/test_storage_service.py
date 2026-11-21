@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import struct
 import sys
 import tempfile
@@ -401,8 +402,11 @@ def test_the_store_follows_no_link(tmp_path):
         through.get("secret.txt")
     with pytest.raises(StorageError):
         through.put("planted.txt", b"x")
-    # The uploads directory is not followed through a link.
-    os.symlink(victim, tmp_path / "apps" / "mine" / "data" / ".uploads")
+    # The uploads directory is not followed through a link. (The store above
+    # made a directory there for its own puts; the link takes its place.)
+    uploads = tmp_path / "apps" / "mine" / "data" / ".uploads"
+    shutil.rmtree(uploads, ignore_errors=True)
+    os.symlink(victim, uploads)
     fresh = ObjectStore(root, quota_bytes=MIB)
     fresh.put("later.txt", b"1")
     assert sorted(path.name for path in victim.iterdir()) == ["secret.txt"]
