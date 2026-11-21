@@ -321,7 +321,10 @@ async def decide(gateway: "GatewayServices", request: GatewayRequest) -> Proxy |
     who: Visitor | None = None
 
     if record.visibility == VISIBILITY_ANYONE:
-        if not gateway.limiter.allow(request.source):
+        # The limit is for visitors nobody knows. Signed-in members often
+        # share one source address (an office, a proxy in front of the
+        # gateway) and one page of an app is many requests.
+        if session is None and not gateway.limiter.allow(request.source):
             return no(RATE_LIMITED, retry_after=gateway.limiter.retry_after)
         if session is not None:
             # Nobody is turned away from such an app; the check only tells

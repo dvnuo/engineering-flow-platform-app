@@ -311,7 +311,10 @@ class IconCache:
                 # Just fetched, and the Portal's icon is not the one asked for: do not ask again at once.
                 return held.data, held.content_type
         missing_at = self._missing_at.get(app_id)
-        if missing_at is not None and now - missing_at < ICON_FRESH_SECONDS:
+        # A page that names a version was told by the Portal that the app has
+        # an icon: "no icon" from a moment ago is then only held briefly, so
+        # that an icon added since shows without the long wait.
+        if missing_at is not None and now - missing_at < (5.0 if wanted_version else ICON_FRESH_SECONDS):
             return None
 
         found = await fetch(app_id)

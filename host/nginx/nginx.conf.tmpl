@@ -249,9 +249,21 @@ http {
             proxy_set_header X-EFP-Gateway-Secret $efp_static_secret;
             proxy_set_header X-EFP-Static-Root $efp_static_root;
 
+            # An app's answer steers nothing in the gateway. X-Accel-Redirect
+            # would otherwise send the request on to a location of the app's
+            # choosing, the "internal" access check above among them, whose
+            # answer (the visitor's signed header, a renewed session cookie)
+            # would then reach the page's script.
+            proxy_ignore_headers X-Accel-Redirect X-Accel-Expires X-Accel-Limit-Rate X-Accel-Buffering X-Accel-Charset;
+
             # Section 6.2: what the gateway takes from and adds to the answer.
             # The app's own values of the added headers are dropped first, so
-            # that each appears once.
+            # that each appears once. The reporting and Clear-Site-Data headers
+            # act on the whole hostname, which an app shares with every other.
+            proxy_hide_header NEL;
+            proxy_hide_header Report-To;
+            proxy_hide_header Reporting-Endpoints;
+            proxy_hide_header Clear-Site-Data;
             proxy_hide_header Service-Worker-Allowed;
             proxy_hide_header X-Content-Type-Options;
             proxy_hide_header X-Robots-Tag;

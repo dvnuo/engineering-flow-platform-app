@@ -188,8 +188,15 @@ class Handler(BaseHTTPRequestHandler):
                     ("Set-Cookie", "wide=3; Domain=example.com; Path=/"),
                     ("Set-Cookie", "__Host-efp_apps=forged; Path=/; Secure"),
                     ("Service-Worker-Allowed", "/"),
+                    ("NEL", '{"report_to":"x","max_age":600,"success_fraction":1}'),
+                    ("Report-To", '{"group":"x","max_age":600,"endpoints":[{"url":"https://collector.example.com/"}]}'),
+                    ("Reporting-Endpoints", 'x="https://collector.example.com/"'),
+                    ("Clear-Site-Data", '"cookies"'),
                 ],
             )
+        elif path == "/accel":
+            # What an app would answer to make nginx hand it another location's answer.
+            self._send(200, {"own": True}, extra=[("X-Accel-Redirect", "/_efp_internal/auth")])
         elif path == "/ws":
             self._websocket_echo()
         else:

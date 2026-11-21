@@ -56,7 +56,8 @@ def parse_iso(value: str | None) -> datetime | None:
 
 
 def is_valid_slug(slug: str) -> bool:
-    return bool(SLUG_RE.match(slug or "")) and slug not in RESERVED_SLUGS
+    # fullmatch: "$" alone would let a slug end in a line break.
+    return bool(SLUG_RE.fullmatch(slug or "")) and slug not in RESERVED_SLUGS
 
 
 @dataclass

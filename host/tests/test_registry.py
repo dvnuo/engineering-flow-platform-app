@@ -78,7 +78,7 @@ def test_lookups(registry):
 
 @pytest.mark.parametrize(
     "slug, ok",
-    [("mindmap", True), ("a-b", True), ("ab", False), ("-ab", False), ("ab-", False), ("Mind", False), ("login", False), ("_efp", False), ("a" * 41, False)],
+    [("mindmap", True), ("a-b", True), ("ab", False), ("-ab", False), ("ab-", False), ("Mind", False), ("login", False), ("_efp", False), ("a" * 41, False), ("mindmap\n", False), ("\nmindmap", False)],
 )
 def test_slug_rules(slug, ok):
     assert is_valid_slug(slug) is ok

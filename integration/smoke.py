@@ -572,6 +572,15 @@ class Smoke:
         self.check("the app's cookies arrive, the one with Domain= and the reserved name are dropped", sorted(names) == ["good", "scoped"], cookies.all("Set-Cookie"))
         self.check("their path is the app's", all("Path=/probe-b/" in value for value in names.values()) and not any("domain=" in value.lower() for value in names.values()), names)
         self.check("Service-Worker-Allowed is removed", cookies.header("Service-Worker-Allowed") is None, cookies.headers)
+        hostwide = [name for name in ("NEL", "Report-To", "Reporting-Endpoints", "Clear-Site-Data") if cookies.header(name) is not None]
+        self.check("headers that act on the whole hostname are removed", hostwide == [], hostwide)
+        accel = self.page("/probe-b/accel", headers=FETCH)
+        leaked = [name for name, _value in accel.headers if name.lower().startswith(("x-efp-", "x-accel-"))]
+        self.check(
+            "an app's X-Accel-Redirect is not followed: its own answer arrives, nothing of the access check",
+            accel.status == 200 and accel.body.strip().startswith(b"{") and accel.json().get("own") is True and leaked == [],
+            (accel, leaked),
+        )
         self.check(
             "the gateway's security headers are added",
             cookies.header("X-Content-Type-Options") == "nosniff"

@@ -330,8 +330,8 @@ exist. The host decides who may see it.
    a redirect: `{"error": {"code": "<code>", "message": "..."}}` with status
    `401` (`sign_in_required`), `403` (`no_access`, `app_disabled`), `404`
    (`app_not_found`), `503` (`app_starting`, `app_unavailable`).
-5. Requests to an `anyone` app are limited per source address
-   (`429 rate_limited`).
+5. Requests to an `anyone` app from a visitor without a session are limited
+   per source address (`429 rate_limited`).
 
 ### 6.2 What reaches the app
 
@@ -347,9 +347,12 @@ exist. The host decides who may see it.
 - WebSocket upgrades and streaming responses pass through unbuffered; read
   and send timeouts are 3600 seconds.
 
-From the app's response the gateway removes `Service-Worker-Allowed`, drops
-`Set-Cookie` headers that carry `Domain=` or a name starting with `__Host-efp`
-or `__Secure-efp`, and rewrites the remaining cookies to `Path=/{slug}/`. It
+From the app's response the gateway removes `Service-Worker-Allowed`, `NEL`,
+`Report-To`, `Reporting-Endpoints` and `Clear-Site-Data` (they act on the
+whole hostname), ignores every `X-Accel-*` header (an app cannot redirect a
+request inside the gateway), drops `Set-Cookie` headers that carry `Domain=`
+or a name starting with `__Host-efp` or `__Secure-efp`, and rewrites the
+remaining cookies to `Path=/{slug}/`. It
 adds `X-Content-Type-Options: nosniff`, `X-Robots-Tag: noindex`,
 `Referrer-Policy: same-origin` and
 `Permissions-Policy: camera=(), microphone=(), geolocation=(), display-capture=()`.

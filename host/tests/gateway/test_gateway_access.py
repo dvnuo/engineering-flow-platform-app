@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from efp_app_host.gateway import access as access_module
 from efp_app_host.gateway.access import BACKOFF_SECONDS, STALE_SECONDS, AccessCache, AccessUnavailable
 from efp_app_host.models import Visitor
 
@@ -136,3 +137,56 @@ def test_an_answer_can_be_stored_without_asking(fake_portal):
     clock.advance(30)
     assert run(cache.check("app-1", BOB.id)).allowed is False
     assert fake_portal.access_calls == 1
+
+
+class SlowPortal:
+    """Takes the call and answers only when told to."""
+
+    def __init__(self):
+        self.access_calls = 0
+        self.release = None
+
+    async def check_access(self, app_id, user_id):
+        self.access_calls += 1
+        self.release = asyncio.Event()
+        await self.release.wait()
+        return True, None, BOB
+
+
+def test_a_remembered_answer_does_not_wait_out_a_portal_that_says_nothing(monkeypatch):
+    monkeypatch.setattr(access_module, "STALE_WAIT_SECONDS", 0.05)
+    portal, clock = SlowPortal(), Clock(1000.0)
+    cache = AccessCache(portal, 30, clock=clock)
+    cache.remember("app-1", BOB.id, True, None, BOB)
+    clock.advance(60)  # past the lifetime, well inside the five minutes
+
+    async def scenario():
+        first = await cache.check("app-1", BOB.id)  # waits the short time, then falls back
+        clock.advance(1)
+        second = await asyncio.wait_for(cache.check("app-1", BOB.id), 0.01)  # the same call is overdue: no wait at all
+        portal.release.set()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        third = await cache.check("app-1", BOB.id)  # the answer the call brought in the end
+        return first, second, third
+
+    first, second, third = run(scenario())
+    assert (first.allowed, first.stale) == (True, True)
+    assert (second.allowed, second.stale) == (True, True)
+    assert (third.allowed, third.stale) == (True, False)
+    assert portal.access_calls == 1
+
+
+def test_without_a_remembered_answer_the_call_is_waited_for(monkeypatch):
+    monkeypatch.setattr(access_module, "STALE_WAIT_SECONDS", 0.01)
+    portal = SlowPortal()
+    cache = AccessCache(portal, 30, clock=Clock(1000.0))
+
+    async def scenario():
+        asking = asyncio.ensure_future(cache.check("app-1", BOB.id))
+        await asyncio.sleep(0.05)
+        assert not asking.done()  # nothing to fall back on: refusing now would turn a slow Portal into an outage
+        portal.release.set()
+        return await asking
+
+    assert run(scenario()).allowed is True

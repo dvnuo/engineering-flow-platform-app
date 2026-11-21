@@ -24,6 +24,10 @@ STALE_SECONDS = 300.0
 # After a failed call the Portal is left alone for this long, so that a
 # Portal outage does not make every request wait for a timeout.
 BACKOFF_SECONDS = 5.0
+# A visitor with a remembered answer waits this long for a fresh one. A Portal
+# that takes the connection and then says nothing would otherwise hold every
+# request for the whole timeout of the call.
+STALE_WAIT_SECONDS = 2.0
 MAX_ENTRIES = 50_000
 
 
@@ -47,6 +51,7 @@ class AccessCache:
         self._clock = clock
         self._entries: dict[tuple[str, int], AccessDecision] = {}
         self._pending: dict[tuple[str, int], asyncio.Future] = {}
+        self._pending_since: dict[tuple[str, int], float] = {}
         self._portal_down_until = 0.0
 
     def remember(self, app_id: str, user_id: int, allowed: bool, reason: str | None, visitor: Visitor | None) -> AccessDecision:
@@ -91,11 +96,27 @@ class AccessCache:
             # Requests of one page arrive together: they share one call.
             pending = asyncio.ensure_future(self._ask(key))
             self._pending[key] = pending
-            pending.add_done_callback(lambda _done, key=key: self._pending.pop(key, None))
-        decision = await asyncio.shield(pending)
+            self._pending_since[key] = now
+            pending.add_done_callback(lambda _done, key=key: self._settled(key))
+        if cached is not None and now - cached.at < STALE_SECONDS:
+            # There is an answer to fall back on: the call gets a short time
+            # to bring a fresh one, counted from when it was started.
+            patience = STALE_WAIT_SECONDS - (now - self._pending_since.get(key, now))
+            if patience <= 0:
+                return self._fallback(key)
+            try:
+                decision = await asyncio.wait_for(asyncio.shield(pending), patience)
+            except asyncio.TimeoutError:
+                return self._fallback(key)
+        else:
+            decision = await asyncio.shield(pending)
         if decision is None:
             return self._fallback(key)
         return decision
+
+    def _settled(self, key: tuple[str, int]) -> None:
+        self._pending.pop(key, None)
+        self._pending_since.pop(key, None)
 
     async def _ask(self, key: tuple[str, int]) -> AccessDecision | None:
         try:

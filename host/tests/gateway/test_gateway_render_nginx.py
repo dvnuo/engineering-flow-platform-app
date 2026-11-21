@@ -315,6 +315,12 @@ def test_the_app_location_does_what_section_6_2_asks(parsed):
         "proxy_set_header Cookie $efp_cookie",
         "proxy_set_header X-EFP-Visitor $efp_visitor",
         "js_header_filter efp.filterResponseHeaders",
+        # No header of an app's answer redirects the request inside nginx.
+        "proxy_ignore_headers X-Accel-Redirect X-Accel-Expires X-Accel-Limit-Rate X-Accel-Buffering X-Accel-Charset",
+        "proxy_hide_header NEL",
+        "proxy_hide_header Report-To",
+        "proxy_hide_header Reporting-Endpoints",
+        "proxy_hide_header Clear-Site-Data",
         "proxy_hide_header Service-Worker-Allowed",
         "add_header X-Content-Type-Options nosniff always",
         "add_header X-Robots-Tag noindex always",

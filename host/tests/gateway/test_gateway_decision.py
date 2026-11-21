@@ -455,6 +455,21 @@ def test_the_limit_does_not_wake_a_stopped_app(settings, registry, fake_runtime,
     assert fake_runtime.started == []
 
 
+def test_a_signed_in_visitor_of_an_anyone_app_is_not_limited(settings, registry, fake_runtime, fake_portal, clock):
+    # Members behind one address share it, and one page of an app is many requests.
+    gateway = make_gateway(dataclasses.replace(settings, anon_rate_per_minute=1), registry, fake_runtime, fake_portal, clock=clock)
+    add_app(registry, fake_runtime, visibility="anyone")
+    allow(fake_portal)
+    cookies = session_cookie(gateway)
+    for _ in range(5):
+        assert isinstance(run(decide(gateway, request(cookies=cookies, source="203.0.113.7"))), Proxy)
+    # Their requests did not use up the allowance of a visitor nobody knows at that address ...
+    assert isinstance(run(decide(gateway, request(source="203.0.113.7"))), Proxy)
+    assert run(decide(gateway, request(source="203.0.113.7"))).code == "rate_limited"
+    # ... and a cookie that is not a session does not lift the limit.
+    assert run(decide(gateway, request(cookies="__Host-efp_apps=s1.forged.forged", source="203.0.113.7"))).code == "rate_limited"
+
+
 def test_apps_that_need_sign_in_are_not_limited(settings, registry, fake_runtime, fake_portal, clock):
     gateway = make_gateway(dataclasses.replace(settings, anon_rate_per_minute=1), registry, fake_runtime, fake_portal, clock=clock)
     add_app(registry, fake_runtime, visibility="platform")

@@ -129,8 +129,12 @@ spec:
               port: gateway
             periodSeconds: 10
             timeoutSeconds: 3
+          # Asks the manager itself: a manager that still holds the port
+          # but no longer answers serves nobody (nginx needs it for every
+          # request), and only a restart brings it back.
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /_efp/health
               port: admin
             periodSeconds: 20
             timeoutSeconds: 3

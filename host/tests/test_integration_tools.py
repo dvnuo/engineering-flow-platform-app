@@ -243,6 +243,9 @@ def test_the_probe_app_serves_under_its_prefix(probe):
     cookies = smoke.request(base, "GET", "/probe-x/cookies")
     assert sorted(smoke.cookie_names(cookies)) == ["__Host-efp_apps", "good", "scoped", "wide"]
     assert cookies.header("Service-Worker-Allowed") == "/"
+    assert cookies.header("Clear-Site-Data") == '"cookies"' and cookies.header("NEL")
+    accel = smoke.request(base, "GET", "/probe-x/accel")
+    assert accel.json() == {"own": True} and accel.header("X-Accel-Redirect") == "/_efp_internal/auth"
 
 
 def test_the_probe_app_reports_reads_and_writes_truthfully(probe, tmp_path):

@@ -244,6 +244,17 @@ def test_no_icon_and_a_bad_icon_are_remembered_as_none():
         cache.forget_app("app-2")
 
 
+def test_an_icon_added_after_no_icon_shows_when_the_page_names_its_version():
+    clock = Clock(1000.0)
+    cache, portal = IconCache(clock=clock), Icons(found=None)
+    assert run(cache.get("app-1", "", portal)) is None and portal.calls == 1
+    portal.found = (PNG, "image/png")  # the owner publishes a release with an icon
+    version = version_of(PNG)
+    assert run(cache.get("app-1", version, portal)) is None and portal.calls == 1  # not asked again at once
+    clock.advance(6)
+    assert run(cache.get("app-1", version, portal)) == (PNG, "image/png") and portal.calls == 2
+
+
 def test_a_failed_call_is_not_remembered_and_the_cache_has_a_ceiling():
     clock = Clock(1000.0)
     cache, portal = IconCache(max_bytes=100, clock=clock), Icons(found=RuntimeError("portal down"))
