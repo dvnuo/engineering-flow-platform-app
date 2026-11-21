@@ -31,7 +31,7 @@ from . import __version__
 from .applog import append_note, follow, tail_lines
 from .config import Settings
 from .controller import PROC_ABSENT, ProcessController, ProcessInfo, ProgramSpec, SupervisorController, program_name
-from .deploy import Deployer, ReleaseBuilder, make_dir, remove_tree
+from .deploy import Deployer, ReleaseBuilder
 from .interfaces import PortalApi
 from .isolation import BACKEND_PLAIN, IsolationError, IsolationStatus, LaunchSpec, detect
 from .jobs import JOB_FAILED, Job, JobStore, Redactor
@@ -58,6 +58,7 @@ from .procstats import CpuMeter, ProcessSampler, PsutilSampler, dir_size, free_b
 from .pyenv import BUNDLED_WHEELS_DIR
 from .registry import Registry
 from .runner import CommandRunner, LauncherRunner
+from .safefs import fresh_dir, make_dir, remove_tree
 from .storage_service import ObjectStore
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,12 @@ REASON_DISABLED = "disabled"
 REASON_STARTUP_TIMEOUT = "startup_timeout"
 REASON_START_ERROR = "start_error"
 REASON_ISOLATION = "isolation_unavailable"
+# The app could not start because somebody else listens on its port / the
+# app was stopped because it listened on a port that is another app's.
+REASON_PORT_TAKEN = "port_taken"
+REASON_PORT_CONFLICT = "port_conflict"
+# What a release that is being restored (hidden mode) may write into the app's log.
+RESTORE_LOG_BYTES = 256 * 1024
 
 # An app that crashes is restarted after these delays; one more crash inside
 # the window leaves it down until somebody opens it or starts it by hand.
@@ -360,7 +367,13 @@ class HostRuntime:
             # Only the manager touches the volume; the app's files are on the
             # local disk, closed to every other app by the directory's group.
             make_dir(self.paths.data_dir(record.id), 0o700)
-            make_dir(self.paths.objects_dir(record.id), 0o700)
+            objects = self.paths.objects_dir(record.id)
+            if os.path.islink(objects):
+                # Left by the app when the host ran in sandbox mode and the
+                # app wrote its data itself: not an object store, and not
+                # something the manager walks into.
+                os.unlink(objects)
+            make_dir(objects, 0o700)
             make_dir(local, 0o750, uid=0, gid=record.uid)
         else:
             make_dir(self.paths.data_dir(record.id), 0o700, uid=record.uid)
@@ -428,10 +441,60 @@ class HostRuntime:
         os.replace(tmp, path)
 
     def _reset_tmp(self, record: AppRecord) -> None:
-        tmp = self.paths.local_tmp_dir(record.id)
-        remove_tree(tmp)
-        make_dir(tmp, 0o700, uid=record.uid)
-        make_dir(tmp / "home", 0o700, uid=record.uid)
+        # The directory is the app's, and a process of the app may be alive
+        # (the candidate of a deployment is not killed before a start): the
+        # new one is made and filled by root and handed over last, so no
+        # link planted meanwhile ("tmp/home" pointing somewhere) is followed.
+        fresh_dir(self.paths.local_tmp_dir(record.id), 0o700, uid=record.uid, children=("home",))
+
+    def _note_lines(self, app_id: str, text: str) -> None:
+        lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+        if lines:
+            append_note(self.paths.log_file(app_id), "\n".join(lines))
+
+    async def listener_owners(self, port: int) -> "set[int] | None":
+        """Whose processes listen on the loopback ``port``; ``None`` when that cannot be told."""
+
+        probe = getattr(self.sampler, "listener_uids", None)
+        if probe is None:
+            return None
+        try:
+            return await asyncio.to_thread(probe, port)
+        except Exception:  # noqa: BLE001 - not knowing must not stop a start
+            logger.exception("looking for the listener on port %s", port)
+            return None
+
+    async def _port_taken(self, record: AppRecord, proc: AppProc, owners: set[int]) -> None:
+        """Somebody else answers on the app's port: the app is not running, whatever answered.
+
+        Every app listens on a loopback port of the same network, and
+        nothing but good manners keeps an app from listening on another
+        app's port while that app is stopped. What answered the health
+        probe would get the app's visitors, with the header the gateway
+        signs for them. So the start fails, and the squatter is stopped:
+        an app that the host knows through its own life cycle, anything
+        else of an app's uid by killing it.
+        """
+
+        await asyncio.to_thread(self.controller.stop, program_name(record.id))
+        holders: list[str] = []
+        for uid in sorted(owners - {record.uid}):
+            other = self.registry.find_by_uid(uid)
+            holders.append(f"the app {other.slug}" if other is not None else f"uid {uid}")
+            if other is not None:
+                self._note(other.id, f"stopped: it listened on port {record.port}, which belongs to the app {record.slug}")
+                try:
+                    await self.stop(other.id, REASON_PORT_CONFLICT)
+                except Exception:  # noqa: BLE001
+                    logger.exception("stopping %s, which holds the port of %s", other.id, record.id)
+            elif uid >= self.settings.uid_range_start:
+                await asyncio.to_thread(self.sampler.kill_uid, uid)
+        message = f"not started: port {record.port} is held by {', '.join(holders) or 'another user'}, not by this app"
+        proc.phase, proc.reason = STATE_FAILED, REASON_PORT_TAKEN
+        proc.retry_after = self.clock() + VISIT_RETRY_SECONDS
+        self._note(record.id, message)
+        proc.last_log_lines = [message]
+        logger.error("app %s (%s): %s", record.slug, record.id, message)
 
     def _begin_start(self, record: AppRecord, proc: AppProc, *, manual: bool) -> None:
         """Mark the app as starting and bring it up in the background."""
@@ -455,15 +518,22 @@ class HostRuntime:
             release = record.current
             if release is None:
                 raise RuntimeError("the app has no release")
-            if self.settings.is_hidden:
-                await self.builder.ensure_local(
-                    record,
-                    release,
-                    log=lambda text: self._note(app_id, text.rstrip()),
-                    timeout=float(self.settings.deploy_timeout_seconds),
-                )
+            # First of all: nothing of the app's user may be running while its
+            # directories are rebuilt (unless a deployment is at work, whose
+            # processes are that user's too).
             if not proc.candidate_active:
                 await asyncio.to_thread(self.sampler.kill_uid, record.uid)
+            if self.settings.is_hidden:
+                room = RESTORE_LOG_BYTES
+
+                def restore_log(text: str) -> None:
+                    # pip's output goes into the app's log; it has a ceiling like every other output.
+                    nonlocal room
+                    if room > 0:
+                        room -= len(text)
+                        self._note_lines(app_id, text)
+
+                await self.builder.ensure_local(record, release, log=restore_log, timeout=float(self.settings.deploy_timeout_seconds))
             await asyncio.to_thread(self._reset_tmp, record)
             spec = self.run_spec(record, release)
             await asyncio.to_thread(self._write_launch_file, record, spec)
@@ -479,7 +549,13 @@ class HostRuntime:
                     return
                 code = await self.health(url)
                 if code is not None and code < 500:
-                    break
+                    # An answer is not enough: it must be the app's own process that gave it.
+                    owners = await self.listener_owners(record.port)
+                    if owners is None or owners == {record.uid}:
+                        break
+                    if owners:
+                        await self._port_taken(record, proc, owners)
+                        return
                 if time.monotonic() >= deadline:
                     await asyncio.to_thread(self.controller.stop, name)
                     proc.phase, proc.reason = STATE_FAILED, REASON_STARTUP_TIMEOUT
@@ -860,4 +936,6 @@ class HostRuntime:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        # What the deployments said last is still on its way to their logs.
+        await asyncio.to_thread(self.jobs.flush_logs)
 

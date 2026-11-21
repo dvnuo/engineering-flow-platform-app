@@ -121,3 +121,39 @@ def test_cached_wheels(tmp_path):
     assert [path.name for path in pyenv.cached_wheels(tmp_path)] == ["a-1-py3-none-any.whl", "b-1-py3-none-any.whl"]
     assert pyenv.cached_wheels(tmp_path / "missing") == []
     assert pyenv.bundled_sdk_wheel(tmp_path) is None
+
+
+def test_only_the_command_that_asks_the_index_gets_the_hosts_pip_settings():
+    passthrough = {
+        "PIP_INDEX_URL": "https://builder:index-password@pip.example.com/simple",
+        "PIP_CERT": "/etc/ssl/corp.pem",
+        "PIP_CONFIG_FILE": "/etc/pip.conf",
+        "HTTPS_PROXY": "http://proxy:3128",
+        "SSL_CERT_FILE": "/etc/ssl/all.pem",
+    }
+    # venv, an install from local wheels, pip freeze: code of the app runs in
+    # all of them (a .pth file is enough), and none of them needs the index.
+    quiet = pyenv.pip_environment(passthrough, home="/t/home", tmp="/t", venv_bin="/v/bin", index=False)
+    assert not [name for name in quiet if name.startswith("PIP_") and name not in ("PIP_NO_INPUT", "PIP_DISABLE_PIP_VERSION_CHECK")]
+    assert "index-password" not in " ".join(quiet.values())
+    assert quiet["HTTPS_PROXY"] == "http://proxy:3128" and quiet["SSL_CERT_FILE"] == "/etc/ssl/all.pem"
+    assert quiet["PIP_NO_INPUT"] == "1" and quiet["HOME"] == "/t/home"
+    assert pyenv.pip_readable_files(passthrough, index=False) == []
+    asking = pyenv.pip_environment(passthrough, home="/t/home", tmp="/t", venv_bin="/v/bin", index=True)
+    assert asking["PIP_INDEX_URL"].endswith("@pip.example.com/simple")
+    assert pyenv.pip_readable_files(passthrough, index=True) == ["/etc/ssl/corp.pem", "/etc/pip.conf", "/etc/ssl/all.pem"]
+
+
+def test_a_requirements_file_that_is_no_list_of_packages_is_refused(tmp_path, monkeypatch):
+    import pytest
+
+    monkeypatch.setattr(pyenv, "MAX_REQUIREMENTS_BYTES", 2000)
+    (tmp_path / "requirements.txt").write_text("fastapi\n-r more.txt\n", encoding="utf-8")
+    (tmp_path / "more.txt").write_text("httpx\n", encoding="utf-8")
+    assert pyenv.collect_requirement_names(tmp_path, "requirements.txt") == {"fastapi", "httpx"}
+    # The manager reads these itself, as root and into memory: an included file counts as well.
+    (tmp_path / "more.txt").write_text("\n" * 5000, encoding="utf-8")
+    with pytest.raises(pyenv.RequirementsError, match="more.txt is larger than"):
+        pyenv.collect_requirement_names(tmp_path, "requirements.txt")
+    with pytest.raises(pyenv.RequirementsError):
+        pyenv.plan_install(tmp_path, {"type": "fastapi", "requirements": "requirements.txt"}, wheels_dir=tmp_path / "none")

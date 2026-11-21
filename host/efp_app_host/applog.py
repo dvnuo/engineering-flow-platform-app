@@ -49,13 +49,14 @@ def tail_lines(path: Path, count: int) -> tuple[list[str], bool]:
 
 
 def append_note(path: Path, message: str) -> None:
-    """Write a line of the host's own into the app's log."""
+    """Write a line of the host's own into the app's log (several, when ``message`` has several)."""
 
     stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+    text = "".join(f"[efp-host {stamp}Z] {line}\n" for line in (message.splitlines() or [""]))
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a", encoding="utf-8", newline="\n") as handle:
-            handle.write(f"[efp-host {stamp}Z] {message}\n")
+            handle.write(text)
     except OSError:
         pass
 

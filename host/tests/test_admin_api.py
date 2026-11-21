@@ -373,3 +373,64 @@ def test_the_token_is_compared_in_constant_time(monkeypatch, api):
     monkeypatch.setattr(admin_api.hmac, "compare_digest", lambda a, b: seen.append((a, b)) or real(a, b))
     assert client.get("/v1/apps").status_code == 200
     assert seen == [(API_TOKEN.encode("utf-8"), API_TOKEN.encode("utf-8"))]
+
+
+def test_an_id_a_sha_or_a_name_may_not_end_in_a_line_break(api):
+    client, harness = api
+    # "$" in a pattern lets one line break through; an app id becomes a
+    # section of the supervisor's configuration and a directory name.
+    assert client.put("/v1/apps/app-1%0A", json=APP_BODY).status_code == 400
+    assert client.get("/v1/apps/app-1%0A").status_code == 400
+    assert client.put("/v1/apps/app-1", json={**APP_BODY, "env": {"NAME\n": "x"}}).status_code == 400
+    assert client.put("/v1/apps/app-1", json={**APP_BODY, "slug": "mindmap\n"}).status_code == 400
+    assert client.put("/v1/apps/app-1", json=APP_BODY).status_code == 200
+    with_break = client.post("/v1/apps/app-1/releases", data={"spec": json.dumps({"sha": SHA_A + "\n"})}, files={"bundle": ("b.tar.gz", b"x")})
+    assert with_break.status_code == 400 and "spec.sha" in with_break.json()["error"]["message"]
+    assert client.get("/v1/jobs/" + "0" * 8 + "-0000-0000-0000-" + "0" * 12 + "%0A").status_code == 404
+    assert [record.id for record in harness.registry.all()] == ["app-1"]
+    assert harness.runtime.jobs.latest_for("app-1") is None
+
+
+def test_a_body_over_the_limit_is_refused_before_it_is_stored(api, monkeypatch):
+    from efp_app_host import admin_api
+
+    client, harness = api
+    client.put("/v1/apps/app-1", json=APP_BODY)
+    monkeypatch.setattr(admin_api, "MAX_RELEASE_BODY_BYTES", 2000)
+    # A body that says how long it is: refused on that word alone.
+    told = client.post(
+        "/v1/apps/app-1/releases",
+        data={"spec": json.dumps({"sha": SHA_A})},
+        files={"bundle": ("bundle.tar.gz", b"x" * 5000, "application/gzip")},
+    )
+    assert told.status_code == 413 and told.json()["error"]["code"] == "bundle_too_large", told.text
+
+    # A body that does not say (chunked): counted as it arrives, cut off at the limit.
+    boundary = "efpboundary"
+
+    def chunks():
+        yield f'--{boundary}\r\nContent-Disposition: form-data; name="spec"\r\n\r\n{json.dumps({"sha": SHA_A})}\r\n'.encode("utf-8")
+        yield f'--{boundary}\r\nContent-Disposition: form-data; name="bundle"; filename="b.tar.gz"\r\nContent-Type: application/gzip\r\n\r\n'.encode("utf-8")
+        for _ in range(10):
+            yield b"x" * 1000
+        yield f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+    untold = client.post("/v1/apps/app-1/releases", content=chunks(), headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    assert untold.status_code == 413 and untold.json()["error"]["code"] == "bundle_too_large", untold.text
+    assert harness.runtime.jobs.latest_for("app-1") is None
+    assert list(harness.paths.jobs_dir.glob(".upload-*")) == []
+    # A deployment of ordinary size still goes through the same door.
+    monkeypatch.setattr(admin_api, "MAX_RELEASE_BODY_BYTES", 10 * 1024 * 1024)
+    assert _deploy(client, harness).status_code == 202
+
+
+def test_loader_variables_are_stored_but_never_handed_to_a_process(api):
+    client, harness = api
+    env = {**APP_BODY["env"], "LD_PRELOAD": "/data/hook.so", "GCONV_PATH": "/data/gconv"}
+    # Not refused here: a record must stay updatable (disabling an app, say)
+    # whatever its owner once entered. The names are dropped where it counts.
+    assert client.put("/v1/apps/app-1", json={**APP_BODY, "env": env}).status_code == 200
+    job = _wait_job(client, _deploy(client, harness).json()["job_id"])
+    assert job["status"] == "succeeded"
+    for spec, _ in harness.runner.spawned:
+        assert spec.env["MY_SETTING"] == "x" and "LD_PRELOAD" not in spec.env and "GCONV_PATH" not in spec.env

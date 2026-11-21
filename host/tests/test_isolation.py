@@ -3,11 +3,15 @@ from __future__ import annotations
 import pytest
 from conftest import make_settings
 
+from efp_app_host import launcher
 from efp_app_host.isolation import (
     BACKEND_BWRAP,
     BACKEND_BWRAP_USERNS,
     BACKEND_LANDLOCK,
     BACKEND_PLAIN,
+    ENV_DESCRIPTOR,
+    ENV_STAGE_CODE,
+    STAGE_ENVIRONMENT,
     IsolationError,
     LaunchSpec,
     SystemLayout,
@@ -82,13 +86,18 @@ def test_bwrap_as_root_builds_the_view_then_drops_privileges():
     volume = [source for source, _ in ro + _pairs(argv, "--bind") if source.startswith("/var/lib/efp-host")]
     assert volume == [RELEASE, DATA]
     assert argv[argv.index("--chdir") + 1] == RELEASE + "/code"
-    # Inside the view: setpriv drops to the app's user, env restores SIGTERM, then the app.
+    # Inside the view: setpriv drops to the app's user; then the last stage
+    # (the host's interpreter, by now that user) takes the app's environment
+    # from a descriptor, restores SIGTERM and becomes the app. It used to be
+    # "env --default-signal=TERM", with the app's environment given to
+    # bubblewrap itself.
     inner = argv[argv.index("--chdir") + 3 :]
     assert inner == [
         "/usr/bin/setpriv", "--reuid", "20001", "--regid", "20001", "--clear-groups", "--no-new-privs", "--inh-caps=-all", "--",
-        "/usr/bin/env", "--default-signal=TERM", "--",
+        "/usr/local/bin/python3", "-I", "-S", "-c", ENV_STAGE_CODE, ENV_DESCRIPTOR,
         *APP,
     ]  # fmt: skip
+    assert plan.env_by_descriptor
 
 
 def test_the_data_directory_is_mounted_after_the_read_only_release():
@@ -104,8 +113,8 @@ def test_bwrap_in_a_user_namespace_drops_privileges_first():
     argv = plan.argv
     assert argv[:9] == ["/usr/bin/setpriv", "--reuid", "20001", "--regid", "20001", "--clear-groups", "--no-new-privs", "--inh-caps=-all", "--"]
     assert argv[9] == "/usr/bin/bwrap" and "--unshare-user" in argv
-    assert plan.ignore_signals
-    assert argv[-len(APP) - 3 : -len(APP)] == ["/usr/bin/env", "--default-signal=TERM", "--"]
+    assert plan.ignore_signals and plan.env_by_descriptor
+    assert argv[-len(APP) - 6 : -len(APP)] == ["/usr/local/bin/python3", "-I", "-S", "-c", ENV_STAGE_CODE, ENV_DESCRIPTOR]
 
 
 def test_bwrap_user_namespace_can_reuse_the_containers_proc():
@@ -130,18 +139,73 @@ def test_landlock_drops_in_process_and_lists_what_stays_reachable():
 
 
 def test_plain_only_switches_user():
+    # The launcher switches itself (it used to start setpriv, as root, with
+    # the app's environment): the command line is the app and nothing else.
     plan = build_exec_plan(_spec(BACKEND_PLAIN, ro_paths=[], rw_paths=[]), LAYOUT)
-    assert plan.argv == ["/usr/bin/setpriv", "--reuid", "20001", "--regid", "20001", "--clear-groups", "--no-new-privs", "--inh-caps=-all", "--", *APP]
-    assert plan.chdir == RELEASE + "/code" and not plan.ignore_signals and not plan.drop_in_process
+    assert plan.argv == APP
+    assert plan.drop_in_process and plan.no_new_privs and plan.landlock is None and not plan.env_by_descriptor
+    assert plan.chdir == RELEASE + "/code" and not plan.ignore_signals
 
 
 def test_a_launcher_that_is_already_the_apps_user_has_nothing_to_switch():
     plain = build_exec_plan(_spec(BACKEND_PLAIN), LAYOUT, current_uid=20001)
-    assert plain.argv == ["/usr/bin/setpriv", "--no-new-privs", "--", *APP]
+    assert plain.argv == APP and not plain.drop_in_process and plain.no_new_privs
     landlock = build_exec_plan(_spec(BACKEND_LANDLOCK), LAYOUT, current_uid=20001)
-    assert not landlock.drop_in_process and landlock.landlock is not None
+    assert not landlock.drop_in_process and landlock.no_new_privs and landlock.landlock is not None
+    userns = build_exec_plan(_spec(BACKEND_BWRAP_USERNS), LAYOUT, current_uid=20001)
+    assert userns.argv[:3] == ["/usr/bin/setpriv", "--no-new-privs", "--"]
     with pytest.raises(IsolationError, match="root"):
         build_exec_plan(_spec(BACKEND_BWRAP), LAYOUT, current_uid=20001)
+
+
+OWNER_ENV = {
+    "PORT": "20000",
+    "EFP_APP_TOKEN": "efpa_secret-token-of-the-app",
+    # What an owner could set to have the loader run their code in every program started with it.
+    "LD_PRELOAD": RELEASE + "/code/hook.so",
+    "LD_LIBRARY_PATH": DATA + "/lib",
+}
+
+
+@pytest.mark.parametrize("backend", [BACKEND_BWRAP, BACKEND_BWRAP_USERNS])
+def test_bubblewrap_and_setpriv_never_get_the_apps_environment(backend, monkeypatch):
+    spec = _spec(backend, env=dict(OWNER_ENV))
+    plan = build_exec_plan(spec, LAYOUT)
+    opened: list[dict] = []
+    monkeypatch.setattr(launcher, "open_environment", lambda env: opened.append(dict(env)) or 7)
+    argv, env = launcher.stage_command(plan, spec.env)
+    # The program the launcher (root) executes is a wrapper, and what it is given is fixed.
+    assert argv[0] in ("/usr/bin/bwrap", "/usr/bin/setpriv")
+    assert env == STAGE_ENVIRONMENT and not set(env) & {"LD_PRELOAD", "LD_LIBRARY_PATH", "EFP_APP_TOKEN"}
+    # The app's environment travels in the descriptor, whole ...
+    assert opened == [OWNER_ENV]
+    stage = argv.index(ENV_STAGE_CODE)
+    assert argv[stage - 4 : stage + 2] == ["/usr/local/bin/python3", "-I", "-S", "-c", ENV_STAGE_CODE, "7"]
+    assert argv[stage + 2 :] == APP and ENV_DESCRIPTOR not in argv
+    # ... and never on a command line, which other apps can read where there is no PID namespace.
+    assert not any(value in part for part in argv for value in OWNER_ENV.values() if len(value) > 6)
+    # The last stage runs after every wrapper: nothing with privileges comes after it.
+    assert max(index for index, part in enumerate(argv) if part in ("/usr/bin/bwrap", "/usr/bin/setpriv")) < stage
+
+
+@pytest.mark.parametrize("backend", [BACKEND_LANDLOCK, BACKEND_PLAIN])
+def test_where_the_launcher_is_the_last_stage_the_app_is_the_first_program_with_its_environment(backend, monkeypatch):
+    spec = _spec(backend, env=dict(OWNER_ENV))
+    plan = build_exec_plan(spec, LAYOUT)
+    monkeypatch.setattr(launcher, "open_environment", lambda env: pytest.fail("no descriptor is needed here"))
+    argv, env = launcher.stage_command(plan, spec.env)
+    # No wrapper at all: the launcher has dropped to the app's user (and set
+    # no_new_privs) before this exec, so the loader acts for the app only.
+    assert argv == APP and env == OWNER_ENV
+    assert plan.drop_in_process and plan.no_new_privs and not plan.env_by_descriptor
+
+
+def test_the_last_stage_reads_json_restores_sigterm_and_executes():
+    # The text itself is what runs inside the view; keep what it must do in sight.
+    compile(ENV_STAGE_CODE, "<last stage>", "exec")
+    assert "json.loads" in ENV_STAGE_CODE and "os.execve(sys.argv[2], sys.argv[2:]" in ENV_STAGE_CODE
+    assert "signal.signal(signal.SIGTERM, signal.SIG_DFL)" in ENV_STAGE_CODE
+    assert ENV_STAGE_CODE.index("os.close(descriptor)") < ENV_STAGE_CODE.index("os.execve")
 
 
 def test_an_app_never_runs_as_root():

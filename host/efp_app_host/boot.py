@@ -25,11 +25,11 @@ import os
 from typing import Any, Awaitable, Callable
 
 from .config import Settings
-from .deploy import make_dir
-from .models import VISIBILITIES, is_valid_slug
+from .models import VISIBILITIES, is_valid_app_id, is_valid_slug
 from .paths import HostPaths
 from .registry import SlugTaken
 from .runtime import HostRuntime
+from .safefs import make_dir
 from .state import HostState
 from .storage_service import StorageService
 
@@ -47,12 +47,15 @@ def prepare_directories(settings: Settings, paths: HostPaths) -> list[str]:
     """Create the host's directories. Returns problems worth a warning."""
 
     problems: list[str] = []
-    make_dir(paths.store, 0o755)
+    # The three directories an operator names may be links (a mount that
+    # lives elsewhere); no app can reach where they are named. Everything
+    # below is the host's own and is never followed through a link.
+    make_dir(paths.store, 0o755, follow=True)
     make_dir(paths.store / "apps", 0o755)
     make_dir(paths.keys_dir, 0o700)
     make_dir(paths.jobs_dir, 0o700)
-    make_dir(paths.runtime, 0o755)
-    make_dir(paths.run, 0o755)
+    make_dir(paths.runtime, 0o755, follow=True)
+    make_dir(paths.run, 0o755, follow=True)
     make_dir(paths.run / "launch", 0o700)
     make_dir(paths.supervisor_apps_dir, 0o755)
     parent = paths.store.parent
@@ -76,7 +79,10 @@ def _positive(value: Any) -> int | None:
 async def reconcile(state: HostState) -> bool:
     """Bring records and environments in line with the Portal. Deploys nothing.
 
-    Returns whether the Portal answered.
+    Returns whether it is done: the Portal answered and every app it lists
+    was registered. An app that could not be registered (the supervisor did
+    not answer, a write failed) does not stop the others; the caller comes
+    back for it.
     """
 
     runtime = state.runtime
@@ -86,13 +92,16 @@ async def reconcile(state: HostState) -> bool:
         logger.warning("reconciliation with the Portal failed: %s", exc)
         return False
     seen: set[str] = set()
+    complete = True
     for item in desired:
         if not isinstance(item, dict):
             continue
         app_id, slug = str(item.get("id") or ""), str(item.get("slug") or "")
-        if not app_id or not is_valid_slug(slug):
+        # The id becomes a directory and a program name: the same rule as the manager API.
+        if not is_valid_app_id(app_id) or not is_valid_slug(slug):
             logger.warning("the Portal lists an app this host cannot register: id=%r slug=%r", app_id, slug)
             continue
+        # Listed is listed, registered or not: it must not be disabled below as "removed".
         seen.add(app_id)
         limits = item.get("limits") if isinstance(item.get("limits"), dict) else {}
         env = item.get("env") if isinstance(item.get("env"), dict) else {}
@@ -117,6 +126,12 @@ async def reconcile(state: HostState) -> bool:
         except SlugTaken:
             logger.warning("the Portal lists %s with slug %r, which another app on this host owns", app_id, slug)
             continue
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - one app must not end the reconciliation of the others
+            logger.exception("app %s (%s) could not be registered; it is tried again", slug, app_id)
+            complete = False
+            continue
         record = state.registry.find(app_id)
         wanted = item.get("current_sha")
         if record is not None and wanted and wanted != record.current_sha:
@@ -125,12 +140,15 @@ async def reconcile(state: HostState) -> bool:
         if record.id in seen or not record.enabled:
             continue
         logger.warning("app %s (%s) is not listed by the Portal any more: disabling it", record.slug, record.id)
-        state.registry.upsert(record.id, slug=record.slug, enabled=False, disabled_reason=REMOVED_REASON)
         try:
+            state.registry.upsert(record.id, slug=record.slug, enabled=False, disabled_reason=REMOVED_REASON)
             await runtime.stop(record.id, "disabled")
+        except asyncio.CancelledError:
+            raise
         except Exception:  # noqa: BLE001
-            logger.exception("stopping %s", record.id)
-    return True
+            logger.exception("disabling %s", record.id)
+            complete = False
+    return complete
 
 
 async def _loop(name: str, seconds: float, action: Callable[[], Awaitable[Any]]) -> None:
@@ -145,7 +163,14 @@ async def _loop(name: str, seconds: float, action: Callable[[], Awaitable[Any]])
 
 
 async def _reconcile_until_done(state: HostState) -> None:
-    while not await reconcile(state):
+    while True:
+        try:
+            if await reconcile(state):
+                return
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - whatever it was, the next round may do better; giving up would leave stale apps enabled
+            logger.exception("reconciliation with the Portal broke; it is tried again")
         await asyncio.sleep(RECONCILE_RETRY_SECONDS)
 
 

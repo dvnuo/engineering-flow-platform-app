@@ -3,6 +3,7 @@ for the two seams of ``efp_app_host.interfaces``."""
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,72 @@ def settings(tmp_path: Path) -> Settings:
 @pytest.fixture
 def registry(settings: Settings) -> Registry:
     return Registry(settings)
+
+
+class Links:
+    """Symbolic links for a test: real ones on Linux, a model of them elsewhere.
+
+    Where links cannot be made (Windows without the privilege) ``os.symlink``
+    and the calls ``unpack_bundle`` uses to look at links are replaced by a
+    table with POSIX semantics; the model's ``realpath`` is the standard
+    library's own ``posixpath.realpath``, fed from the table. Everything else
+    stays the real code on the real disk.
+    """
+
+    def __init__(self, monkeypatch):
+        self.table: dict[str, str] = {}
+        self.real = sys.platform == "linux"
+        if self.real:
+            return
+        import ntpath
+        import posixpath
+        import stat
+        import types
+
+        lstat, readlink, unlink = os.lstat, getattr(os, "readlink", None), os.unlink
+        lexists, islink = os.path.lexists, os.path.islink
+
+        def key(path) -> str:
+            return "/" + ntpath.abspath(str(path)).replace("\\", "/")
+
+        def back(path: str) -> str:
+            return path[1:].replace("/", "\\")
+
+        def model_lstat(path):
+            if path in self.table:
+                return types.SimpleNamespace(st_mode=stat.S_IFLNK | 0o777)
+            return lstat(back(path))
+
+        def realpath(path, **_kwargs):
+            os.lstat, os.readlink = model_lstat, (lambda item: self.table[item])
+            try:
+                return back(posixpath.realpath(key(path)))
+            finally:
+                os.lstat = lstat
+                if readlink is not None:
+                    os.readlink = readlink
+
+        def model_unlink(path, *args, **kwargs):
+            if self.table.pop(key(path), None) is None:
+                unlink(path, *args, **kwargs)
+
+        self._key = key
+        monkeypatch.setattr(os, "symlink", lambda source, target, *a, **k: self.table.__setitem__(key(target), source))
+        monkeypatch.setattr(os, "unlink", model_unlink)
+        monkeypatch.setattr(os.path, "realpath", realpath)
+        monkeypatch.setattr(os.path, "lexists", lambda path: key(path) in self.table or lexists(path))
+        monkeypatch.setattr(os.path, "islink", lambda path: key(path) in self.table or islink(path))
+
+    def is_link(self, path) -> bool:
+        return os.path.islink(path)
+
+    def make(self, target, source: str) -> None:
+        os.symlink(source, target)
+
+
+@pytest.fixture
+def links(monkeypatch) -> Links:
+    return Links(monkeypatch)
 
 
 class FakeRuntime:

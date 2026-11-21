@@ -89,6 +89,26 @@ def test_owner_environment_drops_reserved_names():
     assert owner_environment(stored) == {"MY_SETTING": "value", "lower_ok": "v"}
 
 
+def test_owner_environment_drops_what_the_loader_and_the_c_library_obey():
+    stored = {
+        "LD_PRELOAD": "/data/hook.so",
+        "LD_LIBRARY_PATH": "/data/lib",
+        "LD_AUDIT": "/data/audit.so",
+        "LD_DEBUG_OUTPUT": "/etc/cron.d/x",
+        "ld_preload": "/data/hook.so",
+        "Ld_Anything_At_All": "x",
+        "GCONV_PATH": "/data/gconv",
+        "GLIBC_TUNABLES": "glibc.malloc.check=3",
+        "glibc_tunables": "x",
+        "NAME\n": "a name that ends in a line break",
+        # Not the loader's: only names that start with "LD_".
+        "LDAP_URL": "ldap://directory.example.com",
+        "OLD_SETTING": "kept",
+        "MY_LD_PRELOAD": "kept",
+    }
+    assert owner_environment(stored) == {"LDAP_URL": "ldap://directory.example.com", "OLD_SETTING": "kept", "MY_LD_PRELOAD": "kept"}
+
+
 def _registered(tmp_path, mode):
     settings = make_settings(
         tmp_path,

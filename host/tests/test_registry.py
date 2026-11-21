@@ -20,6 +20,53 @@ def test_upsert_assigns_uid_and_port_once(settings, registry):
     assert (again.uid, again.port) == (first.uid, first.port)
 
 
+def test_a_removed_apps_uid_and_port_are_never_handed_out_again(settings, registry):
+    first, _ = registry.upsert("a1", slug="first-app")
+    second, _ = registry.upsert("a2", slug="second-app")
+    registry.remove("a1")
+    third, _ = registry.upsert("a3", slug="third-app")
+    # Not the lowest free number: whatever is left of the removed app (a
+    # process that outlived it) must not become the new app.
+    assert third.uid == second.uid + 1 and third.port == second.port + 1
+    assert third.uid != first.uid and third.port != first.port
+
+    # The marks are on the volume: a manager that starts again goes on from them,
+    # also when every app that had a number is gone.
+    registry.remove("a2")
+    registry.remove("a3")
+    reloaded = Registry(settings)
+    fourth, _ = reloaded.upsert("a4", slug="fourth-app")
+    assert (fourth.uid, fourth.port) == (third.uid + 1, third.port + 1)
+
+
+def test_a_registry_from_before_the_marks_starts_above_what_is_in_use(settings, registry):
+    import json
+
+    registry.upsert("a1", slug="first-app")
+    registry.upsert("a2", slug="second-app")
+    stored = json.loads(registry.paths.registry_file.read_text(encoding="utf-8"))
+    assert stored["next_uid"] == settings.uid_range_start + 2 and stored["next_port"] == settings.port_range_start + 2
+    del stored["next_uid"], stored["next_port"]
+    registry.paths.registry_file.write_text(json.dumps(stored), encoding="utf-8")
+    reloaded = Registry(settings)
+    third, _ = reloaded.upsert("a3", slug="third-app")
+    assert (third.uid, third.port) == (settings.uid_range_start + 2, settings.port_range_start + 2)
+
+
+def test_ports_run_out_before_uids_do(settings, registry):
+    from efp_app_host import registry as registry_module
+
+    registry.upsert("a1", slug="first-app")
+    registry._next_port = registry_module.MAX_PORT
+    last, _ = registry.upsert("a2", slug="second-app")
+    assert last.port == registry_module.MAX_PORT
+    # Past the last port the lowest one no registered app holds is taken:
+    # there is no other number left, and by then its old holder is long gone.
+    again, _ = registry.upsert("a3", slug="third-app")
+    assert again.port == settings.port_range_start + 1
+    assert again.uid == last.uid + 1
+
+
 def test_slug_belongs_to_one_app(registry):
     registry.upsert("a1", slug="mindmap")
     with pytest.raises(SlugTaken):

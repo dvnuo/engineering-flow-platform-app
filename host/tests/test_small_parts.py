@@ -175,3 +175,252 @@ def test_the_real_sampler_sees_an_accepted_connection_on_its_port():
         assert port not in sampler.busy_ports()
     finally:
         server.close()
+
+
+# ---- stopping everything a user owns ---------------------------------------------------
+
+
+class _ModelSampler(PsutilSampler):
+    """The loop of ``kill_uid`` over a model of the process table.
+
+    ``sitting`` are processes that stay where they are until they are
+    signalled. ``forking`` stands for a process that forks and lets its
+    parent exit: every look sees a new pid, and a signal to a pid that was
+    seen comes too late.
+    """
+
+    def __init__(self, *, sitting: set[int], forking: bool, kill_all_works: bool = True):
+        self.sitting = set(sitting)
+        self.forking = forking
+        self.kill_all_works = kill_all_works
+        self.next_pid = 5000
+        self.looks = 0
+        self.kill_all_calls = 0
+
+    def pids_of(self, uid: int) -> list[int]:
+        self.looks += 1
+        pids = sorted(self.sitting)
+        if self.forking:
+            self.next_pid += 7
+            pids.append(self.next_pid)
+        return pids
+
+    def signal_pid(self, pid: int) -> None:
+        self.sitting.discard(pid)  # a signal to the forking one hits a pid that is gone
+
+    def kill_all(self, uid: int) -> bool:
+        self.kill_all_calls += 1
+        if self.kill_all_works:
+            self.sitting.clear()
+            self.forking = False
+        return self.kill_all_works
+
+
+def test_kill_uid_goes_on_until_a_fresh_look_finds_nothing(monkeypatch):
+    from efp_app_host import procstats
+
+    monkeypatch.setattr(procstats.time, "sleep", lambda seconds: None)
+    # A process that sits still is gone after the first round; the second look confirms it.
+    quiet = _ModelSampler(sitting={101, 102}, forking=False)
+    assert quiet.kill_uid(20000) == 2 and quiet.looks == 2
+
+    # One walk over the pids never gets the one that keeps forking (what
+    # kill_uid used to be); the kernel's kill-everything-of-this-user does.
+    chain = _ModelSampler(sitting={101}, forking=True)
+    assert chain.kill_uid(20000) >= 2
+    assert chain.kill_all_calls == 1 and chain.pids_of(20000) == []
+
+    # Without that call (the manager is not root) the loop still ends, and says how far it got.
+    stubborn = _ModelSampler(sitting=set(), forking=True, kill_all_works=False)
+    stubborn.kill_uid(20000)
+    assert stubborn.looks == procstats.KILL_ROUNDS + 1 and stubborn.kill_all_calls == procstats.KILL_ROUNDS
+    assert _ModelSampler(sitting={1}, forking=True).kill_uid(0) == 0, "root is never a target"
+
+
+def test_killing_a_users_processes_at_once_needs_root():
+    from efp_app_host.procstats import kill_all_of
+
+    if getattr(os, "geteuid", lambda: 1)() != 0:
+        assert kill_all_of(20000) is False
+    assert kill_all_of(0) is False and kill_all_of(-1) is False
+
+
+def test_the_real_sampler_tells_whose_process_listens_on_a_port():
+    import socket
+
+    import pytest
+
+    sampler = PsutilSampler()
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    try:
+        owners = sampler.listener_uids(server.getsockname()[1])
+        if owners is None:
+            pytest.skip("only root sees whose socket it is")
+        assert owners == {os.getuid()}
+        assert sampler.listener_uids(1) in (set(), None)
+    finally:
+        server.close()
+
+
+def test_a_listener_on_another_address_is_not_the_apps_listener(monkeypatch):
+    # 127.0.0.2:port or [::]:port can be taken by anybody while the app runs;
+    # neither gets what the gateway sends to 127.0.0.1:port.
+    import types
+
+    import psutil
+
+    from efp_app_host import procstats
+
+    def connection(ip: str, pid: int, status: str = psutil.CONN_LISTEN, port: int = 20007):
+        return types.SimpleNamespace(status=status, laddr=types.SimpleNamespace(ip=ip, port=port), raddr=(), pid=pid)
+
+    uids = {11: 20007, 12: 20009, 13: 20009}
+    table = [connection("127.0.0.1", 11), connection("127.0.0.2", 12), connection("::", 13), connection("127.0.0.1", 12, port=20008)]
+    monkeypatch.setattr(procstats.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(psutil, "net_connections", lambda kind="tcp": list(table))
+    monkeypatch.setattr(psutil, "Process", lambda pid: types.SimpleNamespace(uids=lambda: types.SimpleNamespace(real=uids[pid])))
+    sampler = PsutilSampler()
+    assert sampler.listener_uids(20007) == {20007}
+    assert sampler.listener_uids(20008) == {20009}
+    assert sampler.listener_uids(20010) == set()
+    # Nothing on 127.0.0.1 itself: the wildcard address is what a connection would reach.
+    table[:] = [connection("0.0.0.0", 12), connection("127.0.0.2", 11)]
+    assert sampler.listener_uids(20007) == {20009}
+    # A socket nobody can be named for: not known, rather than "nobody".
+    table[:] = [connection("127.0.0.1", 0)]
+    assert sampler.listener_uids(20007) is None
+
+
+# ---- root's file operations where an app can write -------------------------------------
+
+
+def test_a_fresh_directory_replaces_what_was_there(tmp_path):
+    from efp_app_host.safefs import fresh_dir
+
+    tmp = tmp_path / "app" / "tmp"
+    (tmp / "home" / "old").mkdir(parents=True)
+    (tmp / "left.txt").write_text("x", encoding="utf-8")
+    fresh_dir(tmp, 0o700, children=("home",))
+    assert sorted(item.name for item in tmp.iterdir()) == ["home"] and list((tmp / "home").iterdir()) == []
+    # A file where the directory should be is replaced as well; missing parents are made.
+    (tmp_path / "other").write_text("x", encoding="utf-8")
+    fresh_dir(tmp_path / "other", 0o700)
+    fresh_dir(tmp_path / "deep" / "er" / "wheels", 0o750)
+    assert (tmp_path / "other").is_dir() and (tmp_path / "deep" / "er" / "wheels").is_dir()
+
+
+def test_a_directory_that_cannot_be_emptied_is_not_handed_over(tmp_path, monkeypatch):
+    import pytest
+
+    from efp_app_host import safefs
+
+    tmp = tmp_path / "tmp"
+    tmp.mkdir()
+    # A process of the app that puts its entry back as fast as it is removed.
+    monkeypatch.setattr(safefs, "remove_tree", lambda path: None)
+    with pytest.raises(safefs.UnsafePath, match="could not be emptied"):
+        safefs.fresh_dir(tmp, 0o700, uid=20000, children=("home",))
+    assert not (tmp / "home").exists()
+
+
+def test_a_link_is_refused_where_no_descriptor_calls_exist(tmp_path, monkeypatch):
+    # The fallback (Windows, where the host only runs its tests) must refuse too.
+    import pytest
+
+    from efp_app_host import safefs
+
+    target = tmp_path / "home"
+    target.mkdir()
+    monkeypatch.setattr(safefs, "_BY_DESCRIPTOR", False)
+    monkeypatch.setattr(safefs.os.path, "islink", lambda path: str(path) == str(target))
+    with pytest.raises(safefs.UnsafePath):
+        safefs.own(target, 0o700, uid=20000)
+    with pytest.raises(safefs.UnsafePath):
+        safefs.make_dir(target, 0o700, uid=20000)
+    # "follow" is for the directories an operator names.
+    safefs.make_dir(target, 0o755, follow=True)
+
+
+def test_copy_from_app_copies_a_plain_file(tmp_path):
+    from efp_app_host.safefs import copy_from_app
+
+    (tmp_path / "pkg-1.0-py3-none-any.whl").write_bytes(b"wheel" * 1000)
+    assert copy_from_app(tmp_path / "pkg-1.0-py3-none-any.whl", tmp_path / "kept.whl") == 5000
+    assert (tmp_path / "kept.whl").read_bytes() == b"wheel" * 1000
+
+
+def _needs_links():
+    import sys
+
+    import pytest
+
+    return pytest.mark.skipif(sys.platform != "linux", reason="symbolic links need Linux here")
+
+
+@_needs_links()
+def test_root_does_not_follow_a_link_an_app_planted(tmp_path):
+    import stat
+
+    import pytest
+
+    from efp_app_host.safefs import UnsafePath, copy_from_app, fresh_dir, make_dir, own
+
+    gate = tmp_path / "var-lib-efp-host"  # stands for the directory that closes the volume
+    gate.mkdir(mode=0o711)
+    secret = gate / "session.key"
+    secret.write_text("secret", encoding="utf-8")
+    tmp = tmp_path / "app" / "tmp"
+    tmp.mkdir(parents=True)
+    os.symlink(gate, tmp / "home")
+
+    # What the manager used to do: chmod and chown through "tmp/home".
+    with pytest.raises(UnsafePath):
+        make_dir(tmp / "home", 0o700, uid=os.getuid())
+    with pytest.raises(UnsafePath):
+        own(tmp / "home", 0o700, uid=os.getuid())
+    assert stat.S_IMODE(os.stat(gate).st_mode) == 0o711
+
+    # The reset of a tmp: the link goes, a directory of root's making takes its place.
+    fresh_dir(tmp, 0o700, uid=os.getuid(), children=("home",))
+    assert (tmp / "home").is_dir() and not (tmp / "home").is_symlink()
+    assert stat.S_IMODE(os.stat(gate).st_mode) == 0o711 and secret.read_text(encoding="utf-8") == "secret"
+
+    # A link where the directory itself was (the app may write its parent) is not followed either.
+    area = tmp_path / "area"
+    area.mkdir()
+    os.symlink(gate, area / "wheels")
+    fresh_dir(area / "wheels", 0o700)
+    assert not (area / "wheels").is_symlink() and secret.exists()
+
+    # Copying what an app wrote: a link is not read through, neither symbolic nor hard.
+    os.symlink(secret, area / "wheels" / "evil-1.0-py3-none-any.whl")
+    os.link(secret, area / "wheels" / "hard-1.0-py3-none-any.whl")
+    for name in ("evil-1.0-py3-none-any.whl", "hard-1.0-py3-none-any.whl"):
+        with pytest.raises(UnsafePath):
+            copy_from_app(area / "wheels" / name, tmp_path / "stolen")
+    assert not (tmp_path / "stolen").exists() or (tmp_path / "stolen").read_bytes() == b""
+
+
+@_needs_links()
+def test_a_planted_link_does_not_get_its_target_chowned(tmp_path):
+    import pytest
+
+    from efp_app_host.safefs import UnsafePath, fresh_dir, make_dir
+
+    if os.geteuid() != 0:
+        pytest.skip("chown needs root")
+    base = tmp_path
+    os.chmod(base, 0o755)
+    gate = base / "gate"
+    gate.mkdir(mode=0o700)
+    tmp = base / "tmp"
+    tmp.mkdir()
+    os.chown(tmp, 23456, 23456)
+    os.symlink(gate, tmp / "home")
+    with pytest.raises(UnsafePath):
+        make_dir(tmp / "home", 0o700, uid=23456)
+    fresh_dir(tmp, 0o700, uid=23456, children=("home",))
+    assert (os.stat(gate).st_uid, os.stat(gate).st_gid) == (0, 0)
+    assert os.stat(tmp).st_uid == 23456 and os.lstat(tmp / "home").st_uid == 23456 and not (tmp / "home").is_symlink()

@@ -282,6 +282,172 @@ def test_stopping_the_process_group_lets_a_sandboxed_app_end_by_itself(area):
     assert code == 0, (process.stdout.read() if process.stdout else b"").decode("utf-8", "replace")
 
 
+# ---- whose environment each stage gets -------------------------------------------------------
+#
+# An owner chooses the variables of their app. The dynamic loader obeys
+# LD_PRELOAD in every program that is started with it, so no program that
+# still has privileges (bubblewrap, setpriv) may be started with the app's
+# environment. The loader itself is the witness: given a library it cannot
+# open, it says so on stderr, once per program that was started with the
+# variable. The app is one such program (a shell that only uses built-ins);
+# any further complaint is a wrapper that saw what it must not see.
+
+PRELOAD = "/nonexistent/efp-test-preload.so"
+COMPLAINT = "LD_PRELOAD cannot be preloaded"
+
+
+def _loader_complains() -> bool:
+    done = subprocess.run(["/bin/sh", "-c", "true"], env={"LD_PRELOAD": PRELOAD}, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    return COMPLAINT in done.stdout.decode("utf-8", "replace")
+
+
+def _assert_only_the_app_saw_the_environment(area, backend: str, options: dict | None = None) -> None:
+    if not _loader_complains():
+        pytest.skip("this C library does not say when it cannot load a preloaded library")
+    script = 'echo "app started with ${LD_PRELOAD:-nothing}"'
+    spec = _spec(area, backend, script, options=options, env={"LD_PRELOAD": PRELOAD, "LD_LIBRARY_PATH": "/nonexistent/lib"})
+    code, output = _launch(area, spec)
+    assert code == 0, output
+    # The app got exactly what the spec says ...
+    assert f"app started with {PRELOAD}" in output, output
+    # ... and nothing before it did: the shell is the app, the one program
+    # that was started with the variable; every wrapper stays silent.
+    assert output.count(COMPLAINT) == 1, output
+
+
+def test_plain_backend_starts_nothing_but_the_app_with_the_apps_environment(area):
+    _assert_only_the_app_saw_the_environment(area, BACKEND_PLAIN)
+
+
+def test_landlock_backend_starts_nothing_but_the_app_with_the_apps_environment(area):
+    if landlock.abi_version() <= 0:
+        pytest.skip("this kernel has no Landlock")
+    _assert_only_the_app_saw_the_environment(area, BACKEND_LANDLOCK)
+
+
+@pytest.mark.skipif(sys.platform != "linux" or not _is_root(), reason="bubblewrap as root")
+def test_bwrap_as_root_is_not_started_with_the_apps_environment(area):
+    _bwrap_or_skip(area, BACKEND_BWRAP, {"proc": "new"})
+    _assert_only_the_app_saw_the_environment(area, BACKEND_BWRAP, {"proc": "new"})
+
+
+def test_bwrap_in_a_user_namespace_is_not_started_with_the_apps_environment(area):
+    if shutil.which("bwrap") is None:
+        pytest.skip("bubblewrap is not installed")
+    options = {"proc": "new"}
+    code, _ = _launch(area, _spec(area, BACKEND_BWRAP_USERNS, "true", options=options))
+    if code != 0:
+        options = {"proc": "bind"}
+        _bwrap_or_skip(area, BACKEND_BWRAP_USERNS, options)
+    _assert_only_the_app_saw_the_environment(area, BACKEND_BWRAP_USERNS, options)
+
+
+def test_the_environment_descriptor_survives_exec_and_holds_everything():
+    from efp_app_host.isolation import ENV_STAGE_CODE
+    from efp_app_host.launcher import open_environment
+
+    # Larger than a pipe would take without a reader (and each value small enough for exec).
+    env = {"MARK": "from-the-descriptor", "PATH": "/usr/bin:/bin", **{f"FILL_{index}": "x" * 4000 for index in range(40)}}
+    descriptor = open_environment(env)
+    try:
+        assert os.get_inheritable(descriptor)
+        # The last stage of a bubblewrap chain, run the way the chain runs it:
+        # nothing in its own environment, the app's in the descriptor.
+        done = subprocess.run(
+            [sys.executable, "-I", "-S", "-c", ENV_STAGE_CODE, str(descriptor), "/bin/sh", "-c", 'echo "$MARK ${#FILL_39} ${LEFTOVER:-none}"'],
+            env={"LEFTOVER": "of-the-stage"},
+            pass_fds=(descriptor,),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=60,
+        )
+    finally:
+        os.close(descriptor)
+    assert done.returncode == 0, done.stdout
+    assert done.stdout.decode().strip() == "from-the-descriptor 4000 none"
+
+
+def test_the_last_stage_gives_sigterm_its_meaning_back(area):
+    from efp_app_host.isolation import ENV_STAGE_CODE
+    from efp_app_host.launcher import open_environment
+
+    descriptor = open_environment({"PATH": "/usr/bin:/bin"})
+    try:
+        # Started the way bubblewrap's wrappers are: with SIGTERM ignored.
+        process = subprocess.Popen(
+            [sys.executable, "-I", "-S", "-c", ENV_STAGE_CODE, str(descriptor), "/bin/sh", "-c", "echo up; exec sleep 300"],
+            pass_fds=(descriptor,),
+            stdout=subprocess.PIPE,
+            preexec_fn=lambda: signal.signal(signal.SIGTERM, signal.SIG_IGN),
+        )
+    finally:
+        os.close(descriptor)
+    try:
+        assert process.stdout is not None and process.stdout.readline().strip() == b"up"
+        process.send_signal(signal.SIGTERM)
+        assert process.wait(timeout=15) == -signal.SIGTERM
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+
+
+# ---- stopping an app's processes -------------------------------------------------------------
+
+# Forks, lets the parent exit, forks again: a new pid long before anybody has
+# walked a list of pids down to the old one.
+FORK_CHAIN = "import os, time\nos.setsid()\nwhile True:\n    if os.fork():\n        os._exit(0)\n    time.sleep(0.0005)\n"
+
+
+@pytest.mark.skipif(sys.platform != "linux" or not _is_root(), reason="killing another user's processes needs root")
+def test_kill_uid_gets_a_process_that_keeps_forking():
+    from efp_app_host.procstats import PsutilSampler
+
+    sampler = PsutilSampler()
+    chains = [subprocess.Popen([sys.executable, "-I", "-S", "-c", FORK_CHAIN], user=APP_UID, group=APP_UID, extra_groups=[]) for _ in range(3)]
+    sitting = subprocess.Popen(["/bin/sleep", "300"], user=APP_UID, group=APP_UID, extra_groups=[])
+    try:
+        for chain in chains:
+            chain.wait(timeout=30)  # the first of each chain exits at once; its descendants go on
+        deadline = time.time() + 10
+        while not sampler.pids_of(APP_UID) and time.time() < deadline:
+            time.sleep(0.01)
+        assert sampler.pids_of(APP_UID), "the forking processes did not come up"
+        hit = sampler.kill_uid(APP_UID)
+        assert hit >= 1
+        # Not one look that happens to find nothing: nothing for a while.
+        for _ in range(20):
+            assert sampler.pids_of(APP_UID) == []
+            time.sleep(0.05)
+        assert sitting.wait(timeout=10) == -signal.SIGKILL
+    finally:
+        sampler.kill_uid(APP_UID)
+        if sitting.poll() is None:
+            sitting.kill()
+            sitting.wait()
+
+
+@pytest.mark.skipif(sys.platform != "linux" or not _is_root(), reason="becoming another user needs root")
+def test_killing_one_users_processes_leaves_everybody_else_alone():
+    from efp_app_host.procstats import kill_all_of
+
+    other = subprocess.Popen(["/bin/sleep", "300"], user=APP_UID + 1, group=APP_UID + 1, extra_groups=[])
+    mine = subprocess.Popen(["/bin/sleep", "300"])
+    victim = subprocess.Popen(["/bin/sleep", "300"], user=APP_UID, group=APP_UID, extra_groups=[])
+    try:
+        assert kill_all_of(APP_UID) is True
+        assert victim.wait(timeout=10) == -signal.SIGKILL
+        time.sleep(0.3)
+        assert other.poll() is None and mine.poll() is None
+        assert os.geteuid() == 0, "the manager itself stays what it was"
+        assert kill_all_of(0) is False, "root's processes are never killed this way"
+    finally:
+        for process in (other, mine, victim):
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+
 # ---- the probe the manager runs at boot ----------------------------------------------------
 
 
@@ -363,7 +529,9 @@ def test_the_runner_hands_on_output_and_the_exit_code(area):
 
     logged, captured, lines = asyncio.run(scenario())
     assert logged.code == 3 and logged.output == ""
-    assert sorted(lines) == ["no newline\n", "one\n", "two\n"]
+    # Whole lines, but as many per call as arrived together (it used to be one call per line).
+    assert all(text.endswith("\n") for text in lines)
+    assert sorted("".join(lines).splitlines(keepends=True)) == ["no newline\n", "one\n", "two\n"]
     assert captured.code == 0 and captured.output == "pkg==1.0\n"
     assert list((area["base"] / "launch").iterdir()) == [], "no spec file is left behind"
 

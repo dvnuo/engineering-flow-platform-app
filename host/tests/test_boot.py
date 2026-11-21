@@ -291,3 +291,88 @@ class _NoSocketService:
 
     async def stop(self) -> None:
         self.stopped = True
+
+
+def test_one_app_that_cannot_be_registered_does_not_end_the_reconciliation(tmp_path, monkeypatch):
+    from efp_app_host.controller import ControllerError
+
+    async def scenario():
+        harness = Harness(tmp_path)
+        await harness.register("app-old", "legacy")
+        add = harness.controller.add
+        broken = {"app-app-1"}
+
+        def flaky_add(program):
+            if program.name in broken:
+                raise ControllerError("supervisor reloadConfig: not now")
+            add(program)
+
+        harness.controller.add = flaky_add
+        harness.portal.desired = [
+            _desired("app-1", "mindmap"),
+            _desired("app-2", "review", enabled=False, disabled_reason="taken down"),
+        ]
+        state = _state(harness)
+        first = await boot.reconcile(state)
+        after_first = {
+            "app-2": harness.registry.find("app-2") is not None and harness.registry.get("app-2").enabled is False,
+            "app-old": harness.registry.get("app-old").enabled,
+            "app-1 program": "app-app-1" in harness.controller.programs,
+        }
+        # The background task comes back for what failed, instead of ending for good.
+        monkeypatch.setattr(boot, "RECONCILE_RETRY_SECONDS", 0.01)
+        task = asyncio.get_running_loop().create_task(boot._reconcile_until_done(state))
+        await asyncio.sleep(0.1)
+        still_trying = not task.done()
+        broken.clear()
+        await asyncio.wait_for(task, 10)
+        return harness, first, after_first, still_trying
+
+    harness, first, after_first, still_trying = asyncio.run(scenario())
+    # Not done, but everything else was: the app after the broken one is
+    # registered (disabled, as the Portal says) and the one the Portal no
+    # longer lists is disabled.
+    assert first is False
+    assert after_first == {"app-2": True, "app-old": False, "app-1 program": False}
+    assert still_trying is True
+    assert "app-app-1" in harness.controller.programs and harness.registry.get("app-1").enabled is True
+
+
+def test_an_error_nobody_expected_does_not_end_the_reconciliation_either(tmp_path, monkeypatch):
+    async def scenario():
+        harness = Harness(tmp_path)
+        state = _state(harness)
+        calls = []
+        real = boot.reconcile
+
+        async def reconcile(given):
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("something new")
+            return await real(given)
+
+        monkeypatch.setattr(boot, "reconcile", reconcile)
+        monkeypatch.setattr(boot, "RECONCILE_RETRY_SECONDS", 0.01)
+        await asyncio.wait_for(boot._reconcile_until_done(state), 10)
+        return calls
+
+    assert len(asyncio.run(scenario())) == 2
+
+
+def test_an_app_id_the_manager_api_would_refuse_is_not_registered_at_boot(tmp_path):
+    async def scenario():
+        harness = Harness(tmp_path)
+        harness.portal.desired = [
+            _desired("../../etc", "climber"),
+            _desired("app-1\n", "newline"),
+            _desired("a" * 65, "too-long"),
+            _desired("app-ok", "fine-app"),
+        ]
+        answered = await boot.reconcile(_state(harness))
+        return harness, answered
+
+    harness, answered = asyncio.run(scenario())
+    # The id becomes a directory on the volume and a program name of the supervisor.
+    assert answered is True
+    assert [record.id for record in harness.registry.all()] == ["app-ok"]
+    assert sorted(path.name for path in (harness.paths.store / "apps").iterdir()) == ["app-ok"]

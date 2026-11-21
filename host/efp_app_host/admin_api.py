@@ -27,7 +27,7 @@ from .applog import MAX_TAIL_LINES
 from .deploy import DeployInProgress
 from .jobs import is_job_id
 from .manifest import is_safe_relative_path
-from .models import VISIBILITIES, is_valid_slug
+from .models import VISIBILITIES, is_valid_app_id, is_valid_slug
 from .registry import AppNotFound, SlugTaken
 from .runtime import AppBusy, HostRuntime, ReleaseNotFound
 from .state import HostState
@@ -36,12 +36,15 @@ logger = logging.getLogger(__name__)
 
 MAX_BUNDLE_BYTES = 200 * 1024 * 1024
 MAX_SPEC_BYTES = 64 * 1024
+# The whole request of a deployment: the bundle, the spec and what
+# multipart/form-data adds around them.
+MAX_RELEASE_BODY_BYTES = MAX_BUNDLE_BYTES + MAX_SPEC_BYTES + 64 * 1024
 MAX_ENV_VARIABLES = 200
 MAX_ENV_VALUE_CHARS = 32 * 1024
 _UPLOAD_CHUNK = 1024 * 1024
-_APP_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Used with fullmatch: "$" would let a value end in a line break.
+_SHA_RE = re.compile(r"[0-9a-f]{40}")
+_ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 class ApiError(Exception):
@@ -106,9 +109,35 @@ def _runtime(request: Request) -> HostRuntime:
 
 
 def _app_id(app_id: str) -> str:
-    if not _APP_ID_RE.match(app_id or ""):
+    if not is_valid_app_id(app_id):
         raise ApiError(400, "invalid_request", "the app id may hold letters, digits, - and _ (at most 64 characters)")
     return app_id
+
+
+def _limit_body(request: Request, limit: int, message: str) -> None:
+    """Refuse a body over ``limit`` bytes before it is stored anywhere.
+
+    The form parser writes an uploaded file to the local disk as it
+    arrives. A body that announces its length is refused at once; one that
+    does not (chunked) is counted as it is received and cut off there.
+    """
+
+    announced = request.headers.get("content-length") or ""
+    if announced.isdigit() and int(announced) > limit:
+        raise ApiError(413, "bundle_too_large", message)
+    receive = request._receive  # noqa: SLF001 - the only place the parser's input can be counted
+    received = 0
+
+    async def counted() -> Any:
+        nonlocal received
+        message_in = await receive()
+        if message_in.get("type") == "http.request":
+            received += len(message_in.get("body") or b"")
+            if received > limit:
+                raise ApiError(413, "bundle_too_large", message)
+        return message_in
+
+    request._receive = counted  # noqa: SLF001
 
 
 async def _json_object(request: Request, *, required: bool = True) -> dict[str, Any]:
@@ -133,7 +162,7 @@ def _env(value: Any) -> dict[str, str]:
         raise ApiError(400, "invalid_request", f"env must be an object of at most {MAX_ENV_VARIABLES} variables")
     env: dict[str, str] = {}
     for key, item in value.items():
-        if not isinstance(key, str) or not _ENV_NAME_RE.match(key):
+        if not isinstance(key, str) or not _ENV_NAME_RE.fullmatch(key):
             raise ApiError(400, "invalid_request", "an env name may hold letters, digits and _ and may not start with a digit")
         if isinstance(item, bool) or not isinstance(item, (str, int, float)):
             raise ApiError(400, "invalid_request", f"env {key}: the value must be a string")
@@ -237,6 +266,7 @@ async def post_release(app_id: str, request: Request) -> JSONResponse:
         raise ApiError(409, "deploy_in_progress", "another deployment of this app is queued or running")
     if "multipart/form-data" not in (request.headers.get("content-type") or ""):
         raise ApiError(400, "invalid_request", "the body must be multipart/form-data with the parts spec and bundle")
+    _limit_body(request, MAX_RELEASE_BODY_BYTES, f"a bundle is at most {MAX_BUNDLE_BYTES // (1024 * 1024)} MiB")
     form = await request.form(max_files=2, max_fields=4)
     try:
         spec_part = form.get("spec")
@@ -253,7 +283,7 @@ async def post_release(app_id: str, request: Request) -> JSONResponse:
         if not isinstance(spec, dict):
             raise ApiError(400, "invalid_request", "the part spec must be a JSON object")
         sha = spec.get("sha")
-        if not isinstance(sha, str) or not _SHA_RE.match(sha):
+        if not isinstance(sha, str) or not _SHA_RE.fullmatch(sha):
             raise ApiError(400, "invalid_request", "spec.sha must be 40 lowercase hexadecimal characters")
         entry_dir = spec.get("entry_dir") or ""
         if not isinstance(entry_dir, str) or (entry_dir and not is_safe_relative_path(entry_dir)):
@@ -297,7 +327,8 @@ def _job(runtime: HostRuntime, job_id: str):
 @router.get("/jobs/{job_id}")
 async def get_job(job_id: str, request: Request) -> dict[str, Any]:
     runtime = _runtime(request)
-    return runtime.jobs.public(_job(runtime, job_id))
+    # In a thread: reading the log's tail waits for what is still queued for it.
+    return await asyncio.to_thread(runtime.jobs.public, _job(runtime, job_id))
 
 
 @router.get("/jobs/{job_id}/log")

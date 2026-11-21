@@ -18,8 +18,15 @@ from .paths import HostPaths
 
 SYSTEM_PATH = "/usr/local/bin:/usr/bin:/bin"
 RESERVED_ENV_NAMES = frozenset({"PORT", "HOME", "TMPDIR", "PATH"})
+# Variables the dynamic loader and the C library obey in every program that
+# is started with them: a library to load first, where to look for
+# libraries, converters to load. The launcher never starts a privileged
+# program with an owner's variables (see ``isolation``); refusing these
+# names as well means that a mistake there still loads nothing.
+LOADER_ENV_PREFIX = "LD_"
+LOADER_ENV_NAMES = frozenset({"GCONV_PATH", "GLIBC_TUNABLES"})
 APP_TOKEN_ENV = "EFP_APP_TOKEN"
-_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # The directory inside the runtime directory that holds static sites in hidden
 # mode. The leading dot keeps it apart from app ids.
 STATIC_AREA = ".static"
@@ -87,12 +94,19 @@ def build_command(manifest: Mapping[str, Any], *, python: str, port: int, base_p
     return Command(argv=argv, env=env)
 
 
+def is_loader_env_name(name: str) -> bool:
+    """A name the dynamic loader or the C library acts on, however it is spelled."""
+
+    upper = name.upper()
+    return upper.startswith(LOADER_ENV_PREFIX) or upper in LOADER_ENV_NAMES
+
+
 def owner_environment(stored: Mapping[str, str]) -> dict[str, str]:
-    """The owner-defined part of ``env.json``: no ``EFP_`` names, no reserved names."""
+    """The owner-defined part of ``env.json``: no ``EFP_`` names, no reserved names, nothing the loader obeys."""
 
     result: dict[str, str] = {}
     for key, value in stored.items():
-        if not _ENV_NAME_RE.match(key) or key.startswith("EFP_") or key in RESERVED_ENV_NAMES:
+        if not _ENV_NAME_RE.fullmatch(key) or key.startswith("EFP_") or key in RESERVED_ENV_NAMES or is_loader_env_name(key):
             continue
         if "\x00" in value:
             continue

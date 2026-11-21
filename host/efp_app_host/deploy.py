@@ -45,7 +45,8 @@ from .manifest import ManifestError, load_manifest
 from .models import AppRecord, Release, iso, utcnow
 from .procstats import free_bytes
 from .registry import AppNotFound, read_json, write_json_atomic
-from .runner import CommandTimeout, LogSink, Spawned
+from .runner import MAX_CAPTURE_BYTES, CommandTimeout, LogSink, Spawned
+from .safefs import UnsafePath, copy_from_app, fresh_dir, make_dir, own, remove_tree
 
 if TYPE_CHECKING:
     from .runtime import HostRuntime
@@ -64,47 +65,6 @@ class DeployError(Exception):
 
 class DeployInProgress(Exception):
     """Another deployment of the same app is queued or running."""
-
-
-def _chown(path: Path, uid: int, gid: int) -> None:
-    try:
-        os.chown(path, uid, gid)  # type: ignore[attr-defined]
-    except (OSError, AttributeError):
-        # EFS behind an access point owns every file itself; Windows has no chown.
-        pass
-
-
-def _chmod(path: Path, mode: int) -> None:
-    try:
-        os.chmod(path, mode)
-    except OSError:
-        pass
-
-
-def make_dir(path: Path, mode: int, *, uid: int | None = None, gid: int | None = None) -> None:
-    """Create ``path`` with ``mode`` (and owner). Directories that had to be
-    created above it are open for passing through, whatever the umask: what
-    must be closed is closed where it is named."""
-
-    missing = []
-    current = path
-    while not current.exists() and current != current.parent:
-        missing.append(current)
-        current = current.parent
-    for directory in reversed(missing):
-        try:
-            directory.mkdir()
-        except FileExistsError:
-            continue
-        if directory != path:
-            _chmod(directory, 0o755)
-    _chmod(path, mode)
-    if uid is not None:
-        _chown(path, uid, uid if gid is None else gid)
-
-
-def remove_tree(path: Path) -> None:
-    shutil.rmtree(path, ignore_errors=True)
 
 
 def free_port() -> int:
@@ -143,7 +103,27 @@ class ReleaseBuilder:
         remove_tree(self.static_dir(app_id, sha))
 
     # ---- commands ---------------------------------------------------------
-    def _spec(self, record: AppRecord, argv: list[str], *, cwd: Path, tmp: Path, readable: list[Path], writable: list[Path], venv_bin: Path | None) -> LaunchSpec:
+    def _spec(
+        self,
+        record: AppRecord,
+        argv: list[str],
+        *,
+        cwd: Path,
+        tmp: Path,
+        readable: list[Path],
+        writable: list[Path],
+        venv_bin: Path | None,
+        index: bool = False,
+    ) -> LaunchSpec:
+        """One command of a build.
+
+        ``index`` is for the one command that asks the package index: only
+        it gets the host's ``PIP_*`` settings (an index URL may carry a
+        password) and the files they name. Code of the app runs in every
+        command of a build - a ``.pth`` file of an installed package runs
+        in ``pip freeze`` - so the others get nothing they do not need.
+        """
+
         isolation = self.runtime.isolation
         if not isolation.ok:
             raise IsolationError(isolation.error or "no isolation is available")
@@ -152,9 +132,10 @@ class ReleaseBuilder:
             home=(tmp / "home").as_posix(),
             tmp=tmp.as_posix(),
             venv_bin=venv_bin.as_posix() if venv_bin else None,
+            index=index,
         )
         sandboxed = isolation.backend != BACKEND_PLAIN
-        extra = [path for path in pyenv.pip_readable_files(self.settings.passthrough_env) if os.path.exists(path)]
+        extra = [path for path in pyenv.pip_readable_files(self.settings.passthrough_env, index=index) if os.path.exists(path)]
         return LaunchSpec(
             argv=argv,
             env=env,
@@ -176,6 +157,8 @@ class ReleaseBuilder:
             result = await self.runtime.runner.run(spec, log=log, timeout=timeout, capture=capture)
         except CommandTimeout:
             raise DeployError(f"{what} did not finish in time") from None
+        if result.truncated:
+            raise DeployError(f"{what} printed more than the host keeps ({MAX_CAPTURE_BYTES // 1024} KiB)")
         if result.code != 0:
             if capture and result.output:
                 log(result.output)
@@ -183,18 +166,16 @@ class ReleaseBuilder:
         return result.output
 
     def _prepare_tmp(self, record: AppRecord, tmp: Path) -> None:
-        remove_tree(tmp)
-        make_dir(tmp.parent, 0o755)
-        make_dir(tmp, 0o700, uid=record.uid)
-        make_dir(tmp / "home", 0o700, uid=record.uid)
+        # Made and filled by root, handed to the app last: a process of the
+        # app that is running meanwhile cannot put a link where root works.
+        fresh_dir(tmp, 0o700, uid=record.uid, children=("home",))
 
     async def create_venv(self, record: AppRecord, sha: str, *, tmp: Path, log: LogSink, timeout: float) -> None:
         dirs = run_dirs(self.settings, self.paths, record.id, sha)
 
         def prepare() -> None:
             self._prepare_tmp(record, tmp)
-            remove_tree(dirs.venv)
-            make_dir(dirs.venv, 0o755, uid=record.uid)
+            fresh_dir(dirs.venv, 0o755, uid=record.uid)
 
         await asyncio.to_thread(prepare)
         spec = self._spec(record, pyenv.venv_command(dirs.venv), cwd=dirs.code, tmp=tmp, readable=[dirs.release], writable=[dirs.venv], venv_bin=None)
@@ -204,7 +185,10 @@ class ReleaseBuilder:
         """Install the release's dependencies and write its lock file."""
 
         dirs = run_dirs(self.settings, self.paths, record.id, sha)
-        plan = await asyncio.to_thread(lambda: pyenv.plan_install(dirs.code, manifest, wheels_dir=self.runtime.bundled_wheels_dir))
+        try:
+            plan = await asyncio.to_thread(lambda: pyenv.plan_install(dirs.code, manifest, wheels_dir=self.runtime.bundled_wheels_dir))
+        except pyenv.RequirementsError as exc:
+            raise DeployError(str(exc)) from None
         for note in plan.notes:
             log(note + "\n")
         allow_sdist = self.settings.pip_allow_sdist
@@ -213,8 +197,17 @@ class ReleaseBuilder:
             log("nothing to install\n")
         elif self.settings.is_hidden:
             wheels = tmp.parent / "wheels"
-            await asyncio.to_thread(lambda: (remove_tree(wheels), make_dir(wheels, 0o700, uid=record.uid)))
-            spec = self._spec(record, pyenv.wheel_command(dirs.python, plan, wheels, allow_sdist=allow_sdist), cwd=dirs.code, tmp=tmp, readable=[], writable=[], venv_bin=venv_bin)
+            await asyncio.to_thread(fresh_dir, wheels, 0o700, uid=record.uid)
+            spec = self._spec(
+                record,
+                pyenv.wheel_command(dirs.python, plan, wheels, allow_sdist=allow_sdist),
+                cwd=dirs.code,
+                tmp=tmp,
+                readable=[],
+                writable=[],
+                venv_bin=venv_bin,
+                index=True,
+            )
             await self._run(spec, "collecting the dependencies", log, timeout())
             await self._install_wheels(record, sha, wheels, tmp=tmp, log=log, timeout=timeout())
             await asyncio.to_thread(self._store_wheels, record.id, sha, wheels)
@@ -227,6 +220,7 @@ class ReleaseBuilder:
                 readable=[dirs.release],
                 writable=[dirs.venv],
                 venv_bin=venv_bin,
+                index=True,
             )
             await self._run(spec, "installing the dependencies", log, timeout())
         spec = self._spec(record, pyenv.freeze_command(dirs.python), cwd=dirs.code, tmp=tmp, readable=[dirs.release], writable=[], venv_bin=venv_bin)
@@ -236,7 +230,7 @@ class ReleaseBuilder:
             lock_file = self.paths.lock_file(record.id, sha)
             with open(lock_file, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(lock)
-            _chmod(lock_file, 0o644)
+            own(lock_file, 0o644, directory=False)
 
         await asyncio.to_thread(finish)
         log(f"{len([line for line in lock.splitlines() if line.strip()])} packages installed\n")
@@ -250,11 +244,18 @@ class ReleaseBuilder:
         await self._run(spec, "installing the dependencies", log, timeout)
 
     def _store_wheels(self, app_id: str, sha: str, wheels: Path) -> None:
+        """Keep the wheels pip collected, on the volume.
+
+        ``wheels`` belongs to the app's user, and a process of that user may
+        be running (the release that is current): what is copied is only
+        ever a plain file of that directory, never what a link there names.
+        """
+
         target = self.paths.wheels_dir(app_id, sha)
         remove_tree(target)
         make_dir(target, 0o700)
         for wheel in pyenv.cached_wheels(wheels):
-            shutil.copyfile(wheel, target / wheel.name)
+            copy_from_app(wheel, target / wheel.name)
         remove_tree(wheels)
 
     # ---- hidden mode: the copy on the container's own disk ------------------
@@ -294,11 +295,13 @@ class ReleaseBuilder:
             wheels = tmp.parent / "wheels"
 
             def fetch_wheels() -> None:
-                remove_tree(wheels)
-                make_dir(wheels, 0o700, uid=record.uid)
+                # Root's own directory, which the app's group may read: pip
+                # (the app's user) installs from it, and nothing of the app
+                # can put a link where root copies to.
+                fresh_dir(wheels, 0o750, uid=0, gid=record.uid)
                 for wheel in pyenv.cached_wheels(self.paths.wheels_dir(record.id, release.sha)):
                     shutil.copyfile(wheel, wheels / wheel.name)
-                    _chown(wheels / wheel.name, record.uid, record.uid)
+                    own(wheels / wheel.name, 0o640, uid=0, gid=record.uid, directory=False)
 
             await asyncio.to_thread(fetch_wheels)
             await self._install_wheels(record, release.sha, wheels, tmp=tmp, log=log, timeout=max(1.0, deadline - time.monotonic()))
@@ -334,7 +337,10 @@ class _Context:
     record: AppRecord
     bundle: Path
     deadline: float
+    # ``log`` takes what the deployment's processes print (the log's ceiling
+    # applies); ``say`` is the manager's own voice and is always written.
     log: LogSink
+    say: LogSink
     reuse: bool = False
     manifest: dict[str, Any] = field(default_factory=dict)
     entry_dir: str = ""
@@ -417,18 +423,21 @@ class Deployer:
         def log(text: str) -> None:
             self.jobs.append_log(job.id, redact(text))
 
+        def say(text: str) -> None:
+            self.jobs.append_log(job.id, redact(text), force=True)
+
         record = self.registry.find(job.app_id)
         proc = self.runtime.proc(job.app_id)
-        context = _Context(job=job, record=record, bundle=bundle, deadline=0.0, log=log)  # type: ignore[arg-type]
+        context = _Context(job=job, record=record, bundle=bundle, deadline=0.0, log=log, say=say)  # type: ignore[arg-type]
         error: dict[str, str] | None = None
         try:
             if self._slots.locked():
-                log("waiting for another deployment to finish\n")
+                say("waiting for another deployment to finish\n")
             async with self._slots:
                 job.status = JOB_RUNNING
                 self.jobs.save(job)
                 context.deadline = time.monotonic() + self.settings.deploy_timeout_seconds
-                log(f"deploying {job.sha} ({job.ref or 'no ref'}) requested by {job.requested_by or 'unknown'}\n")
+                say(f"deploying {job.sha} ({job.ref or 'no ref'}) requested by {job.requested_by or 'unknown'}\n")
                 proc.candidate_active = True
                 error = await self._pipeline(context)
         except asyncio.CancelledError:
@@ -441,9 +450,9 @@ class Deployer:
             proc.candidate_active = False
             await asyncio.shield(self._cleanup(context, failed=error is not None))
             if error:
-                log(f"FAILED at {error['step']}: {error['message']}\n")
+                say(f"FAILED at {error['step']}: {error['message']}\n")
             else:
-                log("deployment finished\n")
+                say("deployment finished\n")
             self.jobs.finish(job, error=error)
             self.jobs.prune()
 
@@ -460,7 +469,7 @@ class Deployer:
         ]
         for name, action in steps:
             self.jobs.begin_step(job, name)
-            context.log(f"--- {name} ---\n")
+            context.say(f"--- {name} ---\n")
             message: str | None = None
             try:
                 if context.deadline - time.monotonic() <= 0:
@@ -470,12 +479,15 @@ class Deployer:
                 message = f"the deployment took longer than {self.settings.deploy_timeout_seconds} seconds"
             except (DeployError, BundleError, ManifestError, IsolationError) as exc:
                 message = str(exc)
+            except UnsafePath as exc:
+                # Something of the app's sits where the host was about to work.
+                message = exc.strerror or str(exc)
             if message is not None:
                 self.jobs.end_step(job, name, STEP_FAILED)
                 return {"step": name, "message": message}
             self.jobs.end_step(job, name, outcome)
             if outcome == STEP_SKIPPED:
-                context.log("skipped\n")
+                context.say("skipped\n")
         return None
 
     async def _cleanup(self, context: _Context, *, failed: bool) -> None:
@@ -508,7 +520,7 @@ class Deployer:
         if retained and ready:
             context.reuse = True
             context.entry_dir = record.releases[sha].entry_dir
-            context.log(f"release {sha[:12]} is already on this host: reusing it\n")
+            context.say(f"release {sha[:12]} is already on this host: reusing it\n")
             return STEP_SKIPPED
         if sha == record.current_sha:
             raise DeployError("the files of the running release are damaged and cannot be rebuilt in place; deploy another commit")
@@ -528,7 +540,7 @@ class Deployer:
         unpacked = await asyncio.to_thread(unpack)
         context.entry_dir = unpacked.entry_dir
         where = f"'{unpacked.entry_dir}'" if unpacked.entry_dir else "the root of the bundle"
-        context.log(f"unpacked {unpacked.files} files ({unpacked.bytes} bytes) from {where}\n")
+        context.say(f"unpacked {unpacked.files} files ({unpacked.bytes} bytes) from {where}\n")
         return STEP_SUCCEEDED
 
     async def _manifest(self, context: _Context) -> str:
@@ -545,7 +557,7 @@ class Deployer:
             return manifest
 
         context.manifest = await asyncio.to_thread(load)
-        context.log(f"{context.manifest['name']}: type {context.manifest['type']}\n")
+        context.say(f"{context.manifest['name']}: type {context.manifest['type']}\n")
         return STEP_SUCCEEDED
 
     async def _environment(self, context: _Context) -> str:
@@ -598,7 +610,7 @@ class Deployer:
         await asyncio.to_thread(self.builder._prepare_tmp, record, tmp)
         context.candidate_port = free_port()
         spec = self.runtime.run_spec(record, release, port=context.candidate_port, tmp=tmp)
-        context.log(f"$ {' '.join(spec.argv)}\n")
+        context.say(f"$ {' '.join(spec.argv)}\n")
         context.candidate = await self.runtime.runner.spawn(spec, log=context.log)
         await asyncio.sleep(CANDIDATE_GRACE_SECONDS if self.runtime.candidate_grace is None else self.runtime.candidate_grace)
         if context.candidate.returncode is not None:
@@ -613,15 +625,20 @@ class Deployer:
         url = health_url(record, release, port=context.candidate_port)
         timeout = int(context.manifest.get("startup_timeout") or 60)
         deadline = time.monotonic() + timeout
-        context.log(f"waiting up to {timeout} seconds for GET {release.manifest.get('health_path') or '/'} to answer\n")
+        context.say(f"waiting up to {timeout} seconds for GET {release.manifest.get('health_path') or '/'} to answer\n")
         try:
             while True:
                 if context.candidate.returncode is not None:
                     raise DeployError(f"the app exited while starting (exit code {context.candidate.returncode}); the log above says why")
                 status = await self.runtime.health(url)
                 if status is not None and status < 500:
-                    context.log(f"healthy (HTTP {status})\n")
-                    return STEP_SUCCEEDED
+                    # The answer must come from the candidate, not from whoever else took its port.
+                    owners = await self.runtime.listener_owners(context.candidate_port)
+                    if owners is None or owners == {record.uid}:
+                        context.say(f"healthy (HTTP {status})\n")
+                        return STEP_SUCCEEDED
+                    if owners:
+                        raise DeployError(f"port {context.candidate_port}, which the new release was given for its check, is held by another user's process")
                 if time.monotonic() >= deadline:
                     answered = f"last answer: HTTP {status}" if status is not None else "it never answered"
                     raise DeployError(f"the app was not healthy within {timeout} seconds ({answered})")
@@ -637,5 +654,5 @@ class Deployer:
         # again only the app.
         self.runtime.proc(record.id).candidate_active = False
         await self.runtime.switch_release(record.id, release)
-        context.log(f"release {release.sha[:12]} is now current\n")
+        context.say(f"release {release.sha[:12]} is now current\n")
         return STEP_SUCCEEDED

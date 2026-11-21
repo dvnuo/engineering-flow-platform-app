@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
+# What the Portal may send as an app id (it sends UUIDs). Used with fullmatch.
+APP_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 RESERVED_SLUGS = frozenset(
     {"_efp", "api", "app", "apps", "admin", "assets", "auth", "efp", "health", "login", "logout", "portal", "static", "www"}
 )
@@ -53,6 +55,12 @@ def parse_iso(value: str | None) -> datetime | None:
     if not value:
         return None
     return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+def is_valid_app_id(app_id: object) -> bool:
+    """An app id becomes a directory name, a program name of the supervisor and part of file names."""
+
+    return isinstance(app_id, str) and bool(APP_ID_RE.fullmatch(app_id))
 
 
 def is_valid_slug(slug: str) -> bool:

@@ -8,8 +8,13 @@ directory somewhere below it. Nothing in the archive is trusted:
   whole bundle, wherever in the archive it sits;
 - devices, FIFOs and other special members reject the bundle;
 - a symbolic or hard link must point inside the entry directory;
-- symbolic links are created last and then checked against the real
-  filesystem, so that no file is ever written through a link.
+- symbolic links are created last, so that no file is ever written through
+  a link, and when all of them exist every one is resolved on the real
+  filesystem: a link whose target walks through another link ("a/up/../..")
+  can only be judged once that other link is there.
+
+Only gzip is read: the other formats ``tarfile`` knows bring decoders whose
+memory the archive itself chooses.
 """
 
 from __future__ import annotations
@@ -111,9 +116,9 @@ def unpack_bundle(
     if entry_dir and not is_safe_relative_path(entry_dir):
         raise BundleError(f"entry_dir {entry_dir!r} must be a relative path without '..'")
     try:
-        archive = tarfile.open(bundle, mode="r:*")
+        archive = tarfile.open(bundle, mode="r:gz")
     except (tarfile.TarError, OSError, EOFError) as exc:
-        raise BundleError(f"the bundle is not a readable tar archive: {exc}") from None
+        raise BundleError(f"the bundle is not a readable tar archive (gzip): {exc}") from None
 
     with archive:
         try:
@@ -192,21 +197,43 @@ def unpack_bundle(
             os.chmod(target, 0o755 if member.mode & stat.S_IXUSR else 0o644)
             files += 1
 
-        for rel, linkname in symlinks:
-            target = os.path.join(dest_real, *rel.split("/"))
-            _make_dir(os.path.dirname(target), dest_real)
-            if os.path.lexists(target):
-                raise BundleError(f"the bundle holds {rel!r} both as a link and as something else")
-            try:
-                os.symlink(linkname, target)
-            except (OSError, NotImplementedError) as exc:
-                raise BundleError(f"cannot create the link {rel!r}: {exc}") from None
-            real = os.path.realpath(target)
-            if real != dest_real and not real.startswith(dest_real + os.sep):
-                os.unlink(target)
-                raise BundleError(f"link pointing outside the entry directory: {rel!r} -> {linkname!r}")
+        created: list[str] = []
+        try:
+            for rel, linkname in symlinks:
+                target = os.path.join(dest_real, *rel.split("/"))
+                _make_dir(os.path.dirname(target), dest_real)
+                if os.path.lexists(target):
+                    raise BundleError(f"the bundle holds {rel!r} both as a link and as something else")
+                try:
+                    os.symlink(linkname, target)
+                except (OSError, NotImplementedError) as exc:
+                    raise BundleError(f"cannot create the link {rel!r}: {exc}") from None
+                created.append(target)
+                if not _lands_inside(target, dest_real):
+                    raise BundleError(f"link pointing outside the entry directory: {rel!r} -> {linkname!r}")
+            # Once more, now that every link exists: the first look resolved a
+            # target that passes through a later link as plain text, and
+            # "later/../.." is inside as text and outside on the disk.
+            for (rel, linkname), target in zip(symlinks, created):
+                if not _lands_inside(target, dest_real):
+                    raise BundleError(f"link pointing outside the entry directory: {rel!r} -> {linkname!r}")
+        except BundleError:
+            # Leave no link behind that leads out, whatever the caller does with the rest.
+            for target in created:
+                try:
+                    os.unlink(target)
+                except OSError:
+                    pass
+            raise
 
     return Unpacked(entry_dir=chosen, files=files, bytes=total, skipped_prefix=skipped)
+
+
+def _lands_inside(path: str, dest_real: str) -> bool:
+    """Whether ``path``, with every link in it followed, is ``dest_real`` or below it."""
+
+    real = os.path.realpath(path)
+    return real == dest_real or real.startswith(dest_real + os.sep)
 
 
 def _make_dir(path: str, dest_real: str) -> None:

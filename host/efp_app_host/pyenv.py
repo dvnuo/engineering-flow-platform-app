@@ -23,6 +23,13 @@ _NAME_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)")
 _INCLUDE_RE = re.compile(r"^(?:-r|--requirement)(?:\s+|=)(\S+)")
 _EGG_RE = re.compile(r"[#&]egg=([A-Za-z0-9][A-Za-z0-9._-]*)")
 _MAX_INCLUDE_DEPTH = 5
+# The manager reads the requirements itself (as root, into memory) to see
+# what it has to add: a list of packages is a few kilobytes.
+MAX_REQUIREMENTS_BYTES = 1024 * 1024
+
+
+class RequirementsError(ValueError):
+    """The requirements file is not something the host reads."""
 
 
 def normalize_name(name: str) -> str:
@@ -80,8 +87,10 @@ def collect_requirement_names(code_dir: Path, requirements: str) -> set[str] | N
         if root != path and root not in path.parents:
             continue
         try:
+            if path.stat().st_size > MAX_REQUIREMENTS_BYTES:
+                raise RequirementsError(f"{path.name} is larger than {MAX_REQUIREMENTS_BYTES // 1024} KiB: not a list of packages the host can read")
             with open(path, "r", encoding="utf-8", errors="replace") as handle:
-                found, includes = requirement_names(handle.read())
+                found, includes = requirement_names(handle.read(MAX_REQUIREMENTS_BYTES + 1))
         except OSError:
             continue
         names |= found
@@ -204,14 +213,20 @@ def freeze_command(python: str) -> list[str]:
     return _pip(python) + ["freeze"]
 
 
-def pip_environment(passthrough: Mapping[str, str], *, home: str, tmp: str, venv_bin: str | None = None) -> dict[str, str]:
+def pip_environment(passthrough: Mapping[str, str], *, home: str, tmp: str, venv_bin: str | None = None, index: bool = True) -> dict[str, str]:
     """The environment of a pip run: the host's pip settings and nothing else.
+
+    ``index=False`` is for the commands that never ask the package index
+    (the virtual environment, an install from local wheels, ``pip freeze``):
+    they get none of the host's ``PIP_*`` settings. Those may hold the
+    password of the index, and code of the app runs inside every one of
+    these commands.
 
     The cache is switched off on the command line only (``--no-cache-dir``):
     pip reads ``PIP_NO_CACHE_DIR`` in a way that differs between versions.
     """
 
-    env = dict(passthrough)
+    env = {key: value for key, value in passthrough.items() if index or not key.startswith("PIP_")}
     path = "/usr/local/bin:/usr/bin:/bin"
     env.update(
         {
@@ -227,10 +242,15 @@ def pip_environment(passthrough: Mapping[str, str], *, home: str, tmp: str, venv
     return env
 
 
-def pip_readable_files(passthrough: Mapping[str, str]) -> list[str]:
-    """Absolute files the pip settings name (certificates, a config file)."""
+def pip_readable_files(passthrough: Mapping[str, str], *, index: bool = True) -> list[str]:
+    """Absolute files the pip settings name (certificates, a config file).
+
+    None for a command that does not ask the index (``index=False``).
+    """
 
     files: list[str] = []
+    if not index:
+        return files
     for key in PIP_FILE_VARIABLES:
         value = passthrough.get(key) or ""
         if value.startswith("/") and value not in files:

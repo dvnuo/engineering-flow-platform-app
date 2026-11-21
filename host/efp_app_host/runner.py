@@ -3,9 +3,11 @@
 Used by deployments (virtual environment, pip, the health-check candidate)
 and by the restore of hidden mode. Every command goes through the launcher,
 so it runs as the app's user inside the app's isolation, never as the
-manager. Output is handed on line by line; a command that outlives its
-timeout, or whose caller is cancelled, is killed with its whole process
-group.
+manager. Output is handed on in whole lines, as many at once as arrived
+together: a process that prints as fast as it can costs the manager one
+call per read, not one per line. Output that is kept in memory (``capture``)
+has a ceiling. A command that outlives its timeout, or whose caller is
+cancelled, is killed with its whole process group.
 """
 
 from __future__ import annotations
@@ -22,6 +24,10 @@ from .isolation import LaunchSpec, launcher_command
 
 LogSink = Callable[[str], None]
 KILL_GRACE_SECONDS = 5.0
+# What ``capture`` keeps at most. The one command whose output is captured
+# prints a list of package names; the process that prints it is the app's.
+MAX_CAPTURE_BYTES = 1024 * 1024
+_LONG_LINE_BYTES = 256 * 1024
 
 
 class CommandTimeout(Exception):
@@ -32,6 +38,8 @@ class CommandTimeout(Exception):
 class RunResult:
     code: int
     output: str = ""
+    # ``capture``: the command printed more than MAX_CAPTURE_BYTES; ``output`` is only the start.
+    truncated: bool = False
 
 
 class Spawned(Protocol):
@@ -52,17 +60,28 @@ class CommandRunner(Protocol):
 
 
 class _LineBuffer:
-    def __init__(self, sink: LogSink | None, keep: list[str] | None):
+    """Turns what a process writes into text that ends at a line break.
+
+    Each call of the sink gets every complete line that has arrived, in one
+    piece. With ``keep`` the text is collected instead, up to ``limit``
+    bytes; ``truncated`` says that more came.
+    """
+
+    def __init__(self, sink: LogSink | None, keep: list[str] | None, *, limit: int = MAX_CAPTURE_BYTES):
         self._sink = sink
         self._keep = keep
+        self._limit = limit
+        self._kept = 0
         self._pending = b""
+        self.truncated = False
 
     def feed(self, data: bytes) -> None:
         self._pending += data
-        while b"\n" in self._pending:
-            raw, self._pending = self._pending.split(b"\n", 1)
-            self._emit(raw)
-        if len(self._pending) > 256 * 1024:
+        cut = self._pending.rfind(b"\n")
+        if cut >= 0:
+            ready, self._pending = self._pending[: cut + 1], self._pending[cut + 1 :]
+            self._emit(ready)
+        if len(self._pending) > _LONG_LINE_BYTES:
             self._emit(self._pending)
             self._pending = b""
 
@@ -72,18 +91,32 @@ class _LineBuffer:
             self._pending = b""
 
     def _emit(self, raw: bytes) -> None:
-        line = raw.decode("utf-8", "replace").rstrip("\r") + "\n"
+        text = raw.decode("utf-8", "replace").replace("\r\n", "\n")
+        if text.endswith("\r"):
+            text = text[:-1]
+        if not text.endswith("\n"):
+            text += "\n"
         if self._keep is not None:
-            self._keep.append(line)
+            # Once something was dropped nothing more is kept: what is kept has no hole.
+            if self.truncated or self._kept + len(text) > self._limit:
+                self.truncated = True
+                return
+            self._kept += len(text)
+            self._keep.append(text)
         elif self._sink is not None:
-            self._sink(line)
+            self._sink(text)
 
 
 class _Process:
-    def __init__(self, process: asyncio.subprocess.Process, pump: "asyncio.Task[None]", spec_file: Path):
+    def __init__(self, process: asyncio.subprocess.Process, pump: "asyncio.Task[None]", spec_file: Path, buffer: _LineBuffer):
         self._process = process
         self._pump = pump
         self._spec_file = spec_file
+        self._buffer = buffer
+
+    @property
+    def truncated(self) -> bool:
+        return self._buffer.truncated
 
     def _forget_spec(self) -> None:
         # The launcher removes the file as soon as it has read it; this only
@@ -160,17 +193,24 @@ class LauncherRunner:
         buffer = _LineBuffer(log, keep)
 
         async def pump() -> None:
+            import signal
+
             assert process.stdout is not None
+            stopped = False
             try:
                 while True:
                     data = await process.stdout.read(65536)
                     if not data:
                         break
                     buffer.feed(data)
+                    if buffer.truncated and not stopped:
+                        # Nothing more of it will be kept: no reason to let it go on printing.
+                        stopped = True
+                        _signal_group(process.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
             finally:
                 buffer.close()
 
-        return _Process(process, asyncio.get_running_loop().create_task(pump()), spec_file)
+        return _Process(process, asyncio.get_running_loop().create_task(pump()), spec_file, buffer)
 
     async def run(self, spec: LaunchSpec, *, log: LogSink | None = None, timeout: float | None = None, capture: bool = False) -> RunResult:
         keep: list[str] | None = [] if capture else None
@@ -183,7 +223,7 @@ class LauncherRunner:
         except BaseException:
             await asyncio.shield(process.stop())
             raise
-        return RunResult(code=code, output="".join(keep or []))
+        return RunResult(code=code, output="".join(keep or []), truncated=process.truncated)
 
     async def spawn(self, spec: LaunchSpec, *, log: LogSink | None = None) -> Spawned:
         return await self._start(spec, log, None)

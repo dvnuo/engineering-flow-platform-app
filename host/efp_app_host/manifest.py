@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -78,7 +79,8 @@ def validate_manifest(data: Any) -> dict[str, Any]:
     entry = data.get("entry")
     command = data.get("command")
     if app_type in ("fastapi", "flask"):
-        if not isinstance(entry, str) or not _MODULE_ATTR_RE.match(entry):
+        # fullmatch, here and below: "$" alone would let a value end in a line break.
+        if not isinstance(entry, str) or not _MODULE_ATTR_RE.fullmatch(entry):
             problems.append(f"entry must be module:attribute for a {app_type} app (for example main:app)")
         command = None
     elif app_type in ("streamlit", "gradio"):
@@ -113,7 +115,7 @@ def validate_manifest(data: Any) -> dict[str, Any]:
     health_path = data.get("health_path")
     if health_path is None or health_path == "":
         health_path = DEFAULT_HEALTH_PATH
-    if not isinstance(health_path, str) or len(health_path) > 200 or not _HEALTH_PATH_RE.match(health_path):
+    if not isinstance(health_path, str) or len(health_path) > 200 or not _HEALTH_PATH_RE.fullmatch(health_path):
         problems.append("health_path must start with / and hold only URL characters")
 
     startup_timeout = data.get("startup_timeout")
@@ -172,22 +174,45 @@ def load_manifest(code_dir: Path) -> dict[str, Any]:
     return manifest
 
 
+def stays_inside(code_dir: Path, relative: str) -> bool:
+    """Whether ``relative``, with every link in it followed, is still in ``code_dir``.
+
+    A path of the manifest is plain text (no ``..``), but a directory or a
+    file of the app may be a link. The gateway serves a static app from
+    ``entry`` and does not look at links in that part of the path; the host
+    reads the other two itself.
+    """
+
+    root = os.path.realpath(code_dir)
+    real = os.path.realpath(os.path.join(root, *relative.split("/")))
+    return real == root or real.startswith(root + os.sep)
+
+
 def check_files(manifest: dict[str, Any], code_dir: Path) -> None:
-    """The files the manifest points at must exist in the entry directory."""
+    """The files the manifest points at must exist in the entry directory, and nowhere else."""
 
     problems: list[str] = []
     app_type = manifest["type"]
     entry = manifest.get("entry")
-    if app_type in ("streamlit", "gradio") and not (code_dir / entry).is_file():
+    if app_type in ("streamlit", "gradio", "static") and not stays_inside(code_dir, entry):
+        problems.append(f"entry {entry!r} leads out of the entry directory (a link)")
+    elif app_type in ("streamlit", "gradio") and not (code_dir / entry).is_file():
         problems.append(f"entry {entry!r} does not exist in the entry directory")
-    if app_type == "static" and not (code_dir / entry).is_dir():
+    elif app_type == "static" and not (code_dir / entry).is_dir():
         problems.append(f"entry {entry!r} is not a directory in the entry directory")
     if app_type in ("fastapi", "flask"):
         module = entry.split(":", 1)[0].replace(".", "/")
         if not (code_dir / f"{module}.py").is_file() and not (code_dir / module / "__init__.py").is_file():
             problems.append(f"entry {entry!r}: {module}.py does not exist in the entry directory")
-    if manifest.get("icon") and not (code_dir / manifest["icon"]).is_file():
-        problems.append(f"icon {manifest['icon']!r} does not exist in the entry directory")
+    icon = manifest.get("icon")
+    if icon and not stays_inside(code_dir, icon):
+        problems.append(f"icon {icon!r} leads out of the entry directory (a link)")
+    elif icon and not (code_dir / icon).is_file():
+        problems.append(f"icon {icon!r} does not exist in the entry directory")
+    requirements = manifest.get("requirements")
+    # A missing requirements file means "no dependencies"; one that is there must be the app's own.
+    if requirements and not stays_inside(code_dir, requirements):
+        problems.append(f"requirements {requirements!r} leads out of the entry directory (a link)")
     if problems:
         raise ManifestError(problems)
 

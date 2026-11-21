@@ -94,3 +94,60 @@ def test_redactor_blanks_secrets():
     assert redact("Authorization: Bearer host-token-123") == "Authorization: Bearer ***"
     assert redact("token=efpa_abcdef-longer and efpa_abcdef") == "token=*** and ***"
     assert redact("a short word stays") == "a short word stays"
+
+
+def test_a_job_id_may_not_end_in_a_line_break():
+    assert is_job_id("0" * 8 + "-0000-0000-0000-" + "0" * 12)
+    assert not is_job_id("0" * 8 + "-0000-0000-0000-" + "0" * 12 + "\n")
+
+
+def test_the_log_of_a_deployment_has_a_ceiling_but_the_managers_own_lines_are_always_written(tmp_path, monkeypatch):
+    from efp_app_host import jobs as jobs_module
+
+    monkeypatch.setattr(jobs_module, "MAX_JOB_LOG_BYTES", 1000)
+    store = JobStore(tmp_path / "jobs")
+    job = store.create("app-1", "a" * 40)
+    store.append_log(job.id, "--- start ---\n", force=True)
+    store.append_log(job.id, "a" * 600 + "\n")
+    store.append_log(job.id, "b" * 600 + "\n")  # goes over: cut, with one line that says so
+    for _ in range(200):
+        store.append_log(job.id, "c" * 600 + "\n")  # dropped
+    store.append_log(job.id, "FAILED at health: it never answered\n", force=True)
+    data, size = store.read_log(job.id)
+    text = data.decode("utf-8")
+    assert size == len(data) < 1000 + 300
+    assert text.startswith("--- start ---\n" + "a" * 600) and "c" not in text
+    assert text.count("the rest of the output is not kept") == 1
+    assert text.endswith("FAILED at health: it never answered\n")
+    assert "FAILED at health" in store.public(job)["log_tail"]
+
+
+def test_appending_to_a_log_does_not_wait_for_the_disk(tmp_path, monkeypatch):
+    import threading
+
+    from efp_app_host import jobs as jobs_module
+
+    release = threading.Event()
+    opened = threading.Event()
+    real_open = open
+
+    def slow_open(path, mode="r", *args, **kwargs):
+        if mode == "ab":
+            opened.set()
+            assert release.wait(30), "the test never released the writer"
+        return real_open(path, mode, *args, **kwargs)
+
+    store = JobStore(tmp_path / "jobs")
+    job = store.create("app-1", "a" * 40)
+    monkeypatch.setattr(jobs_module, "open", slow_open, raising=False)
+    try:
+        # The volume is stuck; whoever produces the lines (the event loop) is not.
+        for index in range(1000):
+            store.append_log(job.id, f"line {index}\n")
+        assert opened.wait(30)
+        assert store.log_path(job.id).stat().st_size == 0
+    finally:
+        release.set()
+    # A reader waits for what was queued before it looks.
+    data, _ = store.read_log(job.id)
+    assert data.decode("utf-8").splitlines() == [f"line {index}" for index in range(1000)]

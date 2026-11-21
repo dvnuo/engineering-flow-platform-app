@@ -18,9 +18,21 @@ as one user, so file ownership on the volume separates nothing. Two modes:
                       ``no_new_privs`` and restricts itself with Landlock.
 
 ``hidden``
-    The volume sits below a directory only root can enter. The process is
-    simply started as the app's uid (backend ``plain``); what it runs lives
-    on the container's own disk, readable by that uid alone.
+    The volume sits below a directory only root can enter. The launcher
+    drops to the app's uid, sets ``no_new_privs`` and starts the app
+    (backend ``plain``); what it runs lives on the container's own disk,
+    readable by that uid alone.
+
+Whose environment a stage gets: an owner chooses the variables of their app,
+and the dynamic loader obeys some of them (``LD_PRELOAD`` ...) in any program
+that is started with them. So bubblewrap and ``setpriv`` - root, or the
+app's user but still outside the app's view - are started with a fixed
+environment (``STAGE_ENVIRONMENT``). The app's own environment travels in a
+descriptor the launcher leaves open, never on a command line (other apps can
+read those where there is no PID namespace), and is installed by the last
+stage, which already is the app's user inside the app's view
+(``ENV_STAGE_CODE``). Where the launcher itself is the last stage (Landlock,
+plain) it hands the environment to the app's ``exec`` directly.
 
 ``LaunchSpec`` is the complete description of one process; the manager writes
 it to a root-only file and ``efp_app_host.launcher`` turns it into an
@@ -43,6 +55,7 @@ from typing import Any, Callable
 from .config import ISOLATION_HIDDEN, ISOLATION_SANDBOX, Settings
 from .landlock import LandlockPlan
 from .paths import HostPaths
+from .pyenv import base_python
 
 BACKEND_BWRAP = "bwrap"
 BACKEND_BWRAP_USERNS = "bwrap-userns"
@@ -52,11 +65,36 @@ SANDBOX_ORDER = (BACKEND_BWRAP, BACKEND_BWRAP_USERNS, BACKEND_LANDLOCK)
 
 DEFAULT_NOFILE = 4096
 PROBE_TIMEOUT_SECONDS = 30
-# Signals the wrapper processes of bubblewrap ignore so that the app, which
-# gets the same signal through its process group, can shut down by itself.
-DEFAULT_SIGNALS = "TERM"
 # Size of /dev/shm in a bubblewrap view (what Docker gives a container).
 SHM_BYTES = 64 * 1024 * 1024
+
+# What bubblewrap and setpriv are started with: nothing an owner chose.
+STAGE_ENVIRONMENT = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+# Stands in an ``ExecPlan`` for the number of the descriptor that holds the
+# app's environment; the launcher knows the number only when it has opened it.
+ENV_DESCRIPTOR = "{env-descriptor}"
+# The last stage of a bubblewrap chain, run by the host's own interpreter
+# (``-I -S``: nothing of the directory it is started in, no site-packages).
+# By now the process is the app's user inside the app's view. It reads the
+# app's environment (JSON) from the descriptor, gives SIGTERM its default
+# meaning back (the wrappers before it ignore the signal so that the app,
+# which gets it through the process group, can shut down by itself) and
+# becomes the app.
+ENV_STAGE_CODE = "\n".join(
+    [
+        "import json, os, signal, sys",
+        "descriptor = int(sys.argv[1])",
+        "parts = []",
+        "while True:",
+        "    part = os.read(descriptor, 65536)",
+        "    if not part:",
+        "        break",
+        "    parts.append(part)",
+        "os.close(descriptor)",
+        "signal.signal(signal.SIGTERM, signal.SIG_DFL)",
+        "os.execve(sys.argv[2], sys.argv[2:], json.loads(b''.join(parts)))",
+    ]
+)
 
 # Directories below /etc that hold the host's own configuration: an app sees
 # them empty (bubblewrap) or not at all (Landlock).
@@ -108,7 +146,8 @@ class SystemLayout:
     optional: list[str] = field(default_factory=lambda: list(_OPTIONAL_READ_ONLY))
     bwrap: str = "/usr/bin/bwrap"
     setpriv: str = "/usr/bin/setpriv"
-    env: str = "/usr/bin/env"
+    # The interpreter of the last stage of a bubblewrap chain (``ENV_STAGE_CODE``).
+    python: str = "/usr/local/bin/python3"
 
     @classmethod
     def detect(cls) -> "SystemLayout":
@@ -136,7 +175,7 @@ class SystemLayout:
             etc_entries=[path for path in entries if path not in masks and path not in _ETC_NEVER],
             bwrap=shutil.which("bwrap") or "/usr/bin/bwrap",
             setpriv=shutil.which("setpriv") or "/usr/bin/setpriv",
-            env=shutil.which("env") or "/usr/bin/env",
+            python=base_python(),
         )
 
 
@@ -145,12 +184,20 @@ class ExecPlan:
     """What the launcher does with a ``LaunchSpec``."""
 
     argv: list[str]
-    # bubblewrap's own processes must outlive the stop signal; see DEFAULT_SIGNALS.
+    # bubblewrap's own processes must outlive the stop signal; the last stage
+    # gives the signal its meaning back (ENV_STAGE_CODE).
     ignore_signals: bool = False
     # The launcher itself switches to the app's user before the exec.
     drop_in_process: bool = False
+    # The launcher itself sets no_new_privs (no setpriv in the chain does).
+    no_new_privs: bool = False
     landlock: LandlockPlan | None = None
     chdir: str | None = None
+    # ``argv`` starts with stages that must not see the app's environment:
+    # they get STAGE_ENVIRONMENT, and the app's travels in a descriptor whose
+    # number replaces ENV_DESCRIPTOR in ``argv``. False: ``argv`` is the app
+    # itself and the launcher gives it its environment directly.
+    env_by_descriptor: bool = False
 
 
 def _setpriv(spec: LaunchSpec, layout: SystemLayout, current_uid: int) -> list[str]:
@@ -171,8 +218,10 @@ def _setpriv(spec: LaunchSpec, layout: SystemLayout, current_uid: int) -> list[s
     ]
 
 
-def _restore_signals(layout: SystemLayout) -> list[str]:
-    return [layout.env, f"--default-signal={DEFAULT_SIGNALS}", "--"]
+def _env_stage(layout: SystemLayout) -> list[str]:
+    """The last stage of a bubblewrap chain; the app's command line follows it."""
+
+    return [layout.python, "-I", "-S", "-c", ENV_STAGE_CODE, ENV_DESCRIPTOR]
 
 
 def _ancestors(path: str) -> list[str]:
@@ -269,20 +318,24 @@ def build_exec_plan(spec: LaunchSpec, layout: SystemLayout, *, current_uid: int 
     if spec.backend == BACKEND_BWRAP:
         if current_uid != 0:
             raise IsolationError("the bwrap backend needs the launcher to run as root")
-        argv = _bwrap(spec, layout, user_namespace=False) + _setpriv(spec, layout, current_uid) + _restore_signals(layout) + list(spec.argv)
-        return ExecPlan(argv=argv, ignore_signals=True)
+        argv = _bwrap(spec, layout, user_namespace=False) + _setpriv(spec, layout, current_uid) + _env_stage(layout) + list(spec.argv)
+        return ExecPlan(argv=argv, ignore_signals=True, env_by_descriptor=True)
     if spec.backend == BACKEND_BWRAP_USERNS:
-        argv = _setpriv(spec, layout, current_uid) + _bwrap(spec, layout, user_namespace=True) + _restore_signals(layout) + list(spec.argv)
-        return ExecPlan(argv=argv, ignore_signals=True)
+        argv = _setpriv(spec, layout, current_uid) + _bwrap(spec, layout, user_namespace=True) + _env_stage(layout) + list(spec.argv)
+        return ExecPlan(argv=argv, ignore_signals=True, env_by_descriptor=True)
     if spec.backend == BACKEND_LANDLOCK:
         plan = LandlockPlan(
             read_exec=list(layout.dirs) + list(layout.etc_entries) + list(layout.optional) + ["/proc"] + list(spec.ro_paths),
             read_write=list(spec.rw_paths) + ([spec.tmp_dir] if spec.tmp_dir else []) + ["/dev/shm"],
             devices=["/dev"],
         )
-        return ExecPlan(argv=list(spec.argv), drop_in_process=current_uid != spec.uid, landlock=plan, chdir=spec.cwd)
+        return ExecPlan(argv=list(spec.argv), drop_in_process=current_uid != spec.uid, no_new_privs=True, landlock=plan, chdir=spec.cwd)
     if spec.backend == BACKEND_PLAIN:
-        return ExecPlan(argv=_setpriv(spec, layout, current_uid) + list(spec.argv), chdir=spec.cwd)
+        # No setpriv: it would be root with the app's environment for a
+        # moment. The launcher drops to the app's user itself, as it does
+        # for Landlock, and the app is the first program to see the
+        # environment.
+        return ExecPlan(argv=list(spec.argv), drop_in_process=current_uid != spec.uid, no_new_privs=True, chdir=spec.cwd)
     raise IsolationError(f"unknown isolation backend {spec.backend!r}")
 
 

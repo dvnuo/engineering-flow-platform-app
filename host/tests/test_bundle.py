@@ -214,3 +214,55 @@ def test_nothing_is_written_through_a_link(tmp_path):
     with pytest.raises(BundleError, match="both as a link and as something else"):
         unpack_bundle(bundle, tmp_path / "code")
     assert list(outside.iterdir()) == []
+
+
+def _link_through_a_later_link(archive: tarfile.TarFile) -> None:
+    # The order of a sorted archive (git archive, a GitHub tarball): "site" comes
+    # before "z/...". Read as text, "z/a/up/../../.." is the entry directory itself.
+    # With "z/a/up" in place (a link to the entry directory) it is three levels above.
+    _add(archive, "site", kind=tarfile.SYMTYPE, linkname="z/a/up/../../..")
+    _add(archive, "z", kind=tarfile.DIRTYPE, mode=0o755)
+    _add(archive, "z/a", kind=tarfile.DIRTYPE, mode=0o755)
+    _add(archive, "z/a/up", kind=tarfile.SYMTYPE, linkname="../..")
+
+
+def test_a_link_through_a_link_that_comes_later_cannot_climb_out(tmp_path, links):
+    # Runs everywhere: with real links on Linux, with the model of conftest.Links elsewhere.
+    bundle = make_bundle(tmp_path / "b.tar.gz", {"efp-app.json": '{"name": "A", "type": "static", "entry": "site"}'}, extra=_link_through_a_later_link)
+    code = tmp_path / "store" / "apps" / "app-1" / "releases" / "abc" / "code"
+    with pytest.raises(BundleError, match="outside"):
+        unpack_bundle(bundle, code)
+    # Neither link is left behind: nothing in the directory leads out of it,
+    # whatever the caller does with what was unpacked so far.
+    assert not links.is_link(code / "site") and not links.is_link(code / "z" / "a" / "up")
+    assert (code / "efp-app.json").is_file() and not (code / "site").exists()
+
+
+def test_the_same_two_links_in_the_other_order_are_refused_too(tmp_path, links):
+    def members(archive: tarfile.TarFile) -> None:
+        _add(archive, "a/b/up", kind=tarfile.SYMTYPE, linkname="../..")
+        _add(archive, "site", kind=tarfile.SYMTYPE, linkname="a/b/up/../../..")
+
+    bundle = make_bundle(tmp_path / "b.tar.gz", {"efp-app.json": MANIFEST}, extra=members)
+    with pytest.raises(BundleError, match="outside"):
+        unpack_bundle(bundle, tmp_path / "work" / "code")
+    assert not links.is_link(tmp_path / "work" / "code" / "site") and not links.is_link(tmp_path / "work" / "code" / "a" / "b" / "up")
+
+
+def test_links_inside_through_other_links_are_still_fine(tmp_path, links):
+    def members(archive: tarfile.TarFile) -> None:
+        _add(archive, "current", kind=tarfile.SYMTYPE, linkname="releases/latest/site")
+        _add(archive, "releases/latest", kind=tarfile.SYMTYPE, linkname="v2")
+
+    bundle = make_bundle(tmp_path / "b.tar.gz", {"efp-app.json": MANIFEST, "releases/v2/site/index.html": "two"}, extra=members)
+    unpack_bundle(bundle, tmp_path / "code")
+    assert links.is_link(tmp_path / "code" / "current") and links.is_link(tmp_path / "code" / "releases" / "latest")
+
+
+def test_only_gzip_is_read(tmp_path):
+    # tarfile would open these too; their decoders use as much memory as the archive asks for.
+    for mode, name in (("w:xz", "b.tar.xz"), ("w:bz2", "b.tar.bz2"), ("w", "b.tar")):
+        with tarfile.open(tmp_path / name, mode) as archive:
+            _add(archive, "efp-app.json", data=MANIFEST.encode("utf-8"))
+        with pytest.raises(BundleError, match="not a readable tar archive"):
+            unpack_bundle(tmp_path / name, tmp_path / ("code-" + name))

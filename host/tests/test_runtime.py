@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import stat
+import sys
 
 import pytest
 from runtime_helpers import FASTAPI_FILES, SHA_A, SHA_B, STATIC_FILES, Harness
@@ -700,3 +703,240 @@ def test_a_backend_that_was_passed_over_is_logged(tmp_path, monkeypatch, caplog)
     warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
     assert warnings == ["isolation: bwrap does not work here: setpriv: setresuid failed: Operation not permitted"]
     assert any("backend bwrap-userns" in record.getMessage() for record in caplog.records if record.levelno == logging.INFO)
+
+
+# ---- whose environment, whose port, whose directories ---------------------------------
+
+
+def test_loader_variables_of_an_owner_never_reach_a_process(tmp_path):
+    async def scenario():
+        harness = Harness(tmp_path)
+        env = {
+            "EFP_APP_TOKEN": "efpa_token",
+            "MY_SETTING": "x",
+            "LD_PRELOAD": "/var/lib/efp-host/store/apps/app-1/data/hook.so",
+            "LD_LIBRARY_PATH": "/tmp/lib",
+            "ld_audit": "/tmp/audit.so",
+            "GCONV_PATH": "/tmp/gconv",
+            "GLIBC_TUNABLES": "glibc.malloc.check=3",
+        }
+        await harness.register(env=env)
+        await harness.deploy()
+        record = harness.registry.get("app-1")
+        return harness, harness.runtime.run_spec(record, record.current)
+
+    harness, spec = asyncio.run(scenario())
+    # Stored as the Portal sent it (so that a later change is still noticed) ...
+    assert "LD_PRELOAD" in harness.registry.read_env("app-1")
+    # ... but no process of the app, and no candidate of a deployment, is given it.
+    assert spec.env["MY_SETTING"] == "x"
+    assert not [name for name in spec.env if name.upper().startswith("LD_") or name in ("GCONV_PATH", "GLIBC_TUNABLES")]
+    candidates = [candidate for candidate, _ in harness.runner.spawned]
+    assert candidates and all("LD_PRELOAD" not in candidate.env and "GCONV_PATH" not in candidate.env for candidate in candidates)
+
+
+def test_an_answer_on_the_apps_port_counts_only_when_the_apps_own_process_gave_it(tmp_path):
+    async def scenario():
+        harness = await _deployed(tmp_path)
+        await harness.register("app-2", "squatter")
+        assert (await harness.deploy("app-2", sha=SHA_B)).status == "succeeded"
+        victim, squatter = harness.registry.get("app-1"), harness.registry.get("app-2")
+        await harness.runtime.stop("app-1", "manual")
+        # Somebody else listens on the stopped app's port and answers its health probe.
+        harness.health.status = 200
+        harness.sampler.listeners[victim.port] = {squatter.uid}
+        harness.sampler.killed.clear()
+        await harness.runtime.start("app-1")
+        await harness.settle()
+        taken = harness.runtime.status("app-1")
+        process = harness.controller.info(PROGRAM).state
+        other = harness.runtime.status("app-2")
+        notes = (harness.paths.log_file("app-2")).read_text(encoding="utf-8")
+        # The squatter is gone: the next visit, after the usual pause, starts the app.
+        harness.sampler.listeners[victim.port] = {victim.uid}
+        harness.clock.advance(VISIT_RETRY_SECONDS + 1)
+        await harness.runtime.ensure_running("app-1")
+        await harness.settle()
+        return harness, victim, squatter, taken, process, other, notes
+
+    harness, victim, squatter, taken, process, other, notes = asyncio.run(scenario())
+    # It answered, and still the app is not running: the gateway sends nobody there.
+    assert (taken.state, taken.reason) == ("failed", "port_taken")
+    assert taken.last_log_lines == [f"not started: port {victim.port} is held by the app squatter, not by this app"]
+    assert process == "stopped"
+    # The app that held the port was stopped, and its log says why.
+    assert (other.state, other.reason) == ("stopped", "port_conflict")
+    assert f"it listened on port {victim.port}, which belongs to the app mindmap" in notes
+    assert squatter.uid in harness.sampler.killed
+    assert harness.runtime.status("app-1").state == "running"
+
+
+def test_a_listener_nobody_can_be_named_for_is_killed_by_its_uid(tmp_path):
+    async def scenario():
+        harness = await _deployed(tmp_path)
+        victim = harness.registry.get("app-1")
+        leftover = victim.uid + 50  # of an app that is long gone
+        await harness.runtime.stop("app-1", "manual")
+        harness.sampler.killed.clear()
+        harness.sampler.listeners[victim.port] = {leftover}
+        await harness.runtime.start("app-1")
+        await harness.settle()
+        first = harness.runtime.status("app-1")
+        killed = list(harness.sampler.killed)
+        # A system user's listener is not the manager's to kill: the start just fails.
+        harness.sampler.killed.clear()
+        harness.sampler.listeners[victim.port] = {33}
+        harness.clock.advance(VISIT_RETRY_SECONDS + 1)
+        await harness.runtime.start("app-1")
+        await harness.settle()
+        return harness, leftover, first, killed, harness.runtime.status("app-1")
+
+    harness, leftover, first, killed, second = asyncio.run(scenario())
+    assert first.reason == "port_taken" and leftover in killed
+    assert second.reason == "port_taken" and "uid 33" in second.last_log_lines[0] and 33 not in harness.sampler.killed
+
+
+def test_an_empty_answer_about_the_listener_keeps_the_start_waiting(tmp_path):
+    files = dict(FASTAPI_FILES)
+    files["efp-app.json"] = json.dumps({"name": "Mind map", "type": "fastapi", "entry": "main:app", "startup_timeout": 1})
+
+    async def scenario():
+        harness = await _deployed(tmp_path, files=files)
+        victim = harness.registry.get("app-1")
+        await harness.runtime.stop("app-1", "manual")
+        # Something answered, but nobody listens there any more when the manager looks.
+        harness.sampler.listeners[victim.port] = set()
+        await harness.runtime.start("app-1")
+        await harness.settle()
+        return harness.runtime.status("app-1")
+
+    status = asyncio.run(scenario())
+    assert (status.state, status.reason) == ("failed", "startup_timeout")
+
+
+def test_a_candidate_whose_port_somebody_else_holds_fails_its_deployment(tmp_path):
+    async def scenario():
+        harness = await _deployed(tmp_path)
+        from efp_app_host import deploy as deploy_module
+
+        original = deploy_module.free_port
+        deploy_module.free_port = lambda: 45678
+        harness.sampler.listeners[45678] = {harness.registry.get("app-1").uid + 1}
+        try:
+            job = await harness.deploy(sha=SHA_B)
+        finally:
+            deploy_module.free_port = original
+        return harness, job
+
+    harness, job = asyncio.run(scenario())
+    assert job.status == "failed" and job.error["step"] == "health" and "another user's process" in job.error["message"]
+    assert harness.registry.get("app-1").current_sha == SHA_A
+
+
+def test_everything_of_the_app_is_killed_before_its_directories_are_rebuilt(tmp_path):
+    async def scenario():
+        harness = await _deployed(tmp_path, mode="hidden")
+        record = harness.registry.get("app-1")
+        await harness.runtime.stop("app-1", "manual")
+        order: list[str] = []
+        kill, ensure_local, reset = harness.sampler.kill_uid, harness.runtime.builder.ensure_local, harness.runtime._reset_tmp
+
+        async def watched_ensure_local(*args, **kwargs):
+            order.append("restore")
+            return await ensure_local(*args, **kwargs)
+
+        harness.sampler.kill_uid = lambda uid: order.append("kill") or kill(uid)
+        harness.runtime.builder.ensure_local = watched_ensure_local
+        harness.runtime._reset_tmp = lambda item: order.append("tmp") or reset(item)
+        await harness.runtime.start("app-1")
+        await harness.settle()
+        return harness, record, order
+
+    harness, record, order = asyncio.run(scenario())
+    # The restore of hidden mode copies into directories the app's user can
+    # read: it used to run before the kill.
+    assert order == ["kill", "restore", "tmp"]
+    assert harness.runtime.status("app-1").state == "running"
+
+
+def test_the_tmp_of_an_app_is_made_by_the_manager_and_handed_over_last(tmp_path, monkeypatch):
+    from efp_app_host import runtime as runtime_module
+
+    calls: list[tuple] = []
+
+    async def scenario():
+        harness = await _deployed(tmp_path)
+        record = harness.registry.get("app-1")
+        tmp = harness.paths.local_tmp_dir("app-1")
+        (tmp / "home" / "left-by-the-app").write_text("x", encoding="utf-8")
+        real = runtime_module.fresh_dir
+        monkeypatch.setattr(runtime_module, "fresh_dir", lambda path, mode, **kwargs: calls.append((path, mode, kwargs)) or real(path, mode, **kwargs))
+        await harness.runtime.restart("app-1")
+        await harness.settle()
+        return harness, record, tmp
+
+    harness, record, tmp = asyncio.run(scenario())
+    # One call that removes, creates, fills and only then gives away: not
+    # "make tmp, give it to the app, then make tmp/home in it".
+    assert calls == [(tmp, 0o700, {"uid": record.uid, "children": ("home",)})]
+    assert (tmp / "home").is_dir() and list((tmp / "home").iterdir()) == []
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="symbolic links need Linux here")
+def test_a_link_planted_as_tmp_home_is_not_followed_when_the_app_starts(tmp_path):
+    async def scenario():
+        harness = await _deployed(tmp_path, mode="hidden")
+        gate = tmp_path / "var-lib-efp-host"  # stands for the directory above the volume
+        gate.mkdir(mode=0o711)
+        tmp = harness.paths.local_tmp_dir("app-1")
+        await harness.runtime.stop("app-1", "manual")
+        # What a process of the app does while the manager is busy elsewhere.
+        (tmp / "home").rmdir()
+        os.symlink(gate, tmp / "home")
+        await harness.runtime.start("app-1")
+        await harness.settle()
+        return harness, gate, tmp
+
+    harness, gate, tmp = asyncio.run(scenario())
+    assert harness.runtime.status("app-1").state == "running"
+    assert (tmp / "home").is_dir() and not (tmp / "home").is_symlink()
+    assert stat.S_IMODE(os.stat(gate).st_mode) == 0o711 and os.stat(gate).st_uid == os.getuid()
+
+
+def test_a_tmp_that_keeps_filling_up_fails_the_start_instead_of_being_handed_over(tmp_path, monkeypatch):
+    from efp_app_host import safefs
+
+    async def scenario():
+        harness = await _deployed(tmp_path)
+        await harness.runtime.stop("app-1", "manual")
+        # A process of the app that puts its entries back as fast as they are removed.
+        monkeypatch.setattr(safefs, "remove_tree", lambda path: None)
+        await harness.runtime.start("app-1")
+        await harness.settle()
+        return harness.runtime.status("app-1")
+
+    status = asyncio.run(scenario())
+    assert (status.state, status.reason) == ("failed", "start_error")
+    assert "could not be emptied" in status.last_log_lines[0]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="symbolic links need Linux here")
+def test_hidden_mode_does_not_walk_into_a_link_left_as_the_object_store(tmp_path):
+    async def scenario():
+        harness = Harness(tmp_path, mode="hidden")
+        await harness.register("app-2", "victim")
+        victim = harness.paths.objects_dir("app-2")
+        (victim / "secret.txt").write_text("theirs", encoding="utf-8")
+        # What the app could do while the host ran in sandbox mode, where it wrote data/ itself.
+        data = harness.paths.data_dir("app-1")
+        data.mkdir(parents=True)
+        os.symlink(victim, data / "objects")
+        await harness.register("app-1", "mindmap")
+        record = harness.registry.get("app-1")
+        return harness, harness.runtime.object_store(record)
+
+    harness, store = asyncio.run(scenario())
+    objects = harness.paths.objects_dir("app-1")
+    assert objects.is_dir() and not objects.is_symlink()
+    assert store.list("") == []
+    assert (harness.paths.objects_dir("app-2") / "secret.txt").read_text(encoding="utf-8") == "theirs"

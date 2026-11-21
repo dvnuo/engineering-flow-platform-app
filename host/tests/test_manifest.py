@@ -137,3 +137,48 @@ def test_a_package_module_counts_as_an_entry(tmp_path):
     (tmp_path / "web" / "site").mkdir(parents=True)
     (tmp_path / "web" / "site" / "__init__.py").write_text("app = None\n", encoding="utf-8")
     assert load_manifest(tmp_path)["type"] == "flask"
+
+
+def test_what_the_manifest_names_may_not_lead_out_of_the_entry_directory(tmp_path, links):
+    # Runs everywhere: real links on Linux, the model of conftest.Links elsewhere.
+    from efp_app_host.manifest import check_files, stays_inside
+
+    code = tmp_path / "store" / "apps" / "app-1" / "releases" / "abc" / "code"
+    secrets = tmp_path / "store" / "keys"
+    code.mkdir(parents=True)
+    secrets.mkdir()
+    (secrets / "session.key").write_text("secret", encoding="utf-8")
+    # A path of the manifest is plain text without "..", but what it names can be a link.
+    links.make(code / "site", "../../../../../keys")
+    links.make(code / "icon.png", "../../../../../keys/session.key")
+    links.make(code / "requirements.txt", "../../../../../keys/session.key")
+    assert not stays_inside(code, "site") and not stays_inside(code, "icon.png")
+
+    manifest = validate_manifest({"name": "A", "type": "static", "entry": "site", "icon": "icon.png"})
+    with pytest.raises(ManifestError) as caught:
+        check_files(manifest, code)
+    text = "; ".join(caught.value.problems)
+    # The gateway would serve "entry" without looking at links in that part of the path.
+    assert "entry 'site' leads out of the entry directory" in text
+    assert "icon 'icon.png' leads out of the entry directory" in text
+    assert "requirements 'requirements.txt' leads out of the entry directory" in text
+
+    script = validate_manifest({"name": "A", "type": "streamlit", "entry": "icon.png", "requirements": "none.txt"})
+    with pytest.raises(ManifestError, match="entry 'icon.png' leads out"):
+        check_files(script, code)
+
+    # A directory of the app's own, and a link that stays inside, are what they always were.
+    (code / "public").mkdir()
+    assert stays_inside(code, "public") and stays_inside(code, "public/missing.txt") and stays_inside(code, ".")
+    if links.real:
+        links.make(code / "current", "public")
+        check_files(validate_manifest({"name": "A", "type": "static", "entry": "current", "requirements": "none.txt"}), code)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"entry": "main:app\n"}, {"health_path": "/health\n"}, {"entry": "main:app", "health_path": "/a\nb"}],
+)
+def test_a_value_may_not_end_in_a_line_break(change):
+    with pytest.raises(ManifestError):
+        validate_manifest({"name": "A", "type": "fastapi", "entry": "main:app", **change})

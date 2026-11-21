@@ -124,10 +124,17 @@ class FakeSampler:
         self.killed: list[int] = []
         self.busy: set[int] = set()
         self.busy_calls = 0
+        # port -> the users that listen on it; a port that is not named
+        # answers "cannot tell", as a manager that is not root would.
+        self.listeners: dict[int, set[int]] = {}
 
     def busy_ports(self) -> set[int]:
         self.busy_calls += 1
         return set(self.busy)
+
+    def listener_uids(self, port: int) -> set[int] | None:
+        owners = self.listeners.get(port)
+        return None if owners is None else set(owners)
 
     def sample(self) -> dict[int, UidUsage]:
         return dict(self.usage)

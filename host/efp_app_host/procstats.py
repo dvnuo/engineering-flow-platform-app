@@ -6,12 +6,15 @@ its server, the workers it forked and anything that detached itself.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,7 +29,10 @@ class ProcessSampler(Protocol):
         """Resident memory and CPU time of every non-root user's processes, by uid."""
 
     def kill_uid(self, uid: int) -> int:
-        """Kill everything the uid owns. Returns how many processes were hit."""
+        """Kill everything the uid owns, and do not return while any of it lives.
+
+        Returns how many processes were hit.
+        """
 
     def busy_ports(self) -> set[int]:
         """Local TCP ports that have an established connection right now.
@@ -36,8 +42,102 @@ class ProcessSampler(Protocol):
         WebSocket. The gateway keeps no idle connections to apps.
         """
 
+    def listener_uids(self, port: int) -> "set[int] | None":
+        """The users whose processes would accept a connection to 127.0.0.1:``port``.
+
+        ``None`` when that cannot be told (the manager is not root, so it
+        does not see whose socket it is).
+        """
+
+
+# The addresses a connection to 127.0.0.1 can arrive at, the most specific
+# first. Two users cannot listen on the same one, and the kernel hands a
+# connection to the most specific that is taken: a listener on another
+# address (127.0.0.2, or IPv6 only) never gets what the gateway sends to an
+# app, so it is not looked at.
+_LOOPBACK_LISTEN_ORDER = ("127.0.0.1", "::ffff:127.0.0.1", "0.0.0.0", "::")
+# One round of kill_uid: a fresh look at what the user owns, then the kill.
+KILL_ROUNDS = 40
+KILL_SETTLE_SECONDS = 0.05
+
+
+def kill_all_of(uid: int) -> bool:
+    """SIGKILL every process of ``uid`` in one system call. False when that could not be done.
+
+    A child becomes the user and calls ``kill(-1)``: the kernel signals
+    everything that user may signal while nothing can be forked, so a
+    process that keeps forking to stay ahead of a list of pids is hit too.
+    Needs root; the child signals nobody else, because by then it is no
+    longer root, and never itself.
+    """
+
+    import signal
+
+    fork = getattr(os, "fork", None)
+    if fork is None or uid <= 0 or getattr(os, "geteuid", lambda: 1)() != 0:
+        return False
+    try:
+        pid = fork()
+    except OSError:
+        return False
+    if pid == 0:
+        # The child: nothing but system calls, then gone.
+        code = 1
+        try:
+            os.setgroups([])
+            os.setgid(uid)
+            os.setuid(uid)
+            if os.getuid() == uid and os.geteuid() == uid:
+                try:
+                    os.kill(-1, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass  # nothing of that user was running
+                code = 0
+        except BaseException:  # noqa: BLE001 - whatever it is, this process must not go on as the manager
+            code = 1
+        finally:
+            os._exit(code)
+    try:
+        _, status = os.waitpid(pid, 0)
+    except OSError:
+        return False
+    # A process of the user may have killed the child before it could act.
+    return os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+
 
 class PsutilSampler:
+    def listener_uids(self, port: int) -> "set[int] | None":
+        import psutil
+
+        if getattr(os, "geteuid", lambda: 1)() != 0:
+            return None
+        try:
+            connections = psutil.net_connections(kind="tcp")
+        except Exception:  # noqa: BLE001 - AccessDenied and friends: nothing is known
+            return None
+        by_address: dict[str, set[int]] = {}
+        unknown = False
+        for connection in connections:
+            try:
+                if connection.status != psutil.CONN_LISTEN or not connection.laddr or int(connection.laddr.port) != int(port):
+                    continue
+                address = str(connection.laddr.ip)
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if address not in _LOOPBACK_LISTEN_ORDER:
+                continue
+            if not connection.pid:
+                unknown = True
+                continue
+            try:
+                by_address.setdefault(address, set()).add(int(psutil.Process(connection.pid).uids().real))
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, AttributeError):
+                continue
+        for address in _LOOPBACK_LISTEN_ORDER:
+            if address in by_address:
+                return by_address[address]
+        return None if unknown else set()
+
     def busy_ports(self) -> set[int]:
         import psutil
 
@@ -76,23 +176,62 @@ class PsutilSampler:
                 continue
         return usage
 
-    def kill_uid(self, uid: int) -> int:
-        import psutil
-        import signal
+    def pids_of(self, uid: int) -> list[int]:
+        """The processes of ``uid`` that can still run code (a zombie cannot)."""
 
-        if uid <= 0:
-            return 0
-        hit = 0
+        import psutil
+
+        found: list[int] = []
         for process in psutil.process_iter():
             try:
                 uids = getattr(process, "uids", None)
                 if uids is None or uids().real != uid:
                     continue
-                os.kill(process.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
-                hit += 1
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, ProcessLookupError, PermissionError):
+                if process.status() == psutil.STATUS_ZOMBIE:
+                    continue
+                found.append(process.pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
-        return hit
+        return found
+
+    def signal_pid(self, pid: int) -> None:
+        import signal
+
+        try:
+            os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+
+    def kill_all(self, uid: int) -> bool:
+        return kill_all_of(uid)
+
+    def kill_uid(self, uid: int) -> int:
+        """Kill everything the uid owns; come back when a fresh look finds nothing.
+
+        One walk over a list of pids is not enough: a process that forks
+        and lets its parent exit has a new pid before the walk reaches the
+        old one, and stays. So every round kills what it sees by pid (that
+        gets whatever sits still) and then lets the kernel kill everything
+        of the user at once (that gets whatever keeps forking), until a
+        look finds nothing left.
+        """
+
+        if uid <= 0:
+            return 0
+        hit: set[int] = set()
+        for _ in range(KILL_ROUNDS):
+            pids = self.pids_of(uid)
+            if not pids:
+                return len(hit)
+            hit.update(pids)
+            for pid in pids:
+                self.signal_pid(pid)
+            self.kill_all(uid)
+            time.sleep(KILL_SETTLE_SECONDS)
+        remaining = self.pids_of(uid)
+        if remaining:
+            logger.error("processes of uid %s survived %s rounds of SIGKILL: %s", uid, KILL_ROUNDS, remaining[:20])
+        return len(hit)
 
 
 class CpuMeter:

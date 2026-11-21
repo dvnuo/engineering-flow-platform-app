@@ -21,6 +21,7 @@ from .models import AppRecord, Release, iso, utcnow
 from .paths import HostPaths
 
 REGISTRY_VERSION = 1
+MAX_PORT = 65535
 
 
 class SlugTaken(Exception):
@@ -63,6 +64,12 @@ class Registry:
         self._lock = threading.RLock()
         self._apps: dict[str, AppRecord] = {}
         self._revoked_before: dict[str, float] = {}
+        # The next uid and port to hand out. They only ever grow: the number
+        # of an app that was removed is not given to another app, because
+        # whatever of the old app is still there (a process that outlived
+        # it, a file it left on the local disk) would then be the new app's.
+        self._next_uid = settings.uid_range_start
+        self._next_port = settings.port_range_start
         self.load()
 
     # ---- persistence ------------------------------------------------------
@@ -71,6 +78,9 @@ class Registry:
             data = read_json(self.paths.registry_file, {})
             self._apps = {app_id: AppRecord.from_json(value) for app_id, value in (data.get("apps") or {}).items()}
             self._revoked_before = {str(key): float(value) for key, value in (data.get("revoked_before") or {}).items()}
+            # A registry written before the marks existed has none: start above what is in use.
+            self._next_uid = self._mark(data.get("next_uid"), self.settings.uid_range_start, (record.uid for record in self._apps.values()))
+            self._next_port = self._mark(data.get("next_port"), self.settings.port_range_start, (record.port for record in self._apps.values()))
 
     def _save(self) -> None:
         write_json_atomic(
@@ -79,6 +89,8 @@ class Registry:
                 "version": REGISTRY_VERSION,
                 "apps": {app_id: record.to_json() for app_id, record in self._apps.items()},
                 "revoked_before": self._revoked_before,
+                "next_uid": self._next_uid,
+                "next_port": self._next_port,
             },
         )
 
@@ -128,8 +140,8 @@ class Registry:
             now = iso(utcnow()) or ""
             if record is None:
                 record = AppRecord(id=app_id, slug=slug, created_at=now)
-                record.uid = self._next_free(self.settings.uid_range_start, (item.uid for item in self._apps.values()))
-                record.port = self._next_free(self.settings.port_range_start, (item.port for item in self._apps.values()))
+                record.uid, self._next_uid = self._next_uid, self._next_uid + 1
+                record.port = self._take_port()
                 self._apps[app_id] = record
             for key, value in fields.items():
                 if key in AppRecord.__dataclass_fields__ and key not in {"id", "slug", "uid", "port", "releases", "created_at"}:
@@ -204,9 +216,30 @@ class Registry:
 
     # ---- helpers ----------------------------------------------------------
     @staticmethod
-    def _next_free(start: int, used: Iterable[int]) -> int:
-        taken = set(used)
-        candidate = start
-        while candidate in taken:
-            candidate += 1
-        return candidate
+    def _mark(stored: Any, start: int, used: Iterable[int]) -> int:
+        """The mark to go on from: never below the setting, what is stored or what is in use."""
+
+        mark = max([start] + [value + 1 for value in used])
+        if isinstance(stored, int) and not isinstance(stored, bool):
+            mark = max(mark, stored)
+        return mark
+
+    def _take_port(self) -> int:
+        """The next port. Unlike uids, ports run out: there are 65535 of them.
+
+        Past the last one the lowest port no registered app holds is taken
+        again. By then the app that had it is long gone, the manager kills
+        an app's processes before it forgets the app, and a listener that
+        is not the app's own never counts as the app (``HostRuntime``).
+        """
+
+        if self._next_port <= MAX_PORT:
+            port, self._next_port = self._next_port, self._next_port + 1
+            return port
+        taken = {record.port for record in self._apps.values()}
+        port = self.settings.port_range_start
+        while port in taken:
+            port += 1
+        if port > MAX_PORT:
+            raise RuntimeError("no loopback port is left for another app")
+        return port

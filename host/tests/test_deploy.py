@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import sys
+from pathlib import Path
 
 import pytest
 from runtime_helpers import FASTAPI_FILES, SHA_A, SHA_B, SHA_C, STATIC_FILES, Harness, make_bundle
@@ -541,3 +544,198 @@ def test_the_bundled_sdk_is_added_when_the_image_has_it(tmp_path):
     assert "adding the bundled efp-app-sdk (efp_app_sdk-0.1.0-py3-none-any.whl)" in _log(harness, job)
     # Named by the app: its requirements decide, nothing is added.
     assert installs[1].endswith("/code/requirements.txt") and "--find-links" not in installs[1]
+
+
+# ---- what a build is given, and what the manager keeps of it ----------------------------
+
+INDEX_URL = "https://builder:index-password@pip.example.com/simple"
+
+
+def _has_index(spec) -> bool:
+    return any("index-password" in value for value in spec.env.values())
+
+
+@pytest.mark.parametrize("mode", ["sandbox", "hidden"])
+def test_the_index_settings_reach_only_the_command_that_asks_the_index(tmp_path, mode):
+    async def scenario():
+        harness = Harness(tmp_path, mode=mode, passthrough_env={"PIP_INDEX_URL": INDEX_URL, "PIP_CERT": "/etc/ssl/certs", "HTTPS_PROXY": "http://proxy:3128"})
+        await harness.register()
+        job = await harness.deploy()
+        return harness, job
+
+    harness, job = asyncio.run(scenario())
+    assert job.status == "succeeded", _log(harness, job)
+    by_command = {}
+    for spec in harness.runner.runs:
+        text = " ".join(spec.argv)
+        kind = "venv" if "-m venv" in text else text.split(" --no-cache-dir ")[-1].split(" ")[0]
+        if kind == "install" and "--no-index" in text:
+            kind = "offline-install"
+        by_command[kind] = spec
+    asking = "wheel" if mode == "hidden" else "install"
+    assert _has_index(by_command[asking]) and by_command[asking].env["PIP_CERT"] == "/etc/ssl/certs"
+    # Code of the app runs inside every one of the others (a .pth file of an
+    # installed package runs in "pip freeze"): none of them holds the password.
+    others = sorted(set(by_command) - {asking})
+    assert others == (["freeze", "offline-install", "venv"] if mode == "hidden" else ["freeze", "venv"])
+    for kind in others:
+        spec = by_command[kind]
+        assert not _has_index(spec) and "PIP_INDEX_URL" not in spec.env and "PIP_CERT" not in spec.env, kind
+        assert spec.env["HTTPS_PROXY"] == "http://proxy:3128", kind
+        # ... and the file the settings name is not shown to them either.
+        assert "/etc/ssl/certs" not in spec.ro_paths, kind
+    # Neither does the app, as before.
+    candidate, _ = harness.runner.spawned[0]
+    assert not _has_index(candidate) and not [name for name in candidate.env if name.startswith("PIP_")]
+
+
+def test_output_that_is_kept_in_memory_has_a_ceiling(tmp_path):
+    from efp_app_host.runner import RunResult
+
+    async def scenario():
+        harness = Harness(tmp_path)
+        await harness.register()
+        run = harness.runner.run
+
+        async def flooding(spec, *, log=None, timeout=None, capture=False):
+            if spec.argv[-1] == "freeze":
+                # What LauncherRunner answers when "pip freeze" printed without end.
+                return RunResult(code=-9, output="x==1\n" * 10, truncated=True)
+            return await run(spec, log=log, timeout=timeout, capture=capture)
+
+        harness.runner.run = flooding
+        job = await harness.deploy()
+        return harness, job
+
+    harness, job = asyncio.run(scenario())
+    assert job.status == "failed" and job.error["step"] == "dependencies"
+    assert "printed more than the host keeps" in job.error["message"]
+    assert not harness.paths.lock_file("app-1", SHA_A).exists()
+
+
+def test_the_line_buffer_hands_on_whole_lines_in_one_piece_and_stops_keeping_at_its_ceiling():
+    from efp_app_host.runner import _LineBuffer
+
+    calls: list[str] = []
+    buffer = _LineBuffer(calls.append, None)
+    buffer.feed(b"one\ntwo\r\nthr")
+    buffer.feed(b"ee\nfour")
+    buffer.close()
+    # One call per read, not one per line: a process that prints as fast as
+    # it can costs the event loop a call per 64 KiB.
+    assert calls == ["one\ntwo\n", "three\n", "four\n"]
+    flood: list[str] = []
+    buffer = _LineBuffer(flood.append, None)
+    buffer.feed(b"x\n" * 32768)
+    assert len(flood) == 1 and flood[0].count("\n") == 32768
+
+    kept: list[str] = []
+    capture = _LineBuffer(None, kept, limit=100)
+    capture.feed(b"a" * 60 + b"\n")
+    assert not capture.truncated
+    capture.feed(b"b" * 60 + b"\n")
+    capture.feed(b"c" * 10 + b"\n")
+    assert capture.truncated and "".join(kept) == "a" * 60 + "\n"
+
+
+def test_a_requirements_file_of_megabytes_fails_the_deployment_with_a_reason(tmp_path, monkeypatch):
+    from efp_app_host import pyenv
+
+    monkeypatch.setattr(pyenv, "MAX_REQUIREMENTS_BYTES", 100)
+    files = dict(FASTAPI_FILES)
+    files["requirements.txt"] = "fastapi\n" + "\n" * 500
+
+    async def scenario():
+        harness = Harness(tmp_path)
+        await harness.register()
+        return harness, await harness.deploy(files=files)
+
+    harness, job = asyncio.run(scenario())
+    assert job.status == "failed" and job.error["step"] == "dependencies"
+    assert "requirements.txt is larger than" in job.error["message"]
+
+
+def test_a_flooding_candidate_fills_the_log_to_its_ceiling_and_the_end_of_the_job_is_still_written(tmp_path, monkeypatch):
+    from efp_app_host import jobs as jobs_module
+
+    monkeypatch.setattr(jobs_module, "MAX_JOB_LOG_BYTES", 4000)
+
+    async def scenario():
+        harness = Harness(tmp_path)
+        await harness.register()
+        spawn = harness.runner.spawn
+
+        async def flooding(spec, *, log=None):
+            for _ in range(50):
+                log("flood " * 100 + "\n")
+            return await spawn(spec, log=log)
+
+        harness.runner.spawn = flooding
+        job = await harness.deploy()
+        return harness, job
+
+    harness, job = asyncio.run(scenario())
+    assert job.status == "succeeded"
+    log = _log(harness, job)
+    assert len(log) < 4000 + 2000 and log.count("the rest of the output is not kept") == 1
+    # The steps and the outcome are the manager's own lines: never dropped.
+    assert "--- activate ---" in log and log.rstrip().endswith("deployment finished")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="symbolic links need Linux here")
+def test_a_link_among_the_collected_wheels_is_not_read_for_the_app(tmp_path):
+    async def scenario():
+        harness = Harness(tmp_path, mode="hidden")
+        await harness.register()
+        secret = harness.paths.keys_dir
+        secret.mkdir(parents=True, exist_ok=True)
+        (secret / "session.key").write_text("the-session-key", encoding="utf-8")
+        run = harness.runner.run
+
+        async def planting(spec, *, log=None, timeout=None, capture=False):
+            result = await run(spec, log=log, timeout=timeout, capture=capture)
+            if " wheel " in " ".join(spec.argv):
+                # The directory is the app's: a process of the release that
+                # is running may put anything there while pip is at work.
+                wheels = Path(spec.argv[spec.argv.index("--wheel-dir") + 1])
+                os.symlink(secret / "session.key", wheels / "zzz-1.0-py3-none-any.whl")
+            return result
+
+        harness.runner.run = planting
+        job = await harness.deploy()
+        return harness, job
+
+    harness, job = asyncio.run(scenario())
+    assert job.status == "failed" and job.error["step"] == "dependencies", job.error
+    assert "refusing" in job.error["message"]
+    kept = harness.paths.wheels_dir("app-1", SHA_A)
+    assert not kept.exists() or all(b"the-session-key" not in path.read_bytes() for path in kept.iterdir())
+
+
+def test_the_wheels_of_a_restore_are_the_managers_own_and_only_readable_by_the_app(tmp_path, monkeypatch):
+    from efp_app_host import deploy as deploy_module
+
+    made: list[tuple] = []
+    owned: list[tuple] = []
+
+    async def scenario():
+        harness = Harness(tmp_path, mode="hidden")
+        await harness.register()
+        await harness.deploy()
+        await harness.runtime.stop("app-1", "manual")
+        import shutil
+
+        shutil.rmtree(harness.settings.runtime_dir)
+        fresh, own = deploy_module.fresh_dir, deploy_module.own
+        monkeypatch.setattr(deploy_module, "fresh_dir", lambda path, mode, **kwargs: made.append((Path(path).name, mode, kwargs)) or fresh(path, mode, **kwargs))
+        monkeypatch.setattr(deploy_module, "own", lambda path, mode, **kwargs: owned.append((Path(path).name, mode, kwargs)) or own(path, mode, **kwargs))
+        await harness.runtime.start("app-1")
+        await harness.settle()
+        return harness, harness.registry.get("app-1")
+
+    harness, record = asyncio.run(scenario())
+    assert harness.runtime.status("app-1").state == "running"
+    # Root copies the wheels into a directory of its own that the app's group
+    # may read. It used to be the app's directory, with a chown per file.
+    assert ("wheels", 0o750, {"uid": 0, "gid": record.uid}) in made
+    assert ("fastapi-0.110.0-py3-none-any.whl", 0o640, {"uid": 0, "gid": record.uid, "directory": False}) in owned
