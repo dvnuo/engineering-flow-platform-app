@@ -98,7 +98,10 @@ class ObjectStore:
 
     The quota is kept under one lock: a put reserves its size before its
     body is received, so puts that overlap cannot each pass the check and
-    exceed the quota together.
+    exceed the quota together. What is in use changes only together with
+    the file it counts (the rename of a put, the removal of a delete), by
+    what that step really did to the store: requests that overlap on one
+    key cannot count the same object off twice.
     """
 
     def __init__(self, root: Path, *, quota_bytes: int, max_object_bytes: int = MAX_OBJECT_BYTES):
@@ -125,11 +128,6 @@ class ObjectStore:
     def set_used(self, value: int | None) -> None:
         with self._lock:
             self._used = value
-
-    def _adjust(self, delta: int) -> None:
-        with self._lock:
-            if self._used is not None:
-                self._used = max(0, self._used + delta)
 
     def _release(self, size: int, existing: int) -> None:
         with self._lock:
@@ -234,10 +232,29 @@ class ObjectStore:
         return tmp, os.fdopen(descriptor, "wb")
 
     def commit_upload(self, tmp: Path, path: Path, size: int, existing: int) -> None:
-        # rename replaces a link of that name, it does not follow it
-        os.replace(tmp, path)
-        self._release(size, existing)
-        self._adjust(size - existing)
+        """Put a received body in its place and settle the quota.
+
+        ``existing`` is what ``check_put`` found under the key. A request
+        that overlapped this one may have replaced or removed that object
+        since (another put of the same key, a delete). So what the store
+        really grows by is measured here, under the lock, and a put that
+        does not fit any more is refused: counting ``size - existing`` let
+        every one of such requests count the same object off, and the
+        store then held more than it knew of.
+        """
+
+        reserved = max(0, size - existing)
+        with self._lock:
+            replaced = self._size(path) or 0
+            if self._used is not None and replaced < existing:
+                others = max(0, self._reserved - reserved)
+                if self._used + others + size - replaced > self.quota_bytes:
+                    raise StorageError("quota_exceeded", f"the app's data would exceed its quota of {self.quota_bytes // (1024 * 1024)} MiB")
+            # rename replaces a link of that name, it does not follow it
+            os.replace(tmp, path)
+            self._reserved = max(0, self._reserved - reserved)
+            if self._used is not None:
+                self._used = max(0, self._used + size - replaced)
 
     def put(self, key: str, data: bytes) -> None:
         path, existing = self.check_put(key, len(data))
@@ -286,11 +303,18 @@ class ObjectStore:
             self._refuse_links(path)
         except StorageError:
             return False
-        size = self._size(path)
-        if size is None:
-            return False
-        path.unlink(missing_ok=True)
-        self._adjust(-size)
+        # Look, remove and count under one lock: of several deletes of the
+        # same key only one finds the object, and only that one counts it off.
+        with self._lock:
+            size = self._size(path)
+            if size is None:
+                return False
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                return False
+            if self._used is not None:
+                self._used = max(0, self._used - size)
         # Empty directories are not objects: drop them.
         parent = path.parent
         while parent != self.root:

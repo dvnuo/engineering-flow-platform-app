@@ -15,6 +15,7 @@ never waits for the volume.
 
 from __future__ import annotations
 
+import os
 import re
 import threading
 import time
@@ -256,10 +257,13 @@ class JobStore:
         self.save(job)
 
     def finish(self, job: Job, *, error: dict[str, str] | None = None) -> None:
-        job.status = JOB_FAILED if error else JOB_SUCCEEDED
-        job.error = error
-        job.finished_at = iso(utcnow())
-        self.save(job)
+        # In one piece for ``public``, which reads the record from another
+        # thread: a job never reads as failed without its error.
+        with self._lock:
+            job.status = JOB_FAILED if error else JOB_SUCCEEDED
+            job.error = error
+            job.finished_at = iso(utcnow())
+            self.save(job)
         try:
             self.bundle_path(job.id).unlink()
         except OSError:
@@ -342,27 +346,31 @@ class JobStore:
 
         _LOG_WRITER.flush()
 
+    # A reader runs in a thread of its own while the deployment goes on and
+    # the writer's thread appends. So the size and the bytes of one answer
+    # come from one look at the file: a reader that goes on from the size it
+    # was told neither skips nor gets twice what arrived in between.
+
     def read_log(self, job_id: str, offset: int = 0) -> tuple[bytes, int]:
         self.flush_logs()
-        path = self.log_path(job_id)
         try:
-            size = path.stat().st_size
-            offset = max(0, min(int(offset), size))
-            with open(path, "rb") as handle:
+            with open(self.log_path(job_id), "rb") as handle:
+                size = os.fstat(handle.fileno()).st_size
+                offset = max(0, min(int(offset), size))
                 handle.seek(offset)
                 # A log is never longer than its ceiling and the manager's own lines.
-                return handle.read(2 * MAX_JOB_LOG_BYTES), size
+                return handle.read(min(size - offset, 2 * MAX_JOB_LOG_BYTES)), size
         except OSError:
             return b"", 0
 
     def log_tail(self, job_id: str) -> tuple[str, int]:
         self.flush_logs()
-        path = self.log_path(job_id)
         try:
-            size = path.stat().st_size
-            with open(path, "rb") as handle:
-                handle.seek(max(0, size - LOG_TAIL_CHARS * 4))
-                text = handle.read().decode("utf-8", "replace")
+            with open(self.log_path(job_id), "rb") as handle:
+                size = os.fstat(handle.fileno()).st_size
+                start = max(0, size - LOG_TAIL_CHARS * 4)
+                handle.seek(start)
+                text = handle.read(size - start).decode("utf-8", "replace")
         except OSError:
             return "", 0
         return text[-LOG_TAIL_CHARS:], size
@@ -370,17 +378,24 @@ class JobStore:
     def public(self, job: Job) -> dict[str, Any]:
         """The job as ``GET /v1/jobs/{id}`` returns it."""
 
+        # The record first, the log second. A job that reads as finished
+        # here has queued its last line already, so the tail that is read
+        # afterwards holds it. The other way round a deployment that ended
+        # in between was reported as finished with the log it had before.
+        with self._lock:
+            status, error, finished_at = job.status, dict(job.error) if job.error else None, job.finished_at
+            steps = [dict(step) for step in job.steps]
         tail, size = self.log_tail(job.id)
         return {
             "id": job.id,
             "app_id": job.app_id,
             "kind": job.kind,
-            "status": job.status,
+            "status": status,
             "sha": job.sha,
-            "steps": [dict(step) for step in job.steps],
-            "error": dict(job.error) if job.error else None,
+            "steps": steps,
+            "error": error,
             "log_tail": tail,
             "log_size": size,
             "created_at": job.created_at,
-            "finished_at": job.finished_at,
+            "finished_at": finished_at,
         }

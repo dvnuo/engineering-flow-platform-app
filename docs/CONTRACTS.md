@@ -502,7 +502,7 @@ places: files under `EFP_APP_DATA_DIR/objects/` (sandbox), this socket
 | `PORT` | the loopback port to listen on (`127.0.0.1`) |
 | `HOME`, `TMPDIR` | a private writable directory, emptied on restart |
 | `PYTHONUNBUFFERED` | `1` |
-| owner-defined variables | may not start with `EFP_` and may not be `PORT`, `HOME`, `TMPDIR`, `PATH` |
+| owner-defined variables | may not start with `EFP_` and may not be `PORT`, `HOME`, `TMPDIR`, `PATH`. A name that starts with `LD_`, and `GCONV_PATH` and `GLIBC_TUNABLES` (in either case), never reaches a process: the Portal refuses such a name, and the host leaves out one it is sent all the same |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (either case), `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` | the host's own, when it has them. With a proxy set, `127.0.0.1`, `localhost` and `::1` are added to `NO_PROXY` and `no_proxy`: what an app asks of its own port never goes to the proxy |
 
 On a developer's machine the SDK needs only `EFP_APP_TOKEN` and

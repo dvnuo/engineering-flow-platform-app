@@ -84,8 +84,8 @@ section 3).
 | `EFP_HOST_RUN_DIR` | `/run/efp-host` | Sockets, the gateway secret, launch files (they hold app tokens: tmpfs is right). |
 | `EFP_HOST_ADMIN_PORT` | `9000` | Manager API. |
 | `EFP_HOST_GATEWAY_PORT` | `8080` | Gateway. |
-| `EFP_HOST_PORT_RANGE_START` | `20000` | First loopback port given to an app. One per app, never reused while the app exists. |
-| `EFP_HOST_UID_RANGE_START` | `20000` | First OS uid given to an app (the gid is the same number). |
+| `EFP_HOST_PORT_RANGE_START` | `20000` | First loopback port given to an app. One per app, counted upward and not given to another app when its app is removed (section 5). |
+| `EFP_HOST_UID_RANGE_START` | `20000` | First OS uid given to an app (the gid is the same number). One per app, counted upward and never given to another app, also after its app is removed (section 5). |
 | `EFP_HOST_IDLE_STOP_MINUTES` | `30` | An app nobody used for this long is stopped; the next visit starts it. `0` keeps apps running. An app with an open connection (a WebSocket, a long download) is in use. |
 | `EFP_HOST_APP_MEMORY_MB` | `1024` | Resident memory ceiling per app (all its processes together). Over it the app is stopped, state `killed`, reason `memory`. The Portal can set another value per app. |
 | `EFP_HOST_APP_DATA_MB` | `1024` | Quota of an app's data. Soft in sandbox mode (reported, not enforced); enforced by the storage service in hidden mode. |
@@ -98,18 +98,53 @@ section 3).
 | `EFP_HOST_DEPLOY_TIMEOUT_SECONDS` | `900` | One deployment, from unpack to switch. |
 | `EFP_HOST_PIP_ALLOW_SDIST` | `false` | Allow packages that have no wheel. A source distribution runs its build code at deployment time (as the app's user, inside its isolation). |
 | `EFP_HOST_RESOURCE_DIR` | `/opt/efp` (set in the image) | Where the gateway's nginx template and pages are. Leave it. |
-| `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_TRUSTED_HOST`, `PIP_CERT`, ... | | Read by pip itself. Every `PIP_*` variable is passed to deployments and **never** to apps. |
-| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` | | Passed to deployments and to apps. The manager's own calls to the Portal never use a proxy. Put the cluster's service domain into `NO_PROXY`, or apps will send their SDK calls to the proxy. The host adds `127.0.0.1`, `localhost` and `::1` to an app's `NO_PROXY` by itself whenever a proxy is set, because some frameworks (Gradio) ask their own port while they start. |
+| `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_TRUSTED_HOST`, `PIP_CERT`, ... | | Read by pip itself. Every `PIP_*` variable is passed to the one step of a deployment that asks the package index, to no other step and **never** to apps. See "Who sees the package index settings" below. |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` | | Passed to every step of a deployment and to apps. The manager's own calls to the Portal never use a proxy. Put the cluster's service domain into `NO_PROXY`, or apps will send their SDK calls to the proxy. The host adds `127.0.0.1`, `localhost` and `::1` to an app's `NO_PROXY` by itself whenever a proxy is set, because some frameworks (Gradio) ask their own port while they start. |
 
 A certificate file named by `PIP_CERT`, `SSL_CERT_FILE` or
 `REQUESTS_CA_BUNDLE` must exist in the container (mount it, for example below
-`/etc/ssl/certs`). In sandbox mode the deployment is shown that one file in
-addition to the system directories.
+`/etc/ssl/certs`). In sandbox mode the step of a deployment that asks the
+package index is shown that one file in addition to the system directories.
 
-Fixed limits (constants in the code): a bundle is at most 200 MiB and unpacks
-to at most 1 GiB and 50 000 entries; one stored object is at most 64 MiB; a
-deployment is refused when the volume or the local disk has less than 256 MiB
-free.
+### Who sees the package index settings
+
+A deployment runs several commands, each as the app's user inside the app's
+isolation. The `PIP_*` variables, and in sandbox mode the files they name
+(`PIP_CERT`, `PIP_CLIENT_CERT`, `PIP_CONFIG_FILE`), are given to one of them:
+
+| Step | Command | Sees `PIP_*` |
+|---|---|---|
+| `environment` | `python -m venv` | no |
+| `dependencies` | sandbox mode: `pip install` from the index; hidden mode: `pip wheel` from the index | **yes** |
+| `dependencies` | hidden mode: `pip install` from the wheels just collected | no |
+| `dependencies` | `pip freeze` | no |
+| `start`, `health` | the new release itself | no |
+| a start in hidden mode after the pod's disk was lost | `python -m venv`, `pip install` from the wheel cache on the volume | no |
+
+The step that asks the index is not free of the member's code. It runs in
+the app's code directory, where a module of the app can take the place of
+one that pip imports, and a package that pip builds from source runs its
+build code in that step: a source distribution of the index when
+`EFP_HOST_PIP_ALLOW_SDIST` is on, and at any setting a requirement that
+names a directory of the app itself. Such code sees the `PIP_*` variables
+and can read the files they name. So **treat whatever these settings hold as
+known to every member who can deploy an app**: give the index an account
+that can only read, and one that is used for nothing else. The password
+inside an index URL is blanked in the deployment's log, which keeps it out
+of sight, not out of reach.
+
+A file is no better place for a secret than a variable. pip runs as the
+app's user, so a file these variables name has to be readable by every app's
+user. In hidden mode every app can then read it at any time; in sandbox mode
+every app can whenever the file lies below a directory apps see (`/etc`,
+`/usr`, `/opt/efp`).
+
+Fixed limits (constants in the code): a bundle is a gzip-compressed tar
+archive of at most 200 MiB and unpacks to at most 1 GiB and 50 000 entries;
+a requirements file, and each file it includes, is at most 1 MiB; the log of
+a deployment keeps 5 MiB of what its commands print (the host's own lines
+are always written); one stored object is at most 64 MiB; a deployment is
+refused when the volume or the local disk has less than 256 MiB free.
 
 ## 4. Choosing the isolation mode
 
@@ -227,7 +262,8 @@ container is worse than in hidden mode.
 ## 5. The volume
 
 ```
-registry.json                     what the host knows about its apps (no secrets)
+registry.json                     what the host knows about its apps (no secrets),
+                                  and the next uid and port it will hand out
 keys/session.key                  signs gateway sessions
 metrics/state.json                traffic counters not yet sent
 jobs/<job id>.json, .log          deployments (kept 30 days; the newest of each app always)
@@ -240,6 +276,16 @@ apps/<app id>/logs/app.log        stdout and stderr, 10 MiB x 3
 
 The host keeps the current and the previous release of every app; older
 ones are removed at the next deployment.
+
+The OS uid and the loopback port of an app are not reused. The host counts
+both upward from `EFP_HOST_UID_RANGE_START` and `EFP_HOST_PORT_RANGE_START`,
+keeps the next numbers in `registry.json` and does not give the numbers of a
+removed app to another one: whatever is left of the removed app (a process
+that outlived it, a file on the pod's disk) can then never be taken for the
+new app. Uids do not run out. Ports end at 65535 (45 536 registrations with
+the default start); from then on the lowest port that no registered app
+holds is taken again. A `registry.json` from before the host kept these
+numbers goes on above the highest ones in use.
 
 ### Backup
 

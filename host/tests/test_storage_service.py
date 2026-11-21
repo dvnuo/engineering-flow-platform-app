@@ -288,6 +288,85 @@ def test_a_put_that_fails_releases_what_it_reserved(tmp_path):
     assert store.used() == 1000
 
 
+def test_requests_that_overlap_on_one_key_cannot_count_its_object_off_twice(tmp_path):
+    from efp_app_host.procstats import dir_size
+
+    root = tmp_path / "data" / "objects"
+    store = ObjectStore(root, quota_bytes=1000)
+    store.put("big", b"x" * 600)
+    store.put("other", b"y" * 300)
+
+    def receive(key: str, body: bytes):
+        """A put up to the moment its body has arrived."""
+
+        path, existing = store.check_put(key, len(body))
+        tmp, handle = store.open_upload(path)
+        with handle:
+            handle.write(body)
+        return tmp, path, len(body), existing
+
+    # Two puts of one key whose bodies are on their way together: each was
+    # told that it replaces 600 bytes, and only the first one does.
+    first, second = receive("big", b"1"), receive("big", b"2")
+    store.commit_upload(*first)
+    store.commit_upload(*second)
+    assert store.used() == dir_size(root) == 301
+    # (It used to say 0: the 600 bytes counted off twice, and room for a thousand more.)
+    with pytest.raises(StorageError) as caught:
+        store.check_put("more", 700)
+    assert caught.value.code == "quota_exceeded"
+
+    # A put that replaces an object, and a delete of that object before the put is done.
+    store.put("big", b"x" * 600)
+    pending = receive("big", b"z" * 600)
+    assert store.delete("big") is True and store.used() == 300
+    store.commit_upload(*pending)
+    assert store.used() == dir_size(root) == 900
+
+    # The same, but the room the delete made went to somebody else meanwhile:
+    # the put replaces nothing any more and does not fit.
+    tmp, path, size, existing = receive("big", b"w" * 600)
+    assert store.delete("big") is True
+    store.put("filler", b"f" * 600)
+    with pytest.raises(StorageError) as caught:
+        store.commit_upload(tmp, path, size, existing)
+    assert caught.value.code == "quota_exceeded" and not path.exists()
+    # What the service and put() do with a put that failed.
+    tmp.unlink()
+    store.cancel_put(size, existing)
+    assert store.used() == dir_size(root) == 900
+    store.put("last", b"l" * 100)
+    assert store.used() == 1000
+
+
+def test_deletes_of_one_key_at_the_same_time_count_the_object_off_once(tmp_path):
+    import threading
+
+    from efp_app_host.procstats import dir_size
+
+    root = tmp_path / "data" / "objects"
+    store = ObjectStore(root, quota_bytes=MIB)
+    store.put("kept", b"k" * 1000)
+    for _ in range(20):
+        store.put("gone", b"g" * 500)
+        together = threading.Barrier(8)
+        answers: list[bool] = []
+
+        def remove() -> None:
+            together.wait()
+            answers.append(store.delete("gone"))
+
+        threads = [threading.Thread(target=remove) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        # One of them removed it. (Each used to count its 500 bytes off, and
+        # the store then believed it held less than it did.)
+        assert answers.count(True) == 1
+        assert store.used() == dir_size(root) == 1000
+
+
 def test_what_a_run_that_ended_badly_left_among_the_uploads_is_removed(tmp_path):
     uploads = tmp_path / "data" / ".uploads"
     uploads.mkdir(parents=True)

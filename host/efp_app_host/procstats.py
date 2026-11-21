@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import struct
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,8 +46,8 @@ class ProcessSampler(Protocol):
     def listener_uids(self, port: int) -> "set[int] | None":
         """The users whose processes would accept a connection to 127.0.0.1:``port``.
 
-        ``None`` when that cannot be told (the manager is not root, so it
-        does not see whose socket it is).
+        ``None`` when that cannot be told, and where the question has no
+        answer: a manager that is not root runs every app as itself.
         """
 
 
@@ -56,6 +57,20 @@ class ProcessSampler(Protocol):
 # address (127.0.0.2, or IPv6 only) never gets what the gateway sends to an
 # app, so it is not looked at.
 _LOOPBACK_LISTEN_ORDER = ("127.0.0.1", "::ffff:127.0.0.1", "0.0.0.0", "::")
+# The kernel's own list of TCP sockets: one line per socket of the network
+# the manager and the apps share, with the uid of whoever made the socket.
+# Reading it needs no right over other users' processes. The way through
+# /proc/<pid>/fd (what psutil takes to name a socket's process) needs
+# SYS_PTRACE, which the host's container does not have: asked that way,
+# the manager was never told whose listener it is.
+_TCP_TABLES = ("/proc/net/tcp", "/proc/net/tcp6")
+_TCP_LISTEN = "0A"
+_LOOPBACK_LISTEN_BYTES = {
+    b"\x7f\x00\x00\x01": "127.0.0.1",
+    b"\x00" * 10 + b"\xff\xff\x7f\x00\x00\x01": "::ffff:127.0.0.1",
+    b"\x00" * 4: "0.0.0.0",
+    b"\x00" * 16: "::",
+}
 # One round of kill_uid: a fresh look at what the user owns, then the kill.
 KILL_ROUNDS = 40
 KILL_SETTLE_SECONDS = 0.05
@@ -69,6 +84,12 @@ def kill_all_of(uid: int) -> bool:
     process that keeps forking to stay ahead of a list of pids is hit too.
     Needs root; the child signals nobody else, because by then it is no
     longer root, and never itself.
+
+    Once the child is the user, that user's processes can signal it (where
+    they share the manager's PID namespace: hidden mode, Landlock, bubblewrap
+    without a PID namespace). Killing it only costs the round. Stopping it
+    would leave the manager waiting for a child that never ends, so a child
+    that was stopped is killed and the call reports that nothing was done.
     """
 
     import signal
@@ -76,6 +97,7 @@ def kill_all_of(uid: int) -> bool:
     fork = getattr(os, "fork", None)
     if fork is None or uid <= 0 or getattr(os, "geteuid", lambda: 1)() != 0:
         return False
+    sigkill = getattr(signal, "SIGKILL", signal.SIGTERM)
     try:
         pid = fork()
     except OSError:
@@ -84,12 +106,14 @@ def kill_all_of(uid: int) -> bool:
         # The child: nothing but system calls, then gone.
         code = 1
         try:
+            # No handler of the manager's runs in here, whatever is sent.
+            signal.pthread_sigmask(signal.SIG_BLOCK, signal.valid_signals())
             os.setgroups([])
             os.setgid(uid)
             os.setuid(uid)
             if os.getuid() == uid and os.geteuid() == uid:
                 try:
-                    os.kill(-1, signal.SIGKILL)
+                    os.kill(-1, sigkill)
                 except ProcessLookupError:
                     pass  # nothing of that user was running
                 code = 0
@@ -97,46 +121,128 @@ def kill_all_of(uid: int) -> bool:
             code = 1
         finally:
             os._exit(code)
-    try:
-        _, status = os.waitpid(pid, 0)
-    except OSError:
-        return False
+    while True:
+        try:
+            # WUNTRACED: also come back when the child was stopped.
+            _, status = os.waitpid(pid, os.WUNTRACED)
+        except OSError:
+            return False
+        if not os.WIFSTOPPED(status):
+            break
+        try:
+            os.kill(pid, sigkill)
+        except OSError:
+            pass
     # A process of the user may have killed the child before it could act.
     return os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
 
 
+def parse_tcp_table(text: str) -> "list[tuple[str, int, int]] | None":
+    """The listening sockets in the text of ``/proc/net/tcp`` or ``tcp6``.
+
+    One ``(address, port, uid)`` for every socket that listens on an address
+    a connection to 127.0.0.1 can arrive at. ``None`` when a line is not
+    what this code knows: then nothing is said, instead of something wrong.
+    """
+
+    rows: list[tuple[str, int, int]] = []
+    for line in text.splitlines()[1:]:
+        fields = line.split()
+        if not fields:
+            continue
+        # sl, local address, remote address, state, queues, timer, retransmits, uid, ...
+        if len(fields) < 8:
+            return None
+        if fields[3] != _TCP_LISTEN:
+            continue
+        raw, _, port = fields[1].rpartition(":")
+        try:
+            if len(raw) not in (8, 32):
+                raise ValueError(raw)
+            # An address is printed as 32-bit words in the machine's own byte order.
+            packed = b"".join(struct.pack("=I", int(raw[index : index + 8], 16)) for index in range(0, len(raw), 8))
+            address = _LOOPBACK_LISTEN_BYTES.get(packed)
+            if address is not None:
+                rows.append((address, int(port, 16), int(fields[7], 10)))
+        except (ValueError, struct.error):
+            return None
+    return rows
+
+
+def proc_listeners() -> "list[tuple[str, int, int]] | None":
+    """Every loopback listener the kernel lists; ``None`` where it has no such list."""
+
+    rows: list[tuple[str, int, int]] = []
+    for index, path in enumerate(_TCP_TABLES):
+        try:
+            with open(path, encoding="ascii", errors="replace") as handle:
+                text = handle.read()
+        except OSError:
+            if index == 0:
+                return None  # not Linux, or no /proc
+            continue  # a kernel without IPv6
+        table = parse_tcp_table(text)
+        if table is None:
+            return None
+        rows.extend(table)
+    return rows
+
+
 class PsutilSampler:
     def listener_uids(self, port: int) -> "set[int] | None":
-        import psutil
-
+        # Apps have users of their own only under a manager that is root.
         if getattr(os, "geteuid", lambda: 1)() != 0:
             return None
-        try:
-            connections = psutil.net_connections(kind="tcp")
-        except Exception:  # noqa: BLE001 - AccessDenied and friends: nothing is known
+        port = int(port)
+        listeners: "list[tuple[str, int, int | None]] | None" = proc_listeners()
+        if listeners is None:
+            listeners = self._psutil_listeners(port)
+        if listeners is None:
             return None
         by_address: dict[str, set[int]] = {}
         unknown = False
-        for connection in connections:
-            try:
-                if connection.status != psutil.CONN_LISTEN or not connection.laddr or int(connection.laddr.port) != int(port):
-                    continue
-                address = str(connection.laddr.ip)
-            except (AttributeError, TypeError, ValueError):
+        for address, listening_on, uid in listeners:
+            if listening_on != port or address not in _LOOPBACK_LISTEN_ORDER:
                 continue
-            if address not in _LOOPBACK_LISTEN_ORDER:
-                continue
-            if not connection.pid:
+            if uid is None:
                 unknown = True
                 continue
-            try:
-                by_address.setdefault(address, set()).add(int(psutil.Process(connection.pid).uids().real))
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, AttributeError):
-                continue
+            by_address.setdefault(address, set()).add(uid)
         for address in _LOOPBACK_LISTEN_ORDER:
             if address in by_address:
                 return by_address[address]
         return None if unknown else set()
+
+    @staticmethod
+    def _psutil_listeners(port: int) -> "list[tuple[str, int, int | None]] | None":
+        """The listeners on ``port`` as psutil sees them, where the kernel's list cannot be read.
+
+        A socket whose process cannot be named has ``None`` for its uid:
+        not known, rather than "nobody".
+        """
+
+        import psutil
+
+        try:
+            connections = psutil.net_connections(kind="tcp")
+        except Exception:  # noqa: BLE001 - AccessDenied and friends: nothing is known
+            return None
+        rows: list[tuple[str, int, int | None]] = []
+        for connection in connections:
+            try:
+                if connection.status != psutil.CONN_LISTEN or not connection.laddr or int(connection.laddr.port) != port:
+                    continue
+                address = str(connection.laddr.ip)
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if not connection.pid:
+                rows.append((address, port, None))
+                continue
+            try:
+                rows.append((address, port, int(psutil.Process(connection.pid).uids().real)))
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, AttributeError):
+                continue
+        return rows
 
     def busy_ports(self) -> set[int]:
         import psutil

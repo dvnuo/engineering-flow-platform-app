@@ -448,6 +448,49 @@ def test_killing_one_users_processes_leaves_everybody_else_alone():
                 process.wait()
 
 
+# Stops everything else of its user, again and again: the manager's child too,
+# from the moment that child has become the user. Where an app shares the
+# manager's PID namespace (hidden mode, Landlock) it can do exactly this.
+STOP_THE_OTHERS = "import os, signal, sys\nsys.stdout.write('up\\n')\nsys.stdout.flush()\nwhile True:\n    try:\n        os.kill(-1, signal.SIGSTOP)\n    except OSError:\n        pass\n"
+
+
+@pytest.mark.skipif(sys.platform != "linux" or not _is_root(), reason="becoming another user needs root")
+def test_a_process_that_stops_everything_of_its_user_cannot_hold_the_manager():
+    import threading
+
+    from efp_app_host.procstats import PsutilSampler, kill_all_of
+
+    finished = threading.Event()
+
+    def rounds() -> None:
+        for _ in range(20):
+            stopper = subprocess.Popen([sys.executable, "-I", "-S", "-c", STOP_THE_OTHERS], user=APP_UID, group=APP_UID, extra_groups=[], stdout=subprocess.PIPE)
+            try:
+                assert stopper.stdout is not None and stopper.stdout.readline().strip() == b"up"
+                # A round the stopper won ends as "nothing done" (the child is
+                # killed, not waited for); the next one is tried at once.
+                for _ in range(2000):
+                    if kill_all_of(APP_UID):
+                        break
+                assert stopper.wait(timeout=30) == -signal.SIGKILL
+            finally:
+                if stopper.poll() is None:
+                    stopper.kill()
+                    stopper.wait()
+        finished.set()
+
+    # In a thread, so that a manager that waits for a stopped child fails the test instead of holding it.
+    worker = threading.Thread(target=rounds, daemon=True)
+    worker.start()
+    try:
+        assert finished.wait(120), "the manager waits for a child that a process of the app stopped"
+    finally:
+        # By pid only: this cannot wait for anybody.
+        sampler = PsutilSampler()
+        for pid in sampler.pids_of(APP_UID):
+            sampler.signal_pid(pid)
+
+
 # ---- the probe the manager runs at boot ----------------------------------------------------
 
 

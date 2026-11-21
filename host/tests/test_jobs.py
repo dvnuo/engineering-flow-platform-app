@@ -151,3 +151,54 @@ def test_appending_to_a_log_does_not_wait_for_the_disk(tmp_path, monkeypatch):
     # A reader waits for what was queued before it looks.
     data, _ = store.read_log(job.id)
     assert data.decode("utf-8").splitlines() == [f"line {index}" for index in range(1000)]
+
+
+def test_a_job_that_reads_as_finished_comes_with_its_whole_log(tmp_path, monkeypatch):
+    store = JobStore(tmp_path / "jobs")
+    job = store.create("app-1", "a" * 40)
+    store.append_log(job.id, "--- activate ---\n", force=True)
+    read_tail = store.log_tail
+
+    def the_job_ends_while_its_log_is_read(job_id):
+        answer = read_tail(job_id)
+        store.append_log(job_id, "deployment finished\n", force=True)
+        store.finish(job)
+        return answer
+
+    # A reader works in a thread of its own; the deployment ends on the event loop meanwhile.
+    monkeypatch.setattr(store, "log_tail", the_job_ends_while_its_log_is_read)
+    seen = store.public(job)
+    # Not "succeeded" with the log of a moment ago: whoever stops asking at
+    # the last status must have the last line. (It used to be exactly that.)
+    assert seen["status"] == JOB_QUEUED and seen["finished_at"] is None and "deployment finished" not in seen["log_tail"]
+    monkeypatch.setattr(store, "log_tail", read_tail)
+    final = store.public(job)
+    assert final["status"] == JOB_SUCCEEDED and final["finished_at"] and final["log_tail"].endswith("deployment finished\n")
+    assert final["log_size"] == len(store.read_log(job.id)[0])
+
+
+def test_the_size_of_a_log_and_its_bytes_come_from_one_look(tmp_path, monkeypatch):
+    from efp_app_host import jobs as jobs_module
+
+    store = JobStore(tmp_path / "jobs")
+    job = store.create("app-1", "a" * 40)
+    store.append_log(job.id, "first\n")
+    store.flush_logs()
+    real_open = open
+
+    def open_while_the_log_grows(path, mode="r", *args, **kwargs):
+        if mode == "rb":
+            # What the writer's thread appends between two steps of a reader.
+            with real_open(path, "ab") as late:
+                late.write(b"late\n")
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(jobs_module, "open", open_while_the_log_grows, raising=False)
+    data, size = store.read_log(job.id)
+    # The size used to be taken before the file was opened: a reader that
+    # went on from it got "late" a second time.
+    assert data == b"first\nlate\n" and size == len(data)
+    rest, total = store.read_log(job.id, size)
+    assert rest == b"late\n" and total == size + len(rest)
+    tail, tail_size = store.log_tail(job.id)
+    assert tail == "first\n" + "late\n" * 3 and tail_size == len(tail)

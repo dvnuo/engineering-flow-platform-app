@@ -245,6 +245,32 @@ def test_killing_a_users_processes_at_once_needs_root():
     assert kill_all_of(0) is False and kill_all_of(-1) is False
 
 
+def test_a_child_that_was_stopped_is_killed_instead_of_waited_for(monkeypatch):
+    import signal
+
+    from efp_app_host import procstats
+
+    # Once the child has become the app's user, a process of the app can stop
+    # it (SIGSTOP cannot be blocked) before it has sent its own signal. The
+    # manager used to wait for such a child for ever.
+    reports = ["stopped", "killed"]
+    calls: list[tuple] = []
+    monkeypatch.setattr(procstats.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(procstats.os, "fork", lambda: 4242, raising=False)
+    monkeypatch.setattr(procstats.os, "WUNTRACED", 2, raising=False)
+    monkeypatch.setattr(procstats.os, "WIFSTOPPED", lambda status: status == "stopped", raising=False)
+    monkeypatch.setattr(procstats.os, "WIFEXITED", lambda status: status == "exited", raising=False)
+    monkeypatch.setattr(procstats.os, "WEXITSTATUS", lambda status: 0, raising=False)
+    monkeypatch.setattr(procstats.os, "waitpid", lambda pid, options: calls.append(("wait", pid, options)) or (pid, reports.pop(0)))
+    monkeypatch.setattr(procstats.os, "kill", lambda pid, sig: calls.append(("kill", pid, sig)))
+    assert procstats.kill_all_of(20000) is False, "nothing was done in this round, and the caller is told"
+    sigkill = getattr(signal, "SIGKILL", signal.SIGTERM)
+    assert calls == [("wait", 4242, 2), ("kill", 4242, sigkill), ("wait", 4242, 2)]
+    # A child that did what it was made for is reported as ever.
+    reports[:] = ["exited"]
+    assert procstats.kill_all_of(20000) is True
+
+
 def test_the_real_sampler_tells_whose_process_listens_on_a_port():
     import socket
 
@@ -279,6 +305,8 @@ def test_a_listener_on_another_address_is_not_the_apps_listener(monkeypatch):
     uids = {11: 20007, 12: 20009, 13: 20009}
     table = [connection("127.0.0.1", 11), connection("127.0.0.2", 12), connection("::", 13), connection("127.0.0.1", 12, port=20008)]
     monkeypatch.setattr(procstats.os, "geteuid", lambda: 0, raising=False)
+    # Where the kernel's own list cannot be read, psutil is asked.
+    monkeypatch.setattr(procstats, "proc_listeners", lambda: None)
     monkeypatch.setattr(psutil, "net_connections", lambda kind="tcp": list(table))
     monkeypatch.setattr(psutil, "Process", lambda pid: types.SimpleNamespace(uids=lambda: types.SimpleNamespace(real=uids[pid])))
     sampler = PsutilSampler()
@@ -291,6 +319,97 @@ def test_a_listener_on_another_address_is_not_the_apps_listener(monkeypatch):
     # A socket nobody can be named for: not known, rather than "nobody".
     table[:] = [connection("127.0.0.1", 0)]
     assert sampler.listener_uids(20007) is None
+
+
+def _tcp_table(*sockets: tuple[str, int, str, int]) -> str:
+    """The text of /proc/net/tcp or tcp6 for (address, port, state, uid), as this machine's kernel would print it."""
+
+    import ipaddress
+    import struct
+
+    lines = ["  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode"]
+    for number, (address, port, state, uid) in enumerate(sockets):
+        packed = ipaddress.ip_address(address).packed
+        local = "".join(f"{struct.unpack('=I', packed[index : index + 4])[0]:08X}" for index in range(0, len(packed), 4))
+        remote = "0" * len(local)
+        lines.append(f"{number:4d}: {local}:{port:04X} {remote}:0000 {state} 00000000:00000000 00:00000000 00000000 {uid:5d}        0 {4000 + number} 1 0000000000000000 100 0 0 10 0")
+    return "\n".join(lines) + "\n"
+
+
+def test_whose_socket_listens_is_read_from_the_kernels_own_list(monkeypatch):
+    # The host's container has no right over the processes of other users
+    # (no SYS_PTRACE), so psutil could not name the process of an app's
+    # socket there and the manager was told "not known" for every app: a
+    # listener of another app passed for the app. The kernel's list of
+    # sockets carries the uid and asks for no such right.
+    from efp_app_host import procstats
+
+    listen, established = "0A", "01"
+    four = _tcp_table(
+        ("127.0.0.1", 20007, listen, 20007),
+        ("127.0.0.2", 20007, listen, 20009),
+        ("127.0.0.1", 20008, listen, 20009),
+        ("127.0.0.1", 20011, established, 20009),
+        ("0.0.0.0", 20012, listen, 20012),
+        ("10.1.2.3", 20013, listen, 20009),
+    )
+    six = _tcp_table(("::", 20007, listen, 20009), ("::ffff:127.0.0.1", 20014, listen, 20014), ("::1", 20008, listen, 20007), ("::", 20012, listen, 20009))
+    assert procstats.parse_tcp_table(four) == [("127.0.0.1", 20007, 20007), ("127.0.0.1", 20008, 20009), ("0.0.0.0", 20012, 20012)]
+    assert procstats.parse_tcp_table(six) == [("::", 20007, 20009), ("::ffff:127.0.0.1", 20014, 20014), ("::", 20012, 20009)]
+    assert procstats.parse_tcp_table(_tcp_table()) == []
+    # A list this code does not know says nothing, instead of something wrong.
+    assert procstats.parse_tcp_table("sl local\n   0: 0100007F:4E27 00\n") is None
+    assert procstats.parse_tcp_table(four.replace(" 20007 ", " user ", 1)) is None
+    assert procstats.parse_tcp_table("header\n   0: 7F:4E27 00000000:0000 0A 0:0 0:0 0 20007 0 1\n") is None
+
+    tables = {"/proc/net/tcp": four, "/proc/net/tcp6": six}
+
+    def read(path, *args, **kwargs):
+        import io
+
+        if path not in tables:
+            raise FileNotFoundError(path)
+        return io.StringIO(tables[path])
+
+    monkeypatch.setattr(procstats, "open", read, raising=False)
+    monkeypatch.setattr(procstats.os, "geteuid", lambda: 0, raising=False)
+    sampler = PsutilSampler()
+    # The most specific address that is taken gets the connection.
+    assert sampler.listener_uids(20007) == {20007}
+    assert sampler.listener_uids(20008) == {20009}, "the app's port, held by another app"
+    assert sampler.listener_uids(20012) == {20012}
+    assert sampler.listener_uids(20014) == {20014}
+    # Connected, on another address, or nothing at all: nobody listens.
+    assert sampler.listener_uids(20011) == set() and sampler.listener_uids(20013) == set() and sampler.listener_uids(20099) == set()
+    # A kernel without IPv6 has one list only.
+    del tables["/proc/net/tcp6"]
+    assert sampler.listener_uids(20007) == {20007} and sampler.listener_uids(20014) == set()
+    # A manager that is not root runs every app as itself: there is nothing to compare.
+    monkeypatch.setattr(procstats.os, "geteuid", lambda: 1000, raising=False)
+    assert sampler.listener_uids(20007) is None
+
+
+def test_the_kernels_list_names_the_user_of_a_real_listener():
+    import socket
+
+    import pytest
+
+    from efp_app_host import procstats
+
+    listeners = procstats.proc_listeners()
+    if listeners is None:
+        pytest.skip("this system has no /proc/net/tcp")
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(("127.0.0.1", 0))
+    port = server.getsockname()[1]
+    try:
+        # Bound is not listening.
+        assert not [row for row in procstats.proc_listeners() or [] if row[1] == port]
+        server.listen(1)
+        assert [row for row in procstats.proc_listeners() or [] if row[1] == port] == [("127.0.0.1", port, os.getuid())]
+    finally:
+        server.close()
+    assert not [row for row in procstats.proc_listeners() or [] if row[1] == port]
 
 
 # ---- root's file operations where an app can write -------------------------------------

@@ -157,3 +157,35 @@ def test_a_requirements_file_that_is_no_list_of_packages_is_refused(tmp_path, mo
         pyenv.collect_requirement_names(tmp_path, "requirements.txt")
     with pytest.raises(pyenv.RequirementsError):
         pyenv.plan_install(tmp_path, {"type": "fastapi", "requirements": "requirements.txt"}, wheels_dir=tmp_path / "none")
+
+
+def test_a_requirement_with_many_hashes_is_read_in_one_pass():
+    # What "pip-compile --generate-hashes" writes: one requirement, one --hash
+    # for every file of the release. A package with a hyphen in its name and
+    # a dozen hashes used to keep the pattern for wheel names busy for
+    # minutes, each further hash three times as long, and a pattern at work
+    # holds up every thread of the manager. With the hundred and twenty of
+    # this test it did not end.
+    hashes = " \\\n".join(f"    --hash=sha256:{index:064x}" for index in range(120))
+    text = "fastapi==0.110.0 \\\n    --hash=sha256:" + "0" * 64 + "\npydantic-core==2.16.3 \\\n" + hashes + "\n"
+    names, includes = pyenv.requirement_names(text)
+    assert names == {"fastapi", "pydantic-core"} and includes == []
+    # The same for what nobody writes by accident: long runs of blanks and of hyphens.
+    crafted = "flask" + " " * 200_000 + "x\n" + "a" + "-b" * 100_000 + "\n" + "./wheels/" + "x-" * 50_000 + "1-py3-none-any.whl\n"
+    names, _ = pyenv.requirement_names(crafted)
+    assert {"flask", "x"} <= names
+
+
+def test_comments_and_wheel_names_are_found_as_before():
+    names, includes = pyenv.requirement_names(
+        "httpx  # the client\n"
+        "color#name==1.0\n"
+        "git+https://example.com/acme/thing.git#egg=acme-thing\n"
+        ".\\wheels\\Local_Pkg-1.0-py3-none-any.whl\n"
+        "pkg @ file:///srv/wheels/other_pkg-2.0-py3-none-any.whl#sha256=abc ; python_version >= '3.9'\n"
+        "https://files.example.com/not-a-wheel.tar.gz\n"
+        "./vendor/nohyphen.whl\n"
+    )
+    # A "#" starts a comment only after white space; a wheel is named by the
+    # first part of its file name, whatever comes before and after it.
+    assert names == {"httpx", "color", "acme-thing", "local-pkg", "pkg", "other-pkg"} and includes == []

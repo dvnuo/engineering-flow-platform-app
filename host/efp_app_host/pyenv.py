@@ -22,6 +22,9 @@ PIP_FILE_VARIABLES = ("PIP_CERT", "PIP_CLIENT_CERT", "PIP_CONFIG_FILE", "SSL_CER
 _NAME_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)")
 _INCLUDE_RE = re.compile(r"^(?:-r|--requirement)(?:\s+|=)(\S+)")
 _EGG_RE = re.compile(r"[#&]egg=([A-Za-z0-9][A-Za-z0-9._-]*)")
+# What the first part of a wheel's file name (its distribution) is made of.
+_WHEEL_NAME_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._")
+_WHEEL_SUFFIX = ".whl"
 _MAX_INCLUDE_DEPTH = 5
 # The manager reads the requirements itself (as root, into memory) to see
 # what it has to add: a list of packages is a few kilobytes.
@@ -36,8 +39,56 @@ def normalize_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
+def _without_comment(line: str) -> str:
+    """``line`` up to a ``#`` that follows white space (where pip starts a comment)."""
+
+    position = line.find("#", 1)
+    while position > 0:
+        if line[position - 1].isspace():
+            return line[:position].rstrip()
+        position = line.find("#", position + 1)
+    return line
+
+
+def _wheel_distribution(line: str) -> str | None:
+    """The distribution of the first wheel a line names by path or URL.
+
+    A wheel's file name is ``{distribution}-{version}-...whl``: in a part of
+    a path that ends in ``.whl``, the name is what stands before a hyphen.
+    Every part is walked once, from hyphen to hyphen.
+    """
+
+    if _WHEEL_SUFFIX not in line:
+        return None
+    for word in line.split():
+        for part in word.replace("\\", "/").split("/"):
+            # ".whl" must leave room for a hyphen and at least one character of a version before it.
+            latest = part.rfind(_WHEEL_SUFFIX) - 2
+            hyphen = part.find("-")
+            while 0 <= hyphen <= latest:
+                if part[hyphen + 1] != "-":
+                    start = hyphen
+                    while start > 0 and part[start - 1] in _WHEEL_NAME_CHARACTERS:
+                        start -= 1
+                    # A name starts with a letter or a digit.
+                    name = part[start:hyphen].lstrip("._")
+                    if name:
+                        return normalize_name(name)
+                hyphen = part.find("-", hyphen + 1)
+    return None
+
+
 def requirement_names(text: str) -> tuple[set[str], list[str]]:
-    """The distributions a requirements file names, and the files it includes."""
+    """The distributions a requirements file names, and the files it includes.
+
+    The manager runs this itself on a file a member wrote, and a pattern at
+    work holds every other thread of the manager up. So a line is taken
+    apart in one pass: the comment and the wheel names used to be found by
+    patterns that tried every way of cutting a line at its blanks or its
+    hyphens, which took minutes on one requirement with a dozen ``--hash``
+    options (what ``pip-compile --generate-hashes`` writes for every
+    package) and did not end on a longer one.
+    """
 
     names: set[str] = set()
     includes: list[str] = []
@@ -46,7 +97,7 @@ def requirement_names(text: str) -> tuple[set[str], list[str]]:
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        line = re.split(r"\s+#", line, maxsplit=1)[0].strip()
+        line = _without_comment(line)
         include = _INCLUDE_RE.match(line)
         if include:
             includes.append(include.group(1))
@@ -60,9 +111,9 @@ def requirement_names(text: str) -> tuple[set[str], list[str]]:
         if match and "://" not in line.split("@", 1)[0]:
             names.add(normalize_name(match.group(1)))
         # A wheel given by path or URL: the distribution is the file name's first part.
-        wheel = re.search(r"([A-Za-z0-9][A-Za-z0-9._]*)-[^/\\-]+(?:-[^/\\]+)*\.whl", line)
+        wheel = _wheel_distribution(line)
         if wheel:
-            names.add(normalize_name(wheel.group(1)))
+            names.add(wheel)
     return names, includes
 
 

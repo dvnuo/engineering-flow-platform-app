@@ -694,7 +694,7 @@ arguments.
 | `messages` | `str`, one message, or a sequence of messages | required | A `str` is one user message. A message is a mapping `{"role": ..., "content": ...}`, a pair `(role, content)`, or an object with the attributes `role` and `content`. `role` is `"user"`, `"assistant"` or `"system"`. `content` must be a `str`. System messages are taken out of the list and joined with a blank line into the system prompt. At least one user or assistant message must remain. |
 | `system` | `Optional[str]` | `None` | The system prompt. Together with a system message in `messages` it raises `InvalidRequestError`. |
 | `model` | `Optional[str]` | `None` | `None`: the app's default model. The allowed names are `app.info().llm.models`; another name raises `ModelNotAllowedError`. |
-| `max_output_tokens` | `Optional[int]` | `None` | The most tokens the answer may use; reasoning tokens count as output tokens. Sent as given. The SDK has no default and checks no range. |
+| `max_output_tokens` | `Optional[int]` | `None` | The most tokens the answer may use; reasoning tokens count as output tokens. Sent as given. The SDK has no default and checks no range; the Portal refuses more than 128,000, a conversation of more than 1,000 messages, and one of more than 4,000,000 characters with the system prompt (`InvalidRequestError`). |
 | `temperature` | `Optional[float]` | `None` | Sent as given. The provider may ignore it. The SDK checks no range. |
 | `reasoning_effort` | `Optional[str]` | `None` | `"low"`, `"medium"` or `"high"`, written exactly so. `None`: the field is left out of the request and the Portal uses `low`. Any other value raises `ValueError` before a request is made. The Portal lowers the level to what the model supports. |
 | `visitor` | `Visitor`, `str` or `None` | `None` | Who caused the call (3.7). |
@@ -878,7 +878,7 @@ def flush(self) -> Optional[Dict[str, Any]]:
 | `AppDisabledError` | The app is disabled in the Portal. |
 | `LlmDisabledError` | The owner has not turned on the model for the app. |
 | `ProviderAuthFailedError` | The owner's sign-in to the model provider has expired. |
-| `RateLimitedError` | Too many calls. `retry_after`. |
+| `RateLimitedError` | Too many calls; or the calls the app has under way take up what is left of its daily tokens (each counts as its text plus its `max_output_tokens` until it ends, which is one more reason to set the bound). `retry_after`. |
 | `BudgetExceededError` | The app's daily budget is used up. `retry_after`. |
 | `ProviderError` | The model provider failed; also an error event without a code. |
 | `PortalUnreachableError`, `PortalTimeoutError` | The Portal could not be reached, or was silent for longer than the timeout. |
