@@ -10,10 +10,10 @@ from fastapi.testclient import TestClient
 from efp_app_host.app import create_app
 from efp_app_host.gateway import visitor as visitor_header
 from efp_app_host.gateway.routes import safe_next
-from efp_app_host.gateway.sessions import COOKIE_NAME
+from efp_app_host.gateway.sessions import COOKIE_NAME, STATE_COOKIE_NAME
 from efp_app_host.models import STATE_CRASHED
 
-from gateway_support import BOB, VISITOR_KEY, add_app, allow, session_cookie
+from gateway_support import BOB, STATE, STATE_COOKIE, VISITOR_KEY, add_app, allow, callback, session_cookie
 
 NAVIGATE = {"Accept": "text/html,application/xhtml+xml", "Sec-Fetch-Mode": "navigate"}
 FETCH = {"Accept": "application/json", "Sec-Fetch-Mode": "cors"}
@@ -189,8 +189,27 @@ def test_deny_sends_a_navigation_to_the_launch_page(client, gateway, registry, f
     assert response.status_code == 302
     target = urlsplit(response.headers["location"])
     assert f"{target.scheme}://{target.netloc}{target.path}" == "https://efp.example.com/apps/launch/mindmap"
-    assert parse_qs(target.query) == {"next": ["/mindmap/board?id=3"]}
+    query = parse_qs(target.query)
+    state = query.pop("state")[0]
+    assert query == {"next": ["/mindmap/board?id=3"]}
     assert response.headers["cache-control"] == "no-store"
+    # The same value is in a cookie that only this browser holds (section 6.3).
+    name_value, *attributes = [part.strip() for part in response.headers["set-cookie"].split(";")]
+    assert name_value == f"{STATE_COOKIE_NAME}={state}" and len(state) >= 22
+    assert set(attributes) == {"Path=/", "Max-Age=3600", "HttpOnly", "Secure", "SameSite=Lax"}
+
+
+def test_tabs_that_sign_in_together_share_one_state(client, gateway, registry, fake_runtime):
+    add_app(registry, fake_runtime)
+    first = turn_away(client, gateway, "/mindmap/a", "sign_in_required")
+    state = parse_qs(urlsplit(first.headers["location"]).query)["state"][0]
+    held = first.headers["set-cookie"].split(";")[0]
+
+    second = turn_away(client, gateway, "/mindmap/b", "sign_in_required", headers={**NAVIGATE, "Cookie": f"other=1; {held}"})
+    assert parse_qs(urlsplit(second.headers["location"]).query)["state"] == [state]
+    # A cookie that is not a state (too short, made up by a page) is replaced, not used.
+    third = turn_away(client, gateway, "/mindmap/c", "sign_in_required", headers={**NAVIGATE, "Cookie": f"{STATE_COOKIE_NAME}=short"})
+    assert parse_qs(urlsplit(third.headers["location"]).query)["state"] != ["short"]
 
 
 @pytest.mark.parametrize(
@@ -321,12 +340,14 @@ def handoff(fake_portal, code: str = "c1", slug: str = "mindmap", app_id: str = 
 def test_callback_starts_the_session_and_returns_to_the_app(client, gateway, registry, fake_runtime, fake_portal):
     add_app(registry, fake_runtime)
     handoff(fake_portal)
-    response = client.get("/_efp/callback", params={"code": "c1", "next": "/mindmap/board?id=3&x=a+b"})
+    response = callback(client, {"code": "c1", "next": "/mindmap/board?id=3&x=a+b"})
     assert response.status_code == 302
     assert response.headers["location"] == "/mindmap/board?id=3&x=a+b"
     assert response.headers["cache-control"] == "no-store"
 
-    cookie = response.headers["set-cookie"]
+    cookie, cleared = response.headers.get_list("set-cookie")
+    # The sign-in is over: its state goes.
+    assert cleared.startswith(f"{STATE_COOKIE_NAME}=;") and "Max-Age=0" in cleared
     name_value, *attributes = [part.strip() for part in cookie.split(";")]
     assert name_value.startswith("__Host-efp_apps=")
     assert set(attributes) == {"Path=/", f"Max-Age={168 * 3600}", "HttpOnly", "Secure", "SameSite=Lax"}
@@ -366,7 +387,7 @@ def test_callback_only_returns_into_the_same_app(client, registry, fake_runtime,
     params = {"code": "c1"}
     if wanted is not None:
         params["next"] = wanted
-    response = client.get("/_efp/callback", params=params)
+    response = callback(client, params)
     assert response.status_code == 302
     assert response.headers["location"] == "/mindmap/"
     assert "set-cookie" in response.headers
@@ -382,25 +403,67 @@ def test_safe_next_keeps_what_stays_inside_the_app(wanted):
 
 def test_callback_with_a_bad_code_answers_400_and_links_back(client, registry, fake_runtime, fake_portal):
     add_app(registry, fake_runtime)
-    response = client.get("/_efp/callback", params={"code": "nope", "next": "/mindmap/board"}, headers=NAVIGATE)
+    response = callback(client, {"code": "nope", "next": "/mindmap/board"}, headers=NAVIGATE)
     assert response.status_code == 400
     assert "Sign-in did not finish" in response.text
     assert 'href="/mindmap/"' in response.text
     assert "set-cookie" not in response.headers
 
-    missing = client.get("/_efp/callback", params={"next": "/mindmap/"})
+    missing = callback(client, {"next": "/mindmap/"})
     assert missing.status_code == 400 and "set-cookie" not in missing.headers
     # Without a hint of the app the page still leads somewhere: the Portal.
-    nowhere = client.get("/_efp/callback", params={"code": "nope"})
+    nowhere = callback(client, {"code": "nope"})
     assert nowhere.status_code == 400
     assert 'href="https://efp.example.com"' in nowhere.text and 'href="/' not in nowhere.text
+
+
+@pytest.mark.parametrize(
+    "state, cookie",
+    [
+        (None, STATE_COOKIE),  # a link that carries no state
+        ("", STATE_COOKIE),
+        (STATE, ""),  # the browser that started this sign-in is another one
+        (STATE, f"{STATE_COOKIE_NAME}=another-state-of-another-sign-in"),
+        ("another-state-of-another-sign-in", STATE_COOKIE),
+        (STATE + "x", STATE_COOKIE + "x"),  # equal, but not a state the gateway makes: 65 characters is too long
+        ("short", f"{STATE_COOKIE_NAME}=short"),
+    ],
+)
+def test_a_code_is_redeemed_only_in_the_browser_that_started_the_sign_in(client, registry, fake_runtime, fake_portal, state, cookie):
+    # Somebody signs in as themselves, keeps the address with the code and gets
+    # another person's browser to load it: that browser must not end up with their session.
+    add_app(registry, fake_runtime)
+    handoff(fake_portal)
+    if state == STATE + "x":
+        state, cookie = "s" * 65, f"{STATE_COOKIE_NAME}={'s' * 65}"
+    params = {"code": "c1", "next": "/mindmap/board"}
+    if state is not None:
+        params["state"] = state
+    response = client.get("/_efp/callback", params=params, headers={**NAVIGATE, **({"Cookie": cookie} if cookie else {})})
+    assert response.status_code == 400 and "Sign-in did not finish" in response.text
+    assert "set-cookie" not in response.headers
+    assert 'href="/mindmap/board"' in response.text  # "Try again" starts a sign-in of this browser's own
+    assert "c1" in fake_portal.codes  # the code was not spent
+
+
+def test_a_callback_of_another_sign_in_leaves_a_signed_in_visitor_alone(client, gateway, registry, fake_runtime, fake_portal):
+    add_app(registry, fake_runtime)
+    handoff(fake_portal)
+    mine = session_cookie(gateway)
+    response = client.get("/_efp/callback", params={"code": "c1", "next": "/mindmap/board", "state": STATE}, headers={"Cookie": mine})
+    # Also what a second tab sees when the first one finished the same sign-in.
+    assert (response.status_code, response.headers["location"]) == (302, "/mindmap/board")
+    assert "set-cookie" not in response.headers and "c1" in fake_portal.codes
+
+    nowhere = client.get("/_efp/callback", params={"code": "c1", "next": "https://evil.example.com/"}, headers={"Cookie": mine})
+    assert nowhere.headers["location"] == "/"
 
 
 def test_a_code_works_once(client, registry, fake_runtime, fake_portal):
     add_app(registry, fake_runtime)
     handoff(fake_portal)
-    assert client.get("/_efp/callback", params={"code": "c1"}).status_code == 302
-    assert client.get("/_efp/callback", params={"code": "c1"}).status_code == 400
+    assert callback(client, {"code": "c1"}).status_code == 302
+    assert callback(client, {"code": "c1"}).status_code == 400
 
 
 def test_callback_when_the_portal_cannot_be_reached(client, registry, fake_runtime, fake_portal):
@@ -411,7 +474,7 @@ def test_callback_when_the_portal_cannot_be_reached(client, registry, fake_runti
 
     fake_portal.redeem_handoff = down
     add_app(registry, fake_runtime)
-    response = client.get("/_efp/callback", params={"code": "c1", "next": "/mindmap/"})
+    response = callback(client, {"code": "c1", "next": "/mindmap/"})
     assert response.status_code == 503
     assert 'href="/mindmap/"' in response.text and "set-cookie" not in response.headers
 
@@ -427,7 +490,7 @@ def test_callback_when_the_portal_cannot_be_reached(client, registry, fake_runti
 )
 def test_callback_refuses_an_answer_it_cannot_use(client, fake_portal, answer):
     fake_portal.codes["c1"] = answer
-    response = client.get("/_efp/callback", params={"code": "c1", "next": "/mindmap/"})
+    response = callback(client, {"code": "c1", "next": "/mindmap/"})
     assert response.status_code == 400 and "set-cookie" not in response.headers
 
 
@@ -449,11 +512,13 @@ def test_sign_in_from_the_first_request_to_the_app(client, gateway, registry, fa
     assert (first.status_code, first.headers["x-efp-reason"]) == (401, "sign_in_required")
 
     redirect = turn_away(client, gateway, "/mindmap/board?id=3", first.headers["x-efp-reason"])
-    wanted = parse_qs(urlsplit(redirect.headers["location"]).query)["next"][0]
+    sent = parse_qs(urlsplit(redirect.headers["location"]).query)
+    wanted, state = sent["next"][0], sent["state"][0]
+    held = redirect.headers["set-cookie"].split(";")[0]
 
-    # The Portal signs the visitor in and sends the browser back with a code.
+    # The Portal signs the visitor in and sends the browser back with a code and the state.
     handoff(fake_portal, code="one-time")
-    back = client.get("/_efp/callback", params={"code": "one-time", "next": wanted})
+    back = client.get("/_efp/callback", params={"code": "one-time", "next": wanted, "state": state}, headers={"Cookie": held})
     assert (back.status_code, back.headers["location"]) == (302, "/mindmap/board?id=3")
 
     session = back.headers["set-cookie"].split(";")[0]

@@ -39,6 +39,11 @@ HERE = Path(__file__).resolve().parent
 NAVIGATE = {"Accept": "text/html,application/xhtml+xml", "Sec-Fetch-Mode": "navigate"}
 FETCH = {"Accept": "application/json", "Sec-Fetch-Mode": "cors"}
 SESSION_COOKIE = "__Host-efp_apps"
+# A sign-in under way (section 6.3): the gateway puts one value into the
+# address it sends the browser to and into this cookie, and redeems a code
+# only when both come back equal.
+STATE_COOKIE = "__Host-efp_apps_state"
+STATE = "smoke-state-of-a-sign-in-000001"
 
 
 # ---- small tools (also imported by the unit tests) ------------------------------------
@@ -248,6 +253,10 @@ class Smoke:
             merged["Content-Type"] = "application/json"
         return request(self.gateway, method, path, headers=merged, body=body)
 
+    def callback(self, query: str) -> Reply:
+        """The Portal's way back, as the browser that started the sign-in sends it."""
+        return self.page(f"/_efp/callback?{query}&state={STATE}", headers={**NAVIGATE, "Cookie": f"{STATE_COOKIE}={STATE}"})
+
     def app_json(self, slug: str, path: str, payload: object = None, *, headers: dict | None = None):
         reply = self.page(f"/{slug}{path}", headers={"Accept": "application/json", **(headers or {})}, method="POST" if payload is not None else "GET", payload=payload)
         if reply.status != 200:
@@ -408,7 +417,7 @@ class Smoke:
         self.check("a guest sees the poll, without a vote", guest["signed_in"] is False and guest["total"] == 0 and guest["your_vote"] is None, guest)
         refused = self.page("/ex-poll/api/vote", headers=FETCH, method="POST", payload={"option": "hike"})
         self.check("a guest cannot vote", refused.status == 401, refused)
-        entered = self.page("/_efp/callback?code=ok.ex-poll.ex-poll.13&next=" + quote("/ex-poll/", safe=""))
+        entered = self.callback("code=ok.ex-poll.ex-poll.13&next=" + quote("/ex-poll/", safe=""))
         carol = next((value.split(";", 1)[0] for value in entered.all("Set-Cookie") if value.startswith(SESSION_COOKIE + "=")), "")
         self.check("a member signs in", entered.status == 302 and bool(carol), entered)
         voted = self.page("/ex-poll/api/vote", headers={**FETCH, "Cookie": carol}, method="POST", payload={"option": "hike"})
@@ -601,19 +610,29 @@ class Smoke:
         location = nav.header("Location") or ""
         self.check("a page request without a session is sent to the Portal's launch page", nav.status == 302 and location.startswith(f"{self.args.portal_public}/apps/launch/probe-a?next="), nav)
         self.check("and the way back is kept", parse_qs(urlsplit(location).query).get("next") == ["/probe-a/whoami?x=1"], location)
+        started = (parse_qs(urlsplit(location).query).get("state") or [""])[0]
+        held = next((value.split(";", 1)[0] for value in nav.all("Set-Cookie") if value.startswith(STATE_COOKIE + "=")), "")
+        self.check("the sign-in is bound to this browser: one state in the address and in a cookie", len(started) >= 22 and held == f"{STATE_COOKIE}={started}", (location, nav.all("Set-Cookie")))
+        other_tab = self.page("/probe-a/other", headers={**NAVIGATE, "Cookie": held})
+        self.check("a second tab of the same browser joins that sign-in", (parse_qs(urlsplit(other_tab.header("Location") or "").query).get("state") or [""])[0] == started, other_tab)
         fetch = self.page("/probe-a/whoami", headers=FETCH)
         self.check("a script's request without a session gets 401 as JSON", fetch.status == 401 and fetch.json()["error"]["code"] == "sign_in_required", fetch)
 
-        bad = self.page("/_efp/callback?code=nonsense&next=/probe-a/")
+        bad = self.callback("code=nonsense&next=/probe-a/")
         self.check("a bad sign-in code is answered 400 with a page", bad.status == 400 and "<" in bad.text and bad.header("Set-Cookie") is None, bad)
-        back = self.page("/_efp/callback?code=ok.probe-aaaa.probe-a.12&next=" + quote("/probe-a/whoami", safe=""))
+        planted = self.page("/_efp/callback?code=ok.probe-aaaa.probe-a.12&next=" + quote("/probe-a/whoami", safe=""))
+        self.check("a code that arrives in a browser that did not start the sign-in is not redeemed", planted.status == 400 and planted.header("Set-Cookie") is None, planted)
+        foreign = self.page("/_efp/callback?code=ok.probe-aaaa.probe-a.12&next=/probe-a/&state=" + STATE, headers={**NAVIGATE, "Cookie": f"{STATE_COOKIE}=another-state-of-another-sign-in"})
+        self.check("nor with the state of another sign-in", foreign.status == 400 and foreign.header("Set-Cookie") is None, foreign)
+        back = self.callback("code=ok.probe-aaaa.probe-a.12&next=" + quote("/probe-a/whoami", safe=""))
         session = next((value.split(";", 1)[0] for value in back.all("Set-Cookie") if value.startswith(SESSION_COOKIE + "=")), "")
-        self.check("a good code starts a session and goes back into the app", back.status == 302 and back.header("Location") == "/probe-a/whoami" and bool(session), back)
-        flags = (back.header("Set-Cookie") or "").lower()
+        self.check("a good code starts a session and goes back into the app (the two refusals did not spend it)", back.status == 302 and back.header("Location") == "/probe-a/whoami" and bool(session), back)
+        flags = next((value.lower() for value in back.all("Set-Cookie") if value.startswith(SESSION_COOKIE + "=")), "")
         self.check("the session cookie is HttpOnly, Secure, SameSite=Lax, Path=/", all(flag in flags for flag in ("httponly", "secure", "samesite=lax", "path=/")), flags)
-        again = self.page("/_efp/callback?code=ok.probe-aaaa.probe-a.12&next=/probe-a/")
+        self.check("and the state of the finished sign-in is cleared", any(value.startswith(STATE_COOKIE + "=;") and "max-age=0" in value.lower() for value in back.all("Set-Cookie")), back.all("Set-Cookie"))
+        again = self.callback("code=ok.probe-aaaa.probe-a.12&next=/probe-a/")
         self.check("a code works once", again.status == 400, again)
-        elsewhere = self.page("/_efp/callback?code=ok.probe-aaaa.probe-a.13&next=" + quote("//evil.example.com/", safe=""))
+        elsewhere = self.callback("code=ok.probe-aaaa.probe-a.13&next=" + quote("//evil.example.com/", safe=""))
         self.check("the callback never redirects out of the app", elsewhere.status == 302 and elsewhere.header("Location") == "/probe-a/", elsewhere)
 
         signed = self.page("/probe-a/whoami", headers={**FETCH, "Cookie": f"mine=1; {session}"})
@@ -654,7 +673,7 @@ class Smoke:
         # ---- the app center ---------------------------------------------------
         self.section("the app center at the root of the address")
         root = self.page("/")
-        self.check("without a session the root sends the visitor to sign in", root.status == 302 and root.header("Location") == f"{self.args.portal_public}/apps/launch", root)
+        self.check("without a session the root sends the visitor to sign in", root.status == 302 and (root.header("Location") or "").startswith(f"{self.args.portal_public}/apps/launch?state="), root)
         script = self.page("/", headers=FETCH)
         self.check("and a script gets 401 as JSON", script.status == 401 and script.json()["error"]["code"] == "sign_in_required", script)
         owner = {"username": "alice", "display_name": "Alice"}
@@ -663,7 +682,7 @@ class Smoke:
             {"id": "smoke-site", "slug": "smoke-site", "name": "Smoke <site>", "description": "", "type": "static", "visibility": "private", "mine": True, "owner": owner, "icon": None, "last_visited_at": None},
         ]
         self.stub("PUT", "/_stub/catalog", {"apps": cards, "icons": ["probe-aaaa"]})
-        entered = self.page("/_efp/callback?code=center.12&next=%2F")
+        entered = self.callback("code=center.12&next=%2F")
         member = next((value.split(";", 1)[0] for value in entered.all("Set-Cookie") if value.startswith(SESSION_COOKIE + "=")), "")
         self.check("the center's sign-in comes back to the list with a session", entered.status == 302 and entered.header("Location") == "/?signed_in=1" and bool(member), entered)
         listed = self.page("/?signed_in=1", headers={**NAVIGATE, "Cookie": member})

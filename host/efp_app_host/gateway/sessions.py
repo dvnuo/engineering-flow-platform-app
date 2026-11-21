@@ -9,6 +9,12 @@ The cookie holds who the visitor is, when it was issued and when it ends::
 Nothing is stored on the host: a session ends when it expires, or when the
 Portal revokes the user's sessions (``Registry.revoke_user``), which makes
 every cookie issued before that moment invalid.
+
+A second, short-lived cookie holds the "state" of a sign-in that is under way
+(docs/CONTRACTS.md, section 6.3): a random value the gateway also puts into
+the address it sends the browser to. The Portal hands it back with the code,
+and the code is redeemed only in the browser that holds the same value, so
+that nobody can finish a sign-in of their own in somebody else's browser.
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ import hashlib
 import hmac
 import json
 import re
+import secrets
 import time
 from dataclasses import dataclass
 from typing import Callable
@@ -31,6 +38,42 @@ RESERVED_COOKIE_PREFIXES = ("__host-efp", "__secure-efp")
 TOKEN_VERSION = "s1"
 MAX_TOKEN_LENGTH = 4096
 _B64URL = re.compile(r"[A-Za-z0-9_-]+")
+
+# The sign-in under way. An hour: the Portal's own sign-in (company SSO, a
+# second factor) happens in between.
+STATE_COOKIE_NAME = "__Host-efp_apps_state"
+STATE_TTL_SECONDS = 3600
+_STATE = re.compile(r"[A-Za-z0-9_-]{22,64}")
+
+
+def new_state() -> str:
+    return secrets.token_urlsafe(24)
+
+
+def read_state(header: str | None) -> str | None:
+    """The state of a sign-in under way, from a ``Cookie`` header; ``None`` without a well-formed one."""
+
+    for part in (header or "").split(";"):
+        name, separator, value = part.strip().partition("=")
+        if separator and name.strip() == STATE_COOKIE_NAME and _STATE.fullmatch(value.strip()):
+            return value.strip()
+    return None
+
+
+def state_matches(presented: str | None, held: str | None) -> bool:
+    """True when the address and the cookie carry the same well-formed value."""
+
+    if not presented or not held or not _STATE.fullmatch(presented):
+        return False
+    return hmac.compare_digest(presented.encode("ascii"), held.encode("ascii"))
+
+
+def state_cookie(value: str) -> str:
+    return f"{STATE_COOKIE_NAME}={value}; Path=/; Max-Age={STATE_TTL_SECONDS}; HttpOnly; Secure; SameSite=Lax"
+
+
+def clear_state_cookie() -> str:
+    return f"{STATE_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"
 
 
 def b64encode(data: bytes) -> str:

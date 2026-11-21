@@ -46,6 +46,7 @@ from .decision import (
 from .pages import pick_locale
 from .secret import SECRET_HEADER, matches
 from .services import GatewayServices
+from .sessions import clear_state_cookie, new_state, read_state, state_cookie, state_matches
 
 logger = logging.getLogger(__name__)
 
@@ -145,12 +146,27 @@ def _page(
     return HTMLResponse(body, status_code=status, headers={**_PAGE_HEADERS, **(headers or {})})
 
 
+def sign_in_redirect(request: Request, launch: str, headers: dict[str, str] | None = None) -> Response:
+    """Send the browser to the Portal's launch page, bound to this browser (section 6.3, step 1).
+
+    The state goes into the address and into a cookie. Tabs that start a
+    sign-in at the same time share one value: the cookie of the first is
+    used again, so the second does not make the first one's answer invalid.
+    """
+
+    state = read_state("; ".join(request.headers.getlist("cookie"))) or new_state()
+    separator = "&" if "?" in launch else "?"
+    response = RedirectResponse(f"{launch}{separator}state={state}", status_code=302, headers=headers or dict(_NO_STORE))
+    response.headers.append("Set-Cookie", state_cookie(state))
+    return response
+
+
 def refusal_response(gateway: GatewayServices, request: Request, refusal: Refusal, *, original_uri: str = "") -> Response:
     headers = dict(_NO_STORE)
     if refusal.retry_after:
         headers["Retry-After"] = str(refusal.retry_after)
     if refusal.redirect_to:
-        return RedirectResponse(refusal.redirect_to, status_code=302, headers=headers)
+        return sign_in_redirect(request, refusal.redirect_to, headers)
     if not refusal.navigation or refusal.page is None:
         return JSONResponse(
             {"error": {"code": refusal.code, "message": refusal.message}},
@@ -289,7 +305,7 @@ async def home(request: Request) -> Response:
             # The sign-in just finished and there is still no session: the
             # browser did not keep the cookie. Another redirect would only loop.
             return _signin_failed(gateway, request, slug="", status=400, retry_url=CENTER_PATH)
-        return RedirectResponse(center_launch_url(gateway.settings.portal_public_url), status_code=302, headers=_NO_STORE)
+        return sign_in_redirect(request, center_launch_url(gateway.settings.portal_public_url))
     if not navigation:
         # The list is a page, not an API.
         return _center_json(APP_NOT_FOUND, 404, "There is no app at this address.")
@@ -305,7 +321,7 @@ async def home(request: Request) -> Response:
 
     if not catalog.allowed or catalog.visitor is None or catalog.visitor.id != session.visitor.id:
         # The member is no longer one: the session ends, and the Portal says why when they sign in.
-        response = RedirectResponse(center_launch_url(gateway.settings.portal_public_url), status_code=302, headers=_NO_STORE)
+        response = sign_in_redirect(request, center_launch_url(gateway.settings.portal_public_url))
         response.headers.append("Set-Cookie", gateway.sessions.clear_cookie())
         return response
 
@@ -385,6 +401,16 @@ async def callback(request: Request) -> Response:
     hinted_slug = parse_original_uri(wanted)[0]
     if not code:
         return _signin_failed(gateway, request, slug=hinted_slug, status=400)
+    if not state_matches(request.query_params.get("state"), read_state(_cookies(request))):
+        # This browser did not start the sign-in the code belongs to (a link
+        # somebody else made, to sign the visitor in as themselves), or it
+        # lost the cookie on the way. The code is left alone.
+        back = safe_next(wanted, hinted_slug) if hinted_slug else CENTER_PATH
+        session, _forwarded = gateway.sessions.read_cookie_header(_cookies(request), now=gateway.clock())
+        if session is not None:
+            # Signed in already: another tab finished the same sign-in first.
+            return RedirectResponse(back, status_code=302, headers=_NO_STORE)
+        return _signin_failed(gateway, request, slug=hinted_slug, status=400, retry_url=back)
     try:
         redeemed = await gateway.portal.redeem_handoff(code)
     except Exception as exc:
@@ -411,6 +437,7 @@ async def callback(request: Request) -> Response:
         target = safe_next(wanted, slug)
     response = RedirectResponse(target, status_code=302, headers={**_NO_STORE, "Referrer-Policy": "no-referrer"})
     response.headers.append("Set-Cookie", gateway.sessions.cookie(gateway.sessions.issue(visitor, now=gateway.clock())))
+    response.headers.append("Set-Cookie", clear_state_cookie())
     return response
 
 

@@ -13,7 +13,7 @@ from typing import Any
 from efp_app_host.gateway import services as gateway_services
 from efp_app_host.gateway.decision import GatewayRequest
 from efp_app_host.gateway.services import GatewayServices
-from efp_app_host.gateway.sessions import COOKIE_NAME
+from efp_app_host.gateway.sessions import COOKIE_NAME, STATE_COOKIE_NAME
 from efp_app_host.models import Release, Visitor
 from efp_app_host.paths import HostPaths
 from efp_app_host.state import HostState
@@ -78,6 +78,20 @@ def add_app(
 def allow(portal: Any, app_id: str = "app-1", visitor: Visitor = BOB) -> None:
     portal.access[(app_id, visitor.id)] = (True, None)
     portal.users[visitor.id] = visitor
+
+
+# A sign-in under way, as the gateway would have started it in this browser.
+STATE = "state-of-a-sign-in-under-way-01"
+STATE_COOKIE = f"{STATE_COOKIE_NAME}={STATE}"
+
+
+def callback(client: Any, params: dict[str, Any], *, headers: dict[str, str] | None = None, cookie: str = STATE_COOKIE) -> Any:
+    """``/_efp/callback`` as the browser that started the sign-in sends it: the state in the address and in its cookie."""
+
+    sent = dict(headers or {})
+    if cookie:
+        sent["Cookie"] = cookie
+    return client.get("/_efp/callback", params={"state": STATE, **params}, headers=sent)
 
 
 def session_cookie(gateway: GatewayServices, visitor: Visitor = BOB, *, now: float | None = None) -> str:

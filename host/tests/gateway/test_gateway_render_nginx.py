@@ -346,6 +346,11 @@ def test_the_app_location_does_what_section_6_2_asks(parsed):
     }
 
 
+def test_the_refusal_route_is_given_the_cookies(parsed):
+    # It starts the sign-in, and uses the state of one another tab has already started.
+    assert "proxy_set_header Cookie $http_cookie" in directives(block(parsed, "location @efp_deny"))
+
+
 def test_the_headers_nginx_reads_are_the_ones_the_manager_sends(conf, parsed, gateway_server, settings):
     from efp_app_host.gateway import routes
 

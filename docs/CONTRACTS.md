@@ -28,6 +28,7 @@ timestamp is an ISO-8601 UTC string (`2026-11-15T08:30:00Z`).
 | Visibility | `private` (owner only), `public` (the owner's group), `platform` (every member), `anyone` (no sign-in) |
 | Host API token | one shared secret, used as `Authorization: Bearer <token>` in both directions between Portal and manager |
 | Gateway session cookie | `__Host-efp_apps` (HttpOnly, Secure, SameSite=Lax, Path=/) |
+| Sign-in state cookie | `__Host-efp_apps_state` (same attributes, one hour; section 6.3) |
 | Visitor header | `X-EFP-Visitor` |
 
 ## 2. The app manifest: `efp-app.json`
@@ -359,14 +360,28 @@ adds `X-Content-Type-Options: nosniff`, `X-Robots-Tag: noindex`,
 
 ### 6.3 Sign-in hand-off
 
-1. Gateway -> browser: `302 {PORTAL_PUBLIC_URL}/apps/launch/{slug}?next=<url-encoded path and query>`.
+1. Gateway -> browser:
+   `302 {PORTAL_PUBLIC_URL}/apps/launch/{slug}?next=<url-encoded path and query>&state=<state>`,
+   and a cookie `__Host-efp_apps_state=<state>` (HttpOnly, one hour). The
+   state is 22 to 64 characters of `[A-Za-z0-9_-]`, random, and binds the
+   sign-in to the browser that started it; a browser that already holds one
+   gets the same value again, so tabs that sign in together share it.
 2. Portal (after its own sign-in when needed) -> browser:
-   `302 {APPS_PUBLIC_URL}/_efp/callback?code=<code>&next=<same value>`,
-   or its own "no access" page.
-3. Manager: redeems the code (5.1), sets the session cookie, answers
-   `302 <next>`. `next` must start with `/{slug}/` of the redeemed app,
-   otherwise the redirect goes to `/{slug}/`. A bad code answers `400` with a
-   page that links back to the app.
+   `302 {APPS_PUBLIC_URL}/_efp/callback?code=<code>&next=<same value>&state=<same value>`,
+   or its own "no access" page. The Portal issues a code only to a request
+   that carries a state. Without one (a launch address somebody typed or
+   kept) it answers `302 {APPS_PUBLIC_URL}<next>`, and the gateway starts
+   the hand-off from step 1.
+3. Manager: redeems the code (5.1) only when `state` equals the browser's
+   state cookie, then sets the session cookie, clears the state cookie and
+   answers `302 <next>`. `next` must start with `/{slug}/` of the redeemed
+   app, otherwise the redirect goes to `/{slug}/`. A bad code answers `400`
+   with a page that links back to the app. A callback whose state does not
+   match is never redeemed: a browser that has a session is sent on to
+   `<next>` (another tab finished the same sign-in), any other gets the same
+   `400` page. Without this, a member could sign in, keep the address with
+   the code, and have somebody else's browser load it: that person would
+   then use every app as the member.
 
 `GET /_efp/logout` clears the cookie and redirects to `{PORTAL_PUBLIC_URL}`.
 
@@ -392,11 +407,13 @@ key       = base64url-decoded visitor_key of the app
 leads to `/{slug}/`. It is for members: it needs a session.
 
 1. A page navigation without a valid session:
-   `302 {PORTAL_PUBLIC_URL}/apps/launch` (no slug). The Portal, after its own
-   sign-in when needed, answers
-   `302 {APPS_PUBLIC_URL}/_efp/callback?code=<code>&next=%2F`. The code
-   redeems (5.1) to a member and no app; the manager sets the session cookie
-   and answers `302 /?signed_in=1`.
+   `302 {PORTAL_PUBLIC_URL}/apps/launch?state=<state>` (no slug), with the
+   state cookie of 6.3. The Portal, after its own sign-in when needed,
+   answers
+   `302 {APPS_PUBLIC_URL}/_efp/callback?code=<code>&next=%2F&state=<same value>`
+   (without a state: `302 {APPS_PUBLIC_URL}/`). The code redeems (5.1) to a
+   member and no app; the manager checks the state as in 6.3, sets the
+   session cookie and answers `302 /?signed_in=1`.
 2. `/?signed_in=1` still without a session means the browser did not keep the
    cookie: the "sign-in did not finish" page (`400`), never another redirect.
 3. With a session the manager asks 5.6 and answers the page. Every app in the
@@ -591,6 +608,16 @@ data: {"type": "done", "model": "gpt-5.4", "finish_reason": "stop", "usage": {..
 A failure after the stream began is `data: {"type": "error", "error": {"code": "...", "message": "..."}}`.
 `usage.credits` is `null` when the provider reports none.
 
+Limits: `messages` has at most 1,000 items, `messages` and `system` together
+at most 4,000,000 characters, `max_output_tokens` is at most 128,000; a
+request over one of them is `400 invalid_request`. The daily budget counts
+the calls an app has under way as well as the finished ones: a call under
+way counts as a quarter of its characters plus its `max_output_tokens`
+(4,096 when left out). When spent and under way together reach the daily
+tokens, a new call is `429 rate_limited` with `Retry-After: 5` (nothing is
+spent yet, so it is worth another try); `429 budget_exceeded` means the
+finished calls alone have used the day's budget.
+
 ### 9.3 Connectors
 
 `GET /connectors` -> `{"connectors": [{"type": "jira", "base_url": "https://jira.example.com", "write": false}]}`
@@ -610,7 +637,12 @@ A failure after the stream began is `data: {"type": "error", "error": {"code": "
 - `type`: `jira`, `confluence`, `github`, `jenkins`, `nexus`, `splunk`.
 - `path` starts with `/`, has no scheme, host, `..` segment or backslash.
 - Only `GET` and `HEAD` unless the owner allowed writes for that connector.
-- Only `Accept`, `Content-Type` and `X-*` request headers are forwarded.
+- Only `Accept`, `Content-Type` and `X-*` request headers are forwarded; a
+  value that is not ASCII is `400 invalid_request`.
+- A connector whose address means the Portal's own machine, a link-local or
+  a metadata address (as written; names are not resolved) is never called:
+  it is not listed, and a request answers `424 connector_not_configured`.
+  The same holds for a row the owner switched off.
 - A JSON response comes back in `json`, anything else in `body_base64`. A body
   over 5 MiB is cut and `truncated` is true.
 - The upstream's own status is returned in `status`; the HTTP status of this

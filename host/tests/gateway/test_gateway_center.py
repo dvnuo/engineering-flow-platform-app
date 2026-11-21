@@ -24,9 +24,9 @@ from efp_app_host.gateway.center import (
 )
 from efp_app_host.gateway.pages import LOCALES
 from efp_app_host.gateway.resources import pages_dir
-from efp_app_host.gateway.sessions import COOKIE_NAME
+from efp_app_host.gateway.sessions import COOKIE_NAME, STATE_COOKIE_NAME
 
-from gateway_support import BOB, Clock, add_app, run, session_cookie
+from gateway_support import BOB, Clock, add_app, callback, run, session_cookie
 
 NAVIGATE = {"Accept": "text/html,application/xhtml+xml", "Sec-Fetch-Mode": "navigate"}
 FETCH = {"Accept": "application/json", "Sec-Fetch-Mode": "cors"}
@@ -320,8 +320,12 @@ def test_the_center_is_reached_through_nginx_only(client, gateway, registry, fak
 def test_a_visitor_without_a_session_is_sent_to_sign_in(client, gateway, fake_portal):
     response = home(client, gateway)
     assert response.status_code == 302
-    assert response.headers["location"] == "https://efp.example.com/apps/launch"
-    assert response.headers["cache-control"] == "no-store" and "set-cookie" not in response.headers
+    launch = urlsplit(response.headers["location"])
+    state = parse_qs(launch.query)["state"][0]
+    assert (launch.netloc, launch.path, parse_qs(launch.query)) == ("efp.example.com", "/apps/launch", {"state": [state]})
+    # The sign-in is bound to this browser: the same value is in its cookie, and no session yet.
+    assert response.headers.get_list("set-cookie")[0].split(";")[0] == f"{STATE_COOKIE_NAME}={state}"
+    assert len(response.headers.get_list("set-cookie")) == 1 and response.headers["cache-control"] == "no-store"
     assert fake_portal.catalog_calls == 0
 
     # Something that is not a page navigation gets the error as JSON, never a redirect.
@@ -332,7 +336,7 @@ def test_a_visitor_without_a_session_is_sent_to_sign_in(client, gateway, fake_po
 def test_the_sign_in_of_the_center_comes_back_with_a_session(client, gateway, fake_portal):
     fake_portal.codes["c1"] = {"app_id": None, "slug": None, "user": BOB.to_json()}
     fake_portal.catalogs[BOB.id] = catalog_of(entry())
-    back = client.get("/_efp/callback", params={"code": "c1", "next": "/"})
+    back = callback(client, {"code": "c1", "next": "/"})
     assert (back.status_code, back.headers["location"]) == (302, "/?signed_in=1")
     cookie = back.headers["set-cookie"].split(";")[0]
     assert cookie.startswith(f"{COOKIE_NAME}=") and gateway.sessions.read(cookie.partition("=")[2]).visitor == BOB
@@ -342,7 +346,7 @@ def test_the_sign_in_of_the_center_comes_back_with_a_session(client, gateway, fa
 
     # "next" plays no part for the center: whatever it says, the way back is the list.
     fake_portal.codes["c2"] = {"app_id": None, "slug": None, "user": BOB.to_json()}
-    elsewhere = client.get("/_efp/callback", params={"code": "c2", "next": "https://evil.example.com/"})
+    elsewhere = callback(client, {"code": "c2", "next": "https://evil.example.com/"})
     assert elsewhere.headers["location"] == "/?signed_in=1"
 
 
@@ -402,8 +406,10 @@ def test_the_center_renews_the_session_and_the_name(client, gateway, fake_portal
 def test_a_member_who_lost_access_is_signed_out_and_sent_to_the_portal(client, gateway, fake_portal):
     fake_portal.catalogs[BOB.id] = {"allowed": False, "reason": "user_inactive", "apps": []}
     response = home(client, gateway, cookie=session_cookie(gateway))
-    assert (response.status_code, response.headers["location"]) == (302, "https://efp.example.com/apps/launch")
-    assert response.headers["set-cookie"].startswith(f"{COOKIE_NAME}=;") and "Max-Age=0" in response.headers["set-cookie"]
+    assert response.status_code == 302 and response.headers["location"].startswith("https://efp.example.com/apps/launch?state=")
+    cookies = response.headers.get_list("set-cookie")
+    assert any(cookie.startswith(f"{COOKIE_NAME}=;") and "Max-Age=0" in cookie for cookie in cookies)
+    assert any(cookie.startswith(f"{STATE_COOKIE_NAME}=") and "Max-Age=3600" in cookie for cookie in cookies)
 
     # A list that is somebody else's is not shown either.
     other = type(BOB)(id=99, username="eve", display_name="Eve", group_id=None, group_name="")
@@ -461,11 +467,13 @@ def test_an_icon_that_is_missing_or_cannot_be_fetched_is_404(client, gateway, re
 def test_the_whole_way_from_the_address_to_the_list(client, gateway, registry, fake_runtime, fake_portal):
     first = home(client, gateway)
     launch = urlsplit(first.headers["location"])
-    assert (launch.netloc, launch.path, parse_qs(launch.query)) == ("efp.example.com", "/apps/launch", {})
+    state = parse_qs(launch.query)["state"][0]
+    assert (launch.netloc, launch.path, parse_qs(launch.query)) == ("efp.example.com", "/apps/launch", {"state": [state]})
+    held = first.headers["set-cookie"].split(";")[0]
 
-    # The Portal signs the member in and sends the browser back with a code.
+    # The Portal signs the member in and sends the browser back with a code and the state.
     fake_portal.codes["one-time"] = {"app_id": None, "slug": None, "user": BOB.to_json()}
-    back = client.get("/_efp/callback", params={"code": "one-time", "next": "/"})
+    back = client.get("/_efp/callback", params={"code": "one-time", "next": "/", "state": state}, headers={"Cookie": held})
     session = back.headers["set-cookie"].split(";")[0]
     fake_portal.catalogs[BOB.id] = catalog_of(entry())
     page = home(client, gateway, cookie=session, uri=back.headers["location"])

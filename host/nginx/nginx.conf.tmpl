@@ -287,6 +287,8 @@ http {
             proxy_set_header X-EFP-Reason $efp_reason;
             proxy_set_header X-EFP-Detail $efp_detail;
             proxy_set_header X-EFP-Original-URI $request_uri;
+            # For the state of a sign-in another tab has already started.
+            proxy_set_header Cookie $http_cookie;
             proxy_set_header Accept $http_accept;
             proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;
             proxy_set_header Accept-Language $http_accept_language;

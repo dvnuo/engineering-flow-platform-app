@@ -346,7 +346,7 @@ gone.
 | The pod does not start: "the app host must start as root" | `runAsUser: 0` is required (section 1). |
 | nginx answers 502 right after a start | The manager is still probing the isolation; a few seconds. |
 | The app center says "The list of apps is not available right now" | The manager could not ask the Portal for the member's catalog: `EFP_PORTAL_INTERNAL_URL`, the host API token, or a Portal older than the host (it lacks `/api/app-host/v1/catalog`). The apps themselves still open by their addresses. |
-| The app center sends the browser to the Portal and it comes back to "Sign-in did not finish" | The browser did not keep the session cookie. It is `Secure`: the apps address must be served over https. |
+| The app center sends the browser to the Portal and it comes back to "Sign-in did not finish" | The browser did not keep the gateway's cookies (the session, or the state of the sign-in under way). They are `Secure`: the apps address must be served over https. |
 
 ## 10. CI
 
