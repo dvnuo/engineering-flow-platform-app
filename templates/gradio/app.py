@@ -20,6 +20,10 @@ from efp_app.errors import BudgetExceededError, EfpError
 from efp_app.integrations.gradio import get_visitor
 
 SYSTEM_PROMPT = "You are a helpful assistant. Keep your answers short."
+# Every call is paid from the app's daily budget, whoever asks: both ends of it are capped.
+MAX_QUESTION_CHARS = 8000
+MAX_OUTPUT_TOKENS = 1000
+MAX_MESSAGES = 21  # what goes to the model: the question and the ten exchanges before it
 
 
 def text_of(content):
@@ -50,6 +54,23 @@ def to_messages(history):
     return messages
 
 
+def recent(messages):
+    """The end of a conversation: what goes to the model with a question.
+
+    Each question sends the conversation again, so a long chat would cost
+    more with every turn. Only the newest messages go, each cut to
+    MAX_QUESTION_CHARS, and the first of them is the user's: a conversation
+    starts with a question.
+    """
+    kept = [
+        {"role": message["role"], "content": message["content"][:MAX_QUESTION_CHARS]}
+        for message in messages[-MAX_MESSAGES:]
+    ]
+    while kept and kept[0]["role"] != "user":
+        kept.pop(0)
+    return kept
+
+
 def note_key(visitor):
     """One note per signed-in visitor; anonymous visitors share one."""
     return "notes/%s.txt" % (visitor.id if visitor else "guest")
@@ -66,11 +87,13 @@ def greet(request: gr.Request):
 def reply(message, history, request: gr.Request):
     """Answer a chat message with the owner's model, piece by piece."""
     visitor = get_visitor(request)
-    messages = to_messages(history) + [{"role": "user", "content": text_of(message)}]
+    messages = recent(to_messages(history) + [{"role": "user", "content": text_of(message)}])
     answer = ""
     try:
         # visitor= lets the Portal record who asked.
-        for piece in llm.stream(messages, system=SYSTEM_PROMPT, visitor=visitor):
+        for piece in llm.stream(
+            messages, system=SYSTEM_PROMPT, max_output_tokens=MAX_OUTPUT_TOKENS, visitor=visitor
+        ):
             answer += piece
             yield answer
     except BudgetExceededError as exc:

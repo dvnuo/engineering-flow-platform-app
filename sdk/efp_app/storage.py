@@ -21,7 +21,9 @@ picks the place by itself:
 A key is 1-512 characters of ``A-Z a-z 0-9 . _ - /``; it does not start with
 ``/``, has no empty, ``.`` or ``..`` segment and no segment longer than 255
 characters. One object is at most 64 MiB. Those rules are checked here, the same way everywhere, so an app that
-works locally works on either kind of host.
+works locally works on either kind of host. One difference is the file
+system's and stays: on a developer's machine with Windows or macOS, keys that
+differ only in upper and lower case are one object; on the host they are two.
 
 ``data_dir()`` gives a directory for direct file access (SQLite, uploads) in
 the first and the third place; on a host that hides the disk it raises
@@ -123,7 +125,18 @@ def _is_key(key: str) -> bool:
 
 def _as_bytes(data: Any) -> bytes:
     if isinstance(data, str):
-        data = data.encode("utf-8")
+        try:
+            data = data.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            # Half of a surrogate pair: what a visitor's text holds when a page cut it in the
+            # middle of an emoji. Refused here as a storage error, which an app already catches;
+            # kept, it would fail again wherever the text is read and sent on. Not chained: the
+            # original error holds the whole text.
+            raise errors.StorageError(
+                "the text cannot be saved as UTF-8: it holds half of a surrogate pair (U+%04X at position %d), "
+                "which is what cutting a string in the middle of an emoji leaves" % (ord(exc.object[exc.start]), exc.start),
+                code="invalid_text",
+            ) from None
     elif isinstance(data, (bytearray, memoryview)):
         data = bytes(data)
     if not isinstance(data, bytes):
@@ -167,6 +180,10 @@ def windows_problem(key: str) -> Optional[str]:
 _ON_WINDOWS = os.name == "nt"
 _WINDOWS_ATTEMPTS = 14
 _TURNS = tuple(threading.Lock() for _ in range(64))
+# How often a save makes its folder and opens its file before it gives up: a
+# delete() that leaves the folder empty removes it, also under a save (see
+# _Files._open_temporary). On every system, the host included.
+_SAVE_ATTEMPTS = 5
 
 
 def _turn(target: Path) -> Any:
@@ -213,25 +230,68 @@ class _Files:
             return errors.InvalidKeyError("a segment of the key %r is too long for the file system" % key)
         return errors.StorageError("could not %s %r: %s" % (action, key, exc.strerror or exc))
 
+    def _object_above(self, target: Path) -> bool:
+        """True when one of the folders ``target`` lies in is an object (a file)."""
+        folder = target.parent
+        while folder != self.root and folder != folder.parent:
+            try:
+                if folder.is_file():
+                    return True
+            except OSError:
+                pass  # cannot be looked at right now: not known to be an object
+            folder = folder.parent
+        return False
+
+    def _is_object(self, action: str, key: str, target: Path) -> bool:
+        """``target.is_file()``. On Windows a file that is being removed cannot even be looked at for a moment."""
+        try:
+            return bool(_patiently(target.is_file))
+        except OSError as exc:
+            raise self._failure(action, key, exc) from exc
+
+    def _open_temporary(self, key: str, target: Path) -> Tuple[Path, Any]:
+        """Make the folder of ``target`` and open a new file in it for the content; both are returned.
+
+        ``delete`` removes a folder it left empty. A save into that folder at
+        the same moment can find the folder gone between two of its own
+        steps: after it made sure the folder is there, or between the two
+        looks ``mkdir`` takes at it. Nothing is wrong with the key then, so
+        the steps are taken again; once the new file is there the folder is
+        not empty and stays. An object in the way is told apart by looking:
+        only then is the key refused.
+        """
+        for attempt in range(_SAVE_ATTEMPTS):
+            last = attempt == _SAVE_ATTEMPTS - 1
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.is_dir():
+                    raise errors.InvalidKeyError(
+                        "other objects are stored below %r; a name cannot be both an object and a folder" % key
+                    )
+                # The temporary name has a character no key can have, so it never
+                # collides with an object and never shows up in list().
+                temporary = target.parent / ("~" + secrets.token_hex(8) + ".tmp")
+                return temporary, open(temporary, "wb")
+            except OSError as exc:
+                if self._object_above(target):
+                    raise errors.InvalidKeyError(
+                        "the key %r lies below an existing object; a name cannot be both an object and a folder" % key
+                    ) from None
+                # Windows answers "access denied" for a folder that is being removed.
+                gone = isinstance(exc, (FileNotFoundError, FileExistsError, NotADirectoryError)) or (
+                    _ON_WINDOWS and isinstance(exc, PermissionError)
+                )
+                if last or not gone:
+                    raise self._failure("save", key, exc) from exc
+                if _ON_WINDOWS:
+                    time.sleep(0.001 * (attempt + 1))
+        raise AssertionError("not reached")
+
     def put(self, key: str, data: bytes) -> None:
         target = self._path(key)
+        temporary, handle = self._open_temporary(key, target)
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-        except (FileExistsError, NotADirectoryError):
-            raise errors.InvalidKeyError(
-                "the key %r lies below an existing object; a name cannot be both an object and a folder" % key
-            ) from None
-        except OSError as exc:
-            raise self._failure("save", key, exc) from exc
-        if target.is_dir():
-            raise errors.InvalidKeyError(
-                "other objects are stored below %r; a name cannot be both an object and a folder" % key
-            )
-        # The temporary name has a character no key can have, so it never
-        # collides with an object and never shows up in list().
-        temporary = target.parent / ("~" + secrets.token_hex(8) + ".tmp")
-        try:
-            with open(temporary, "wb") as handle:
+            with handle:
                 handle.write(data)
                 handle.flush()
                 try:
@@ -250,7 +310,7 @@ class _Files:
 
     def get(self, key: str) -> bytes:
         target = self._path(key)
-        if not target.is_file():
+        if not self._is_object("load", key, target):
             raise errors.StorageNotFoundError("there is no object with the key %r" % key)
         try:
             with _turn(target):
@@ -261,11 +321,11 @@ class _Files:
             raise self._failure("load", key, exc) from exc
 
     def exists(self, key: str) -> bool:
-        return self._path(key).is_file()
+        return self._is_object("look for", key, self._path(key))
 
     def delete(self, key: str) -> bool:
         target = self._path(key)
-        if not target.is_file():
+        if not self._is_object("delete", key, target):
             return False
         try:
             with _turn(target):
@@ -538,7 +598,7 @@ def delete(key: str) -> bool:
 
 def save_json(key: str, value: Any) -> None:
     """Store a JSON-serialisable value under ``key``."""
-    save(key, json.dumps(value, ensure_ascii=False).encode("utf-8"))
+    save(key, json.dumps(value, ensure_ascii=False))  # as text: save() turns it into UTF-8, or says why it cannot
 
 
 def load_json(key: str, default: Any = _MISSING) -> Any:

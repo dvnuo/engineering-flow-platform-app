@@ -577,12 +577,12 @@ except EfpError as exc:
 | `provider_error` | `ProviderError` | the model provider failed |
 | `upstream_error` | `UpstreamError` | the connector's system could not be reached |
 | `upstream_timeout` | `UpstreamTimeoutError` | the connector's system was too slow |
-| `not_configured` | `ConfigurationError` | `EFP_APP_TOKEN` or `EFP_PORTAL_URL` is missing, the address is not an `http(s)` one, or a CA bundle cannot be loaded |
+| `not_configured` | `ConfigurationError` | `EFP_APP_TOKEN` or `EFP_PORTAL_URL` is missing, the token holds a character no token has (a blank or an invisible character from a copy and paste), the address is not an `http(s)` one, or a CA bundle cannot be loaded |
 | `portal_unreachable`, `portal_timeout` | `PortalUnreachableError`, `PortalTimeoutError` | the Portal cannot be reached |
 | `unexpected_response`, `stream_interrupted` | `UnexpectedResponseError`, `StreamInterruptedError` | a broken answer, usually a wrong `EFP_PORTAL_URL` or a restart |
 | `not_found`, `invalid_key`, `too_large`, `quota_exceeded` | `StorageNotFoundError`, `InvalidKeyError`, `TooLargeError`, `QuotaExceededError` | storage; all derive from `StorageError` |
 | `data_dir_unavailable`, `storage_unavailable` | `DataDirUnavailableError`, `StorageUnavailableError` | storage that this host does not offer |
-| `storage_error`, `invalid_json` | `StorageError` | storage failed for another reason; `load_json` found an object that is not JSON |
+| `storage_error`, `invalid_json`, `invalid_text` | `StorageError` | storage failed for another reason; `load_json` found an object that is not JSON; a text to save holds half of an emoji (a page cut it in the middle), which UTF-8 cannot carry |
 
 The complete table, with the status and the sentence of every class, is in
 [SDK_REFERENCE.md](SDK_REFERENCE.md), section 10.
@@ -602,7 +602,7 @@ shell win over `.env`. `--dry-run` shows the command without starting it.
 | `EFP_APP_TOKEN` | the app token, from the app's page in the Portal |
 | `EFP_PORTAL_URL` | the Portal's address as you open it in the browser |
 | `EFP_DEV_VISITOR` | optional: a username to act as, or `anonymous` |
-| `EFP_VISITOR_KEY` | not needed (there is no gateway to sign anything) |
+| `EFP_VISITOR_KEY` | leave it out (there is no gateway to sign anything); with it set the SDK expects signed headers and `EFP_DEV_VISITOR` is not used |
 | `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY` | honoured, for a company proxy |
 | `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, `SSL_CERT_DIR` | honoured, for a company CA |
 

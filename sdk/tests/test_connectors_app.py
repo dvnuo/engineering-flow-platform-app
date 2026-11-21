@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 
 import httpx
 import pytest
@@ -97,6 +98,31 @@ def test_a_body_that_is_not_json_comes_back_as_bytes(portal):
     assert answer.text == "<html>build log</html>"
     assert answer.json is None
     assert answer.truncated is True
+
+
+def test_an_answer_with_half_an_emoji_in_it_is_still_an_answer(portal):
+    # JSON can carry half of a surrogate pair (a text the other system cut in the middle of an
+    # emoji), UTF-8 cannot. Encoding the answer again for "content" used to fail with a
+    # UnicodeEncodeError, also for an app that only wanted "json".
+    half = chr(0xD83D)
+    wire = json.dumps({"status": 200, "headers": {}, "json": {"summary": "cut " + half}, "body_base64": None, "truncated": False})
+    assert "\\ud83d" in wire  # as an escape, which is what arrives
+    portal.on("POST", "/connectors/jira/request", httpx.Response(200, content=wire.encode("ascii"), headers={"content-type": "application/json"}))
+    answer = connectors.get("jira", "/rest/api/2/issue/ABC-1")
+    assert answer.ok and answer.json == {"summary": "cut " + half}  # json keeps what was sent
+    assert answer.content == b'{"summary": "cut ?"}'  # what UTF-8 cannot carry is a question mark there
+    assert answer.text == '{"summary": "cut ?"}'
+    assert run(connectors.aget("jira", "/rest/api/2/issue/ABC-1")).content == answer.content
+
+
+@pytest.mark.parametrize("options", [{"json": {"summary": "cut " + chr(0xD83D)}}, {"body": "cut " + chr(0xD83D)}, {"query": {"jql": chr(0xD83D)}}])
+def test_a_request_with_half_an_emoji_in_it_is_refused_before_the_call(portal, options):
+    with pytest.raises(errors.InvalidRequestError) as caught:
+        connectors.request("jira", "POST", "/rest/api/2/issue", **options)
+    assert "U+D83D" in caught.value.message and caught.value.status == 400
+    with pytest.raises(errors.InvalidRequestError):
+        run(connectors.arequest("jira", "POST", "/rest/api/2/issue", **options))
+    assert portal.requests == []
 
 
 def test_the_upstream_status_is_not_an_exception(portal):

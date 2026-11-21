@@ -166,6 +166,24 @@ def _is_json(response: httpx.Response) -> bool:
     return (response.headers.get("content-type") or "").lower().startswith("application/json")
 
 
+def _not_an_answer(response: httpx.Response) -> Optional[errors.EfpError]:
+    """The error for a success that is neither events nor JSON, or ``None`` when it can be read.
+
+    A sign-in page or the page of a proxy answers 200 as well. Read as events
+    it holds none, and the app would be told that the answer was cut off and
+    to try again, when the address of the Portal is what is wrong. An answer
+    that names no content type is read as events, as before.
+    """
+    kind = (response.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if not kind or kind == "text/event-stream" or _is_json(response):
+        return None
+    return errors.UnexpectedResponseError(
+        "The Portal answered an LLM call that asked for a stream with HTTP %d and the content type %s, "
+        "which is neither events nor JSON. Check EFP_PORTAL_URL." % (response.status_code, kind),
+        status=response.status_code,
+    )
+
+
 def _events_of(payload: Any) -> List[Dict[str, Any]]:
     """A complete (not streamed) answer as the two events of a stream."""
     done = _completion(payload)
@@ -254,6 +272,10 @@ class CompletionStream(_StreamState):
         self._response = response
         self._transport_error = transport_error
         self._lines = None
+        refused = _not_an_answer(response)
+        if refused is not None:
+            self.close()
+            raise refused
         try:
             if _is_json(response):
                 self._queued = _events_of(_json.loads(response.read().decode("utf-8")))
@@ -354,7 +376,18 @@ class AsyncCompletionStream(_StreamState):
     async def _start(self) -> "AsyncCompletionStream":
         if self._response is not None or self._closed:
             return self
-        self._response = await self._opener()
+        try:
+            self._response = await self._opener()
+        except BaseException:
+            # A request that was refused or could not be made is the end of this stream. Left
+            # open, a second "async for" over the same object would send the POST a second
+            # time, and a model call is never repeated for the app.
+            self._closed = True
+            raise
+        refused = _not_an_answer(self._response)
+        if refused is not None:
+            await self.aclose()
+            raise refused
         try:
             if _is_json(self._response):
                 self._queued = _events_of(_json.loads((await self._response.aread()).decode("utf-8")))

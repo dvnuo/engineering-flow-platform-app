@@ -820,6 +820,23 @@ def test_dev_warns_when_the_token_is_missing_but_still_starts(tmp_path, capsys, 
     assert ".env" in out
 
 
+def test_dev_says_when_a_setting_of_the_host_takes_the_local_visitor_away(tmp_path, capsys, launched, monkeypatch):
+    app = good_app(tmp_path / "app")
+    out = run_cli(capsys, "dev", str(app), "--dry-run")[1]
+    assert "EFP_VISITOR_KEY" not in out and "EFP_APP_ID" not in out
+
+    # Only a host sets the visitor key: with it the SDK expects a gateway and uses no stand-in.
+    (app / ".env").write_text("EFP_VISITOR_KEY=a2V5LWZyb20tZG90LWVudg\nEFP_DEV_VISITOR=carol\n", encoding="utf-8")
+    out = run_cli(capsys, "dev", str(app), "--dry-run")[1]
+    assert "warning    EFP_VISITOR_KEY is set, so a request without a signed header has no visitor (EFP_DEV_VISITOR is not used)." in out
+    assert "a2V5LWZyb20tZG90LWVudg" not in out  # the key itself is never printed
+
+    monkeypatch.setenv("EFP_APP_ID", "0b0f3a4e")
+    out = run_cli(capsys, "dev", str(app), "--dry-run")[1]
+    assert "warning    EFP_APP_ID is set, so the SDK behaves as on the host (no local visitor)." in out
+    assert "EFP_VISITOR_KEY is set" not in out  # said once: the first warning covers it
+
+
 def test_dev_passes_gradio_its_settings(tmp_path, capsys, launched, monkeypatch):
     monkeypatch.setenv("GRADIO_ROOT_PATH", "/left-over")
     app = write_app(tmp_path / "app", {"name": "x", "type": "gradio", "entry": "app.py", "owners": ["alice"]}, {"app.py": ""})

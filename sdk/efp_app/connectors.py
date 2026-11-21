@@ -103,7 +103,15 @@ def _payload(
         raise errors.InvalidRequestError("give json= or body=, not both")
     encoded = None
     if body is not None:
-        raw = body.encode("utf-8") if isinstance(body, str) else bytes(body)
+        try:
+            raw = body.encode("utf-8") if isinstance(body, str) else bytes(body)
+        except UnicodeEncodeError as exc:
+            # The same refusal as for such a text in json= (client._encode_body); not chained,
+            # the original error holds the whole body.
+            raise errors.InvalidRequestError(
+                "the body holds text that cannot be sent: half of a surrogate pair (U+%04X), "
+                "which is what cutting a string in the middle of an emoji leaves" % ord(exc.object[exc.start])
+            ) from None
         encoded = base64.b64encode(raw).decode("ascii")
     return {
         "method": method.strip().upper(),
@@ -128,7 +136,10 @@ def _response(payload: Any) -> ConnectorResponse:
         except (binascii.Error, ValueError):
             raise errors.UnexpectedResponseError("The Portal's answer to a connector call has a damaged body.") from None
     elif decoded is not None:
-        content = _json.dumps(decoded, ensure_ascii=False).encode("utf-8")
+        # "replace": JSON may carry half of a surrogate pair (a text the other system cut in the
+        # middle of an emoji), which UTF-8 cannot. Such a character becomes "?" in content; json
+        # keeps it. An answer of the other system must never fail here.
+        content = _json.dumps(decoded, ensure_ascii=False).encode("utf-8", errors="replace")
     return ConnectorResponse(
         status=payload["status"],
         headers={str(name).lower(): str(value) for name, value in headers.items()} if isinstance(headers, dict) else {},

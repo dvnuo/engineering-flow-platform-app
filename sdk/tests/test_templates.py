@@ -135,6 +135,23 @@ def test_a_python_starter_asks_for_nothing_exotic(app_type):
         assert "storage." in text and "llm." in text and "get_visitor" in text
 
 
+@pytest.mark.parametrize("app_type", [name for name in TYPES if name != "static"])
+def test_a_python_starter_bounds_and_attributes_every_model_call(app_type):
+    # What members copy must follow the rule they are given: a capped input, a max_output_tokens,
+    # visitor=. Every call is paid from the app's daily budget, whoever asks.
+    import ast
+
+    calls = []
+    for source in (TEMPLATES / app_type).rglob("*.py"):
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+            function = getattr(node, "func", None)
+            if isinstance(node, ast.Call) and isinstance(function, ast.Attribute) and getattr(function.value, "id", None) == "llm":
+                calls.append((function.attr, [keyword.arg for keyword in node.keywords]))
+    assert calls, "a starter shows a model call"
+    for name, keywords in calls:
+        assert "max_output_tokens" in keywords and "visitor" in keywords, name
+
+
 def test_the_static_starter_says_it_has_no_backend():
     directory = TEMPLATES / "static"
     assert not list(directory.rglob("*.py")) and not (directory / "requirements.txt").exists()
@@ -241,6 +258,16 @@ def test_fastapi_starter_reports_other_failures_kindly(deployed, fastapi_app, po
     assert client_for(fastapi_app).post("/api/ask", json={"text": "   "}).status_code == 400
 
 
+def test_fastapi_starter_bounds_the_question_and_the_answer(deployed, fastapi_app, portal):
+    portal.on("POST", "/llm/complete", sse(*STREAMED))
+    client = client_for(fastapi_app)
+    assert client.post("/api/ask", json={"text": "x" * 8000}).status_code == 200
+    assert portal.body()["max_output_tokens"] == 1000
+    assert len(portal.body()["messages"][0]["content"]) == 8000
+    assert client.post("/api/ask", json={"text": "x" * 8001}).status_code == 422  # refused, not sent
+    assert portal.count("POST", "/llm/complete") == 1
+
+
 def test_fastapi_starter_without_a_token_still_serves_the_page(monkeypatch, fastapi_app):
     monkeypatch.setenv("EFP_DEV_VISITOR", "carol")
     client = client_for(fastapi_app)
@@ -307,6 +334,28 @@ def test_flask_starter_streams_and_reports_errors(deployed, flask_app, portal):
     assert client.post("/ask", json={"text": ""}).status_code == 400
 
 
+def test_flask_starter_bounds_the_question_and_the_answer(deployed, flask_app, portal):
+    portal.on("POST", "/llm/complete", sse(*STREAMED))
+    answer = flask_app.test_client().post("/ask", json={"text": "x" * 9000})
+    assert answer.status_code == 200
+    assert portal.body()["max_output_tokens"] == 1000
+    assert portal.body()["messages"] == [{"role": "user", "content": "x" * 8000}]  # cut, as before
+
+
+def test_flask_starter_answers_half_an_emoji_with_a_sentence(deployed, flask_app, portal):
+    # A page that cuts a text in the middle of an emoji sends half of a surrogate pair. The SDK
+    # refuses it with an EfpError, so the starter's "except EfpError" answers; it used to be a 500.
+    portal.on("POST", "/llm/complete", sse(*STREAMED))
+    client = flask_app.test_client()
+    body = b'{"text": "half an emoji \\ud83d"}'
+    asked = client.post("/ask", data=body, content_type="application/json")
+    assert asked.status_code == 502
+    assert asked.get_json()["error"] == {"code": "invalid_request", "message": "The app sent a request the EFP Portal could not accept."}
+    saved = client.post("/note", data=body, content_type="application/json")
+    assert saved.status_code == 502 and saved.get_json()["error"]["code"] == "invalid_text"
+    assert portal.requests == [] and storage.list() == []
+
+
 def test_flask_starter_keeps_a_note(deployed, flask_app):
     client = flask_app.test_client()
     bob = {"X-EFP-Visitor": sign(payload_of())}
@@ -368,7 +417,8 @@ class FakeStreamlit(types.ModuleType):
         self.shown.append(("chat", role))
         return Block()
 
-    def chat_input(self, placeholder):
+    def chat_input(self, placeholder, **options):
+        self.chat_input_options = options
         return self._prompt
 
     def write_stream(self, stream):
@@ -383,6 +433,30 @@ def run_streamlit(monkeypatch, fake):
     monkeypatch.setitem(sys.modules, "streamlit", fake)
     runpy.run_path(str(TEMPLATES / "streamlit" / "app.py"), run_name="__main__")
     return fake
+
+
+def long_chat(exchanges):
+    """A conversation of that many questions and answers, the oldest first."""
+    found = []
+    for number in range(exchanges):
+        found += [{"role": "user", "content": "question %d" % number}, {"role": "assistant", "content": "answer %d" % number}]
+    return found
+
+
+def test_streamlit_starter_bounds_what_it_sends(deployed, portal, monkeypatch):
+    # Every question sends the conversation again: only its end goes, and the answer is capped.
+    portal.on("POST", "/llm/complete", sse(*STREAMED))
+    fake = FakeStreamlit({}, prompt="the newest question")
+    fake.session_state["messages"] = long_chat(30) + [{"role": "user", "content": "y" * 9000}, {"role": "assistant", "content": "ok"}]
+    run_streamlit(monkeypatch, fake)
+    assert fake.chat_input_options == {"max_chars": 8000}
+    sent = portal.body()
+    assert sent["max_output_tokens"] == 1000
+    assert len(sent["messages"]) == 21 and sent["messages"][0]["role"] == "user"
+    assert sent["messages"][-1] == {"role": "user", "content": "the newest question"}
+    assert sent["messages"][-3] == {"role": "user", "content": "y" * 8000}  # an old message is cut as well
+    assert sent["messages"][0] == {"role": "user", "content": "question 21"}
+    assert len(fake.session_state.messages) == 64  # the page keeps the whole conversation; the model gets its end
 
 
 def test_streamlit_starter_greets_and_chats(deployed, portal, monkeypatch):
@@ -522,6 +596,26 @@ def test_gradio_starter_streams_with_any_history_shape(deployed, gradio_app, por
 
     assert list(module.reply("first", [], request))[-1] == "Hello"
     assert list(module.reply("first", None, request))[-1] == "Hello"
+
+
+def test_gradio_starter_bounds_what_it_sends(deployed, gradio_app, portal):
+    # Every question sends the conversation again: only its end goes, and the answer is capped.
+    module, fake = gradio_app
+    portal.on("POST", "/llm/complete", sse(*STREAMED))
+    history = long_chat(30) + [{"role": "user", "content": "y" * 9000}, {"role": "assistant", "content": "ok"}]
+    assert list(module.reply("z" * 9000, history, fake.Request()))[-1] == "Hello"
+    sent = portal.body()
+    assert sent["max_output_tokens"] == 1000
+    assert len(sent["messages"]) == 21 and sent["messages"][0] == {"role": "user", "content": "question 21"}
+    assert sent["messages"][-1] == {"role": "user", "content": "z" * 8000}
+    assert sent["messages"][-3] == {"role": "user", "content": "y" * 8000}
+
+    # What is kept starts with a question: an answer whose question fell away goes too.
+    odd = [{"role": "assistant", "content": "a greeting of the app"}] + long_chat(10)
+    assert list(module.reply("next", odd, fake.Request()))[-1] == "Hello"
+    assert [message["role"] for message in portal.body()["messages"]][:2] == ["user", "assistant"]
+    assert len(portal.body()["messages"]) == 21
+    assert module.recent([{"role": "assistant", "content": "only an answer"}]) == []
 
 
 def test_gradio_starter_says_when_the_budget_is_used_up(deployed, gradio_app, portal):

@@ -156,6 +156,45 @@ def test_a_refusal_is_raised_as_the_error_of_its_code(tmp_path):
             connectors.get("jira", "/rest/api/2/myself")
 
 
+def test_one_response_answers_any_number_of_calls_of_either_kind(tmp_path):
+    # An app with one route that calls llm.complete and another that awaits llm.acomplete, tested
+    # with one canned answer: httpx binds a response to the kind of client that sent the request,
+    # so the second call used to end in a bare AssertionError.
+    import asyncio
+
+    async def pieces():
+        return [piece async for piece in llm.astream("Hello")]
+
+    with testing.deployed(tmp_path) as portal:
+        refusal = testing.error(429, "budget_exceeded", headers={"Retry-After": "60"})
+        portal.on("POST", "/llm/complete", refusal)
+        for call in (lambda: llm.complete("Hello"), lambda: asyncio.run(llm.acomplete("Hello")), lambda: llm.complete("Hello")):
+            with pytest.raises(errors.BudgetExceededError) as caught:
+                call()
+            assert caught.value.retry_after == 60
+
+        portal.on("POST", "/llm/complete", testing.stream("Three ", "bugs."))
+        assert asyncio.run(pieces()) == ["Three ", "bugs."]
+        assert list(llm.stream("Hello")) == ["Three ", "bugs."]
+        assert asyncio.run(pieces()) == ["Three ", "bugs."]
+        # Each call got a response of its own: the canned ones never met a request.
+        for canned in (refusal, portal.routes[("POST", "/llm/complete")]):
+            with pytest.raises(RuntimeError):
+                canned.request
+
+
+def test_a_response_built_around_a_stream_is_handed_on_as_it_is(tmp_path):
+    class Once(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b'data: {"type": "done"}\n\n'
+
+    with testing.deployed(tmp_path) as portal:
+        answer = httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=Once())
+        portal.on("POST", "/llm/complete", answer)
+        assert list(llm.stream("Hello")) == []
+        assert answer.is_closed is True  # the very object: a stream of the test's own cannot be copied
+
+
 def test_answers_in_turn_a_callable_and_a_broken_connection(tmp_path, no_sleep):
     with testing.deployed(tmp_path) as portal:
         portal.on("POST", "/llm/complete", [testing.error(502, "provider_error"), testing.completion("Second try.")])

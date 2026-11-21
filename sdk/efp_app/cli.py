@@ -470,6 +470,12 @@ def cmd_dev(args: argparse.Namespace) -> int:
             )
         if settings.deployed:
             _say("  warning    %s is set, so the SDK behaves as on the host (no local visitor)." % config.APP_ID)
+        elif settings.visitor_key:
+            # Only a host sets the key, so the SDK takes the app to stand behind a gateway (visitor.current).
+            _say(
+                "  warning    %s is set, so a request without a signed header has no visitor (%s is not used)."
+                % (config.VISITOR_KEY, config.DEV_VISITOR)
+            )
     if args.dry_run:
         return 0
     _say()

@@ -14,7 +14,9 @@ without asking anyone::
 On a developer's machine there is no gateway. When no header is present,
 ``current()`` returns the user named by ``EFP_DEV_VISITOR`` (``anonymous``
 stands for nobody), or else the owner of the app as the Portal reports it, so
-the same code runs locally.
+the same code runs locally. That stand-in exists only where neither
+``EFP_APP_ID`` nor ``EFP_VISITOR_KEY`` is set: a host sets both, and behind
+its gateway a request without the header is an anonymous visitor.
 """
 
 from __future__ import annotations
@@ -94,9 +96,9 @@ def parse(
 
     ``key`` is the app's visitor key: the base64url text of ``EFP_VISITOR_KEY``
     (the default) or the raw bytes. The result is ``None`` for a missing
-    value, a bad signature, an expired value, a value made for another app or
-    when there is no key to check against: an app must treat all of those as
-    an anonymous visitor.
+    value, a bad signature, an expired value, a value made for another app
+    (or, in a deployed app, for no app at all) or when there is no key to
+    check against: an app must treat all of those as an anonymous visitor.
     """
     if not header_value or not isinstance(header_value, str):
         return None
@@ -130,8 +132,10 @@ def parse(
         return None
     if (time.time() if now is None else now) > expires:
         return None
+    # A deployed app takes only a value made for it. The gateway always names the app, so a
+    # value that names none is not one of the gateway's: it is refused like one for another app.
     app_id = payload.get("app")
-    if settings.app_id and app_id is not None and str(app_id) != settings.app_id:
+    if settings.app_id and (app_id is None or str(app_id) != settings.app_id):
         return None
 
     user_id = payload.get("sub")
@@ -205,14 +209,44 @@ def current(headers: Optional[Mapping[str, Any]] = None) -> Optional[Visitor]:
     settings = config.load()
     if settings.deployed:
         return None
+    if settings.visitor_key:
+        # Only a host gives an app a visitor key. A process that has one is treated as standing
+        # behind a gateway even when EFP_APP_ID did not reach it (a command that starts its server
+        # with a trimmed environment, say): there a request without the header is an anonymous
+        # visitor, and a stand-in would make every such visitor the owner of the app.
+        _warn_about_key()
+        return None
     return _dev_visitor(settings)
 
 
 # --- A developer's machine ---------------------------------------------------
 
+# Seconds the one request for the owner of the app may wait. A request of the app waits with it.
+_OWNER_TIMEOUT = 5.0
+
 _dev_lock = threading.Lock()
+# Held by the one caller that asks the Portal for the owner; the others wait for its answer.
+_owner_asking = threading.Lock()
 _owner: Tuple[Any, float, Optional[Visitor]] = (None, 0.0, None)
 _warned = False
+_warned_about_key = False
+
+
+def _warn_about_key() -> None:
+    """Say once per process why there is no local stand-in: a developer who set the key will look for it."""
+    global _warned_about_key
+    with _dev_lock:
+        if _warned_about_key:
+            return
+        _warned_about_key = True
+    log.warning(
+        "efp_app: %s is set, so a request without a signed %s header has no visitor: the local "
+        "stand-in (%s, or the owner of the app) is not used. Remove %s to get it back.",
+        config.VISITOR_KEY,
+        HEADER,
+        config.DEV_VISITOR,
+        config.VISITOR_KEY,
+    )
 
 
 def dev_visitor_id(username: str) -> int:
@@ -234,47 +268,63 @@ def _dev_visitor(settings: config.Settings) -> Optional[Visitor]:
     return _owner_visitor(settings)
 
 
+def _remembered_owner(signature: Tuple[Any, Any]) -> Tuple[bool, Optional[Visitor]]:
+    """``(True, the owner or None)`` when the Portal need not be asked now, else ``(False, None)``."""
+    with _dev_lock:
+        cached_signature, retry_at, cached = _owner
+        if cached_signature == signature and (cached is not None or time.monotonic() < retry_at):
+            return True, cached
+    return False, None
+
+
 def _owner_visitor(settings: config.Settings) -> Optional[Visitor]:
     """The app's owner as ``GET /app`` reports it; asked once, then remembered."""
     global _owner, _warned
     signature = (settings.token, settings.portal_url)
-    with _dev_lock:
-        cached_signature, retry_at, cached = _owner
-        if cached_signature == signature and (cached is not None or time.monotonic() < retry_at):
+    known, cached = _remembered_owner(signature)
+    if known:
+        return cached
+    # One caller asks. A request of the app is waiting for this answer, so it is one short
+    # attempt (app._info_once), and the requests that arrive meanwhile wait here for that
+    # answer instead of each asking a Portal that may be slow or out of reach.
+    with _owner_asking:
+        known, cached = _remembered_owner(signature)
+        if known:
             return cached
-    found: Optional[Visitor] = None
-    problem = ""
-    try:
-        from . import app as _app
+        found: Optional[Visitor] = None
+        problem = ""
+        try:
+            from . import app as _app
 
-        owner = _app.info(cached=True).owner
-        if owner is not None and owner.username:
-            found = Visitor(
-                id=owner.id if isinstance(owner.id, int) else 0,
-                username=owner.username,
-                name=owner.display_name or owner.username,
-                group=owner.group_name,
-                group_id=owner.group_id,
-            )
-        else:
-            problem = "the Portal did not name the owner of the app"
-    except Exception as exc:  # the visitor of a local run must never break the app
-        problem = str(exc)
-    with _dev_lock:
-        _owner = (signature, time.monotonic() + _OWNER_RETRY_SECONDS, found)
-        if found is None and not _warned:
-            _warned = True
-            log.warning(
-                "efp_app: no visitor for this local run (%s). Set %s to a username to choose one.",
-                problem,
-                config.DEV_VISITOR,
-            )
+            owner = _app._info_once(_OWNER_TIMEOUT).owner
+            if owner is not None and owner.username:
+                found = Visitor(
+                    id=owner.id if isinstance(owner.id, int) else 0,
+                    username=owner.username,
+                    name=owner.display_name or owner.username,
+                    group=owner.group_name,
+                    group_id=owner.group_id,
+                )
+            else:
+                problem = "the Portal did not name the owner of the app"
+        except Exception as exc:  # the visitor of a local run must never break the app
+            problem = str(exc)
+        with _dev_lock:
+            _owner = (signature, time.monotonic() + _OWNER_RETRY_SECONDS, found)
+            if found is None and not _warned:
+                _warned = True
+                log.warning(
+                    "efp_app: no visitor for this local run (%s). Set %s to a username to choose one.",
+                    problem,
+                    config.DEV_VISITOR,
+                )
     return found
 
 
 def reset_dev_visitor() -> None:
-    """Forget the remembered owner (tests)."""
-    global _owner, _warned
+    """Forget the remembered owner, and that the warnings were given (tests)."""
+    global _owner, _warned, _warned_about_key
     with _dev_lock:
         _owner = (None, 0.0, None)
         _warned = False
+        _warned_about_key = False

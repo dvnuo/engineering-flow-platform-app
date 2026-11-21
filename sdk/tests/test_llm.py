@@ -160,6 +160,38 @@ def test_messages_that_cannot_be_sent_are_refused_before_the_call(portal, messag
     assert portal.requests == []
 
 
+#: Half of a surrogate pair: what is left of an emoji when a page cut the text in the middle of it.
+HALF = chr(0xD83D)
+
+
+async def first_piece(stream):
+    return await stream.__anext__()
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: llm.complete("half an emoji " + HALF),
+        lambda: llm.complete("Hello", system="be brief " + HALF),
+        lambda: llm.complete([{"role": "user", "content": "one"}, {"role": "assistant", "content": HALF}]),
+        lambda: llm.stream("half an emoji " + HALF),
+        lambda: run(llm.acomplete("half an emoji " + HALF)),
+        lambda: run(first_piece(llm.astream("half an emoji " + HALF))),
+        lambda: llm.complete("Hello", temperature=float("nan")),
+        lambda: llm.stream("Hello", temperature=float("inf")),
+    ],
+)
+def test_text_and_numbers_that_cannot_be_sent_are_an_invalid_request(portal, call):
+    # Such a text comes from a visitor. Before, it left the SDK as a UnicodeEncodeError (a NaN as a
+    # ValueError), past the "except EfpError" every app is told to write.
+    portal.on("POST", "/llm/complete", ANSWER)
+    with pytest.raises(errors.InvalidRequestError) as caught:
+        call()
+    assert caught.value.status == 400 and "half an emoji" not in caught.value.message
+    assert caught.value.user_message == "The app sent a request the EFP Portal could not accept."
+    assert portal.requests == []
+
+
 def test_credits_may_be_missing(portal):
     portal.on("POST", "/llm/complete", {"text": "x", "model": "m", "finish_reason": "length", "usage": {"input_tokens": 1, "output_tokens": 2, "credits": None}})
     answer = llm.complete("Hello")
@@ -448,3 +480,95 @@ def test_astream_as_a_context_manager(portal):
             return [piece async for piece in stream]
 
     assert run(scenario()) == ["a"]
+
+
+# --- a stream that never was one ------------------------------------------------------
+
+
+def page():
+    return httpx.Response(200, content=b"<html>Sign in</html>", headers={"content-type": "text/html; charset=utf-8"})
+
+
+def test_a_page_instead_of_events_is_an_unexpected_answer(portal):
+    # EFP_PORTAL_URL at a sign-in page or behind a proxy: 200 and a page. Read as events it holds
+    # none, and the app was told that the answer was cut off and to try again.
+    portal.on("POST", "/llm/complete", page())
+    with pytest.raises(errors.UnexpectedResponseError) as caught:
+        llm.stream("Hello")  # raised by the call itself, like a refusal
+    assert caught.value.status == 200
+    assert "text/html" in caught.value.message and "EFP_PORTAL_URL" in caught.value.message
+    assert "Sign in" not in caught.value.message
+
+    async def awaited():
+        await llm.astream("Hello")
+
+    async def iterated():
+        return [piece async for piece in llm.astream("Hello")]
+
+    for scenario in (awaited, iterated):
+        with pytest.raises(errors.UnexpectedResponseError) as caught:
+            run(scenario())
+        assert "text/html" in caught.value.message
+
+
+def test_a_page_closes_the_connection_it_came_on(portal):
+    closed = []
+
+    class Tracked(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b"<html>Sign in</html>"
+
+        def close(self):
+            closed.append(True)
+
+    portal.on("POST", "/llm/complete", httpx.Response(200, headers={"content-type": "text/html"}, stream=Tracked()))
+    with pytest.raises(errors.UnexpectedResponseError):
+        llm.stream("Hello")
+    assert closed == [True]
+
+
+def test_events_that_name_no_content_type_are_still_read(portal):
+    body = "".join("data: %s\n\n" % json.dumps(event) for event in ({"type": "delta", "text": "a"}, DONE))
+    portal.on("POST", "/llm/complete", httpx.Response(200, content=body.encode("utf-8")))
+    assert "content-type" not in portal.routes[("POST", "/llm/complete")].headers
+    assert list(llm.stream("Hello")) == ["a"]
+
+    async def collect():
+        return [piece async for piece in llm.astream("Hello")]
+
+    assert run(collect()) == ["a"]
+
+
+# --- a model call is never sent twice ---------------------------------------------------
+
+
+def test_a_refused_astream_is_over_and_is_not_sent_again(portal):
+    portal.on("POST", "/llm/complete", envelope(429, "budget_exceeded", headers={"Retry-After": "30"}))
+
+    async def scenario():
+        stream = llm.astream("Hello")
+        with pytest.raises(errors.BudgetExceededError):
+            async for _piece in stream:
+                pass
+        # The request was refused: that is the end of this stream. A second loop over the same
+        # object used to send the POST once more.
+        again = [piece async for piece in stream]
+        await stream  # awaiting it again sends nothing either
+        return again, await stream.completion()
+
+    again, answer = run(scenario())
+    assert again == [] and answer.text == "" and answer.finish_reason is None
+    assert portal.count("POST", "/llm/complete") == 1
+
+
+def test_an_astream_whose_connection_failed_is_over_as_well(portal):
+    portal.on("POST", "/llm/complete", httpx.ConnectError("no route"))
+
+    async def scenario():
+        stream = llm.astream("Hello")
+        with pytest.raises(errors.PortalUnreachableError):
+            await stream
+        return [piece async for piece in stream]
+
+    assert run(scenario()) == []
+    assert portal.count("POST", "/llm/complete") == 1

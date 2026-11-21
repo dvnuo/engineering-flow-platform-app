@@ -15,8 +15,10 @@ import hashlib
 import hmac
 import json
 import logging
+import threading
 import time
 
+import httpx
 import pytest
 
 from efp_app import visitor
@@ -124,6 +126,26 @@ def test_expired(deployed):
 
 def test_a_value_made_for_another_app(deployed):
     assert visitor.parse(sign(payload_of(app="another-app"))) is None
+
+
+def test_a_value_that_names_no_app_is_refused_on_the_host(deployed):
+    # The gateway always names the app. A signed value without one used to be taken as it came.
+    nameless = payload_of()
+    del nameless["app"]
+    assert visitor.parse(sign(nameless)) is None
+    assert visitor.parse(sign(payload_of(app=None))) is None
+    assert visitor.parse(sign(payload_of(app=""))) is None
+    assert visitor.current({"X-EFP-Visitor": sign(nameless)}) is None
+
+
+def test_the_app_is_not_compared_where_there_is_no_app_id(monkeypatch):
+    # A developer's machine has no EFP_APP_ID to compare with; the signature still counts.
+    monkeypatch.setenv("EFP_VISITOR_KEY", VISITOR_KEY)
+    nameless = payload_of()
+    del nameless["app"]
+    assert visitor.parse(sign(nameless)).username == "bob"
+    assert visitor.parse(sign(payload_of(app="another-app"))).username == "bob"
+    assert visitor.parse(sign(payload_of(), OTHER_KEY)) is None
 
 
 def test_the_signature_is_compared_in_constant_time(deployed, monkeypatch):
@@ -295,3 +317,94 @@ def test_dev_visitor_is_asked_again_after_the_pause(portal, monkeypatch):
     monkeypatch.setattr(visitor, "_OWNER_RETRY_SECONDS", 0.0)
     visitor._owner = (visitor._owner[0], 0.0, None)
     assert visitor.current({}).username == "alice"
+
+
+def test_the_owner_is_asked_for_once_and_briefly(portal, no_sleep):
+    # A request of the app waits for this answer: one attempt (a GET is otherwise tried three
+    # times) with a short wait, not half a minute in front of a Portal that is out of reach.
+    portal.on("GET", "/app", httpx.ConnectError("no route to the Portal"))
+    assert visitor.current({}) is None
+    assert portal.count("GET", "/app") == 1
+    waits = portal.last.extensions["timeout"]
+    assert waits["connect"] == waits["read"] == visitor._OWNER_TIMEOUT == 5.0
+    assert visitor.current({}) is None and portal.count("GET", "/app") == 1  # and then the usual pause
+
+
+def test_requests_that_arrive_together_share_one_question_for_the_owner(portal):
+    asked = threading.Event()
+    answer_now = threading.Event()
+
+    def slow(request):
+        asked.set()
+        assert answer_now.wait(30)
+        return httpx.Response(200, json={"id": "a1", "owner": OWNER})
+
+    portal.on("GET", "/app", slow)
+    found = []
+    threads = [threading.Thread(target=lambda: found.append(visitor.current({}))) for _ in range(6)]
+    threads[0].start()
+    assert asked.wait(30)  # the first request is asking the Portal
+    for thread in threads[1:]:
+        thread.start()  # five more arrive while it waits
+    time.sleep(0.2)
+    answer_now.set()
+    for thread in threads:
+        thread.join(30)
+    assert not any(thread.is_alive() for thread in threads)
+    assert [who.username for who in found] == ["alice"] * 6
+    assert portal.count("GET", "/app") == 1
+
+
+def test_a_failed_question_is_shared_as_well(portal):
+    asked = threading.Event()
+    answer_now = threading.Event()
+
+    def refuses(request):
+        asked.set()
+        assert answer_now.wait(30)
+        return envelope(401, "invalid_token")
+
+    portal.on("GET", "/app", refuses)
+    found = []
+    threads = [threading.Thread(target=lambda: found.append(visitor.current({}))) for _ in range(4)]
+    threads[0].start()
+    assert asked.wait(30)
+    for thread in threads[1:]:
+        thread.start()
+    time.sleep(0.2)
+    answer_now.set()
+    for thread in threads:
+        thread.join(30)
+    assert found == [None] * 4
+    assert portal.count("GET", "/app") == 1  # the others took the answer; they did not ask in their turn
+
+
+# --- a visitor key means a gateway ---------------------------------------------------------
+
+
+def test_with_a_visitor_key_there_is_no_stand_in(monkeypatch, portal, caplog):
+    # Only a host gives an app a visitor key. A process that has one stands behind a gateway, also
+    # when EFP_APP_ID did not reach it: a request without the header is then an anonymous visitor,
+    # and must not become the owner of the app or whoever EFP_DEV_VISITOR names.
+    portal.on("GET", "/app", {"id": "a1", "owner": OWNER})
+    monkeypatch.setenv("EFP_VISITOR_KEY", VISITOR_KEY)
+    with caplog.at_level(logging.WARNING, logger="efp_app"):
+        assert visitor.current({}) is None
+        monkeypatch.setenv("EFP_DEV_VISITOR", "carol")
+        assert visitor.current({}) is None
+        assert visitor.current() is None
+    assert portal.requests == []  # the owner was not even asked for
+    said = [record.getMessage() for record in caplog.records]
+    assert len(said) == 1  # once, so that a developer who set the key finds out why
+    assert "EFP_VISITOR_KEY" in said[0] and "EFP_DEV_VISITOR" in said[0] and VISITOR_KEY not in said[0]
+
+    # A signed header is verified as before, and without the key the stand-in is back.
+    assert visitor.current({"X-EFP-Visitor": sign(payload_of())}).username == "bob"
+    monkeypatch.delenv("EFP_VISITOR_KEY")
+    assert visitor.current({}).username == "carol"
+
+
+def test_a_key_that_cannot_be_used_keeps_the_stand_in_away_too(monkeypatch):
+    monkeypatch.setenv("EFP_DEV_VISITOR", "carol")
+    monkeypatch.setenv("EFP_VISITOR_KEY", "***not base64***")
+    assert visitor.current({}) is None

@@ -6,6 +6,8 @@ A small synchronous client and an asynchronous twin over httpx. Both
   the caller (no cookies);
 - turn the error envelope ``{"error": {"code", "message"}}`` into the typed
   exceptions of :mod:`efp_app.errors`;
+- encode a body as JSON themselves, and refuse one that JSON or UTF-8 cannot
+  carry with ``InvalidRequestError`` before anything is sent;
 - never repeat a ``POST``; a ``GET`` is tried again when the connection
   could not be made;
 - honour the usual CA variables (``SSL_CERT_FILE``, ``REQUESTS_CA_BUNDLE``,
@@ -117,6 +119,44 @@ def _origin(url: str) -> str:
     return "%s://%s" % (parts.scheme, parts.netloc) if parts.netloc else url
 
 
+def _check_token(token: str) -> str:
+    """The token when every character of it can be one of a token, else ``ConfigurationError``.
+
+    Checked here and by name: httpx refuses such a header with an error whose
+    ``repr`` carries the whole value, and that error is not an ``EfpError``.
+    The message says which character is wrong and where, never the token.
+    """
+    for position, character in enumerate(token):
+        if not "\x21" <= character <= "\x7e":
+            raise errors.ConfigurationError(
+                "%s holds a character that no app token has (U+%04X at position %d): a blank, a control "
+                "character or a character outside ASCII, which a copy and paste can bring along unseen. "
+                "Copy the token again from the app's page in the Portal." % (config.APP_TOKEN, ord(character), position + 1)
+            )
+    return token
+
+
+def _encode_body(body: Any) -> bytes:
+    """The JSON of a request body, as UTF-8.
+
+    Encoded here and not by httpx, whose encoder changed between releases, so
+    that what JSON or UTF-8 cannot carry is refused the same way everywhere
+    and as an error an app already catches. A value of a type JSON does not
+    know stays a ``TypeError``: that is a slip in the app's code, not in what
+    a visitor sent.
+    """
+    try:
+        return _json.dumps(body, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+    except UnicodeEncodeError as exc:
+        # Not chained: the original error holds the whole text of the request.
+        raise errors.InvalidRequestError(
+            "the request holds text that cannot be sent: half of a surrogate pair (U+%04X), "
+            "which is what cutting a string in the middle of an emoji leaves" % ord(exc.object[exc.start])
+        ) from None
+    except ValueError as exc:  # NaN or an infinity, or a value that contains itself
+        raise errors.InvalidRequestError("the request cannot be sent as JSON: %s" % exc) from None
+
+
 class _Core:
     """What the two clients share: settings, request building, answer checking."""
 
@@ -134,7 +174,7 @@ class _Core:
                 token=token or settings.token,
                 portal_url=(portal_url.rstrip("/") if portal_url else settings.portal_url),
             )
-        self.token = settings.require_token()
+        self.token = _check_token(settings.require_token())
         self.portal_url = settings.require_portal_url()
         self.base_url = self.portal_url + API_PREFIX
         self.deployed = settings.deployed
@@ -177,7 +217,8 @@ class _Core:
         if params:
             options["params"] = params
         if body is not None:
-            options["json"] = body
+            options["content"] = _encode_body(body)
+            headers["Content-Type"] = "application/json"
         if timeout is not None:
             options["timeout"] = as_timeout(timeout)
         try:
@@ -284,6 +325,17 @@ class Client:
     def transport_error(self, exc: Exception) -> errors.EfpError:
         return self._core.transport_error(exc)
 
+    def _get_once(self, path: str, *, timeout: TimeoutLike) -> Any:
+        """``get`` without the further attempts, for a caller that must not wait long.
+
+        ``visitor.current`` asks for the owner of the app while a request of a
+        developer's machine waits for it; three attempts at the default
+        timeout would hold that request for half a minute.
+        """
+        response = self._send("GET", path, None, None, None, timeout, stream=False, attempts=1)
+        self._core.check(response.status_code, response.headers, response.content)
+        return self._core.parse(response.status_code, response.content)
+
     def _send(
         self,
         method: str,
@@ -294,8 +346,10 @@ class Client:
         timeout: TimeoutLike,
         *,
         stream: bool,
+        attempts: Optional[int] = None,
     ) -> httpx.Response:
-        attempts = GET_ATTEMPTS if method == "GET" else 1
+        if attempts is None:
+            attempts = GET_ATTEMPTS if method == "GET" else 1
         attempt = 0
         while True:
             attempt += 1

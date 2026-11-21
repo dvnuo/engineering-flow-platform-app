@@ -43,6 +43,53 @@ def test_a_post_sends_json(credentials):
     assert portal.body() == {"messages": []}
 
 
+def test_a_body_goes_out_as_compact_utf8_json(credentials):
+    # The SDK encodes the body itself, so that it is the same whatever release of httpx is installed.
+    portal = FakePortal().on("POST", "/llm/complete", {"text": "hi"})
+    name = "Zo" + chr(0xEB)  # a letter outside ASCII
+    with portal.client() as client:
+        client.post("/llm/complete", {"system": name, "n": 1})
+    assert portal.last.content == b'{"system":"Zo\xc3\xab","n":1}'
+    assert portal.last.headers["content-length"] == str(len(portal.last.content))
+
+
+@pytest.mark.parametrize(
+    "body, said",
+    [
+        ({"text": "half an emoji " + chr(0xD83D)}, "U+D83D"),
+        ({"temperature": float("nan")}, "JSON"),
+        ({"temperature": float("inf")}, "JSON"),
+    ],
+)
+def test_a_body_that_json_or_utf8_cannot_carry_is_an_invalid_request(credentials, body, said):
+    # Half of a surrogate pair is what a visitor's text holds when a page cut it in the middle of an
+    # emoji. It used to leave the SDK as a UnicodeEncodeError, which no "except EfpError" catches.
+    portal = FakePortal().on("POST", "/llm/complete", {"text": "hi"})
+    with portal.client() as client:
+        with pytest.raises(errors.InvalidRequestError) as caught:
+            client.post("/llm/complete", body)
+    assert caught.value.code == "invalid_request" and caught.value.status == 400
+    assert said in caught.value.message and "half an emoji" not in caught.value.message
+    assert caught.value.__cause__ is None  # the original error would carry the whole text
+    assert portal.requests == []
+
+    async def scenario():
+        async with portal.async_client() as client:
+            await client.post("/llm/complete", body)
+
+    with pytest.raises(errors.InvalidRequestError):
+        run(scenario())
+    assert portal.requests == []
+
+
+def test_a_body_of_a_type_json_does_not_know_stays_a_type_error(credentials):
+    portal = FakePortal().on("POST", "/llm/complete", {"text": "hi"})
+    with portal.client() as client:
+        with pytest.raises(TypeError):
+            client.post("/llm/complete", {"when": object()})
+    assert portal.requests == []
+
+
 def test_the_portal_url_may_have_a_path_and_a_trailing_slash(monkeypatch):
     monkeypatch.setenv("EFP_APP_TOKEN", TOKEN)
     monkeypatch.setenv("EFP_PORTAL_URL", "https://corp.test/efp/")
@@ -111,6 +158,42 @@ def test_no_portal_url_is_a_clear_error(monkeypatch):
         sdk_client.get_client()
     assert "EFP_PORTAL_URL" in str(caught.value)
     assert TOKEN not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "strange, said",
+    [
+        (chr(0x200B), "U+200B"),  # a zero-width space, which a copy and paste brings along unseen
+        (chr(0xA0), "U+00A0"),  # a no-break space
+        (" ", "U+0020"),
+        ("\t", "U+0009"),
+        (chr(1), "U+0001"),
+    ],
+)
+def test_a_token_with_a_character_no_token_has_is_a_clear_error(monkeypatch, strange, said):
+    # httpx refuses such a header with a UnicodeEncodeError whose repr() holds the whole value.
+    broken = TOKEN[:20] + strange + TOKEN[20:]
+    monkeypatch.setenv("EFP_PORTAL_URL", PORTAL)
+    for make in (
+        lambda: sdk_client.Client(token=broken),
+        lambda: sdk_client.AsyncClient(token=broken),
+        lambda: sdk_client.Client(settings=config.load({"EFP_APP_TOKEN": broken, "EFP_PORTAL_URL": PORTAL})),
+    ):
+        with pytest.raises(errors.ConfigurationError) as caught:
+            make()
+        message = caught.value.message
+        assert "EFP_APP_TOKEN" in message and said in message and "position 21" in message
+        for shown in (message, str(caught.value), repr(caught.value)):
+            assert TOKEN[:20] not in shown and TOKEN[20:] not in shown  # the name, never the value
+
+
+def test_the_shared_client_refuses_such_a_token_too(monkeypatch):
+    monkeypatch.setenv("EFP_APP_TOKEN", TOKEN[:10] + " " + TOKEN[10:])  # two halves pasted with a blank between
+    monkeypatch.setenv("EFP_PORTAL_URL", PORTAL)
+    with pytest.raises(errors.ConfigurationError) as caught:
+        sdk_client.get_client()
+    assert "EFP_APP_TOKEN" in caught.value.message and "position 11" in caught.value.message
+    assert TOKEN[10:] not in repr(caught.value)
 
 
 # --- Errors -----------------------------------------------------------------------

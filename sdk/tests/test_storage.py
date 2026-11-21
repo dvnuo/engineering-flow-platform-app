@@ -331,6 +331,25 @@ def test_only_bytes_and_text_can_be_saved(place):
         storage.save("k", 12)
 
 
+def test_text_that_utf8_cannot_carry_is_a_storage_error(place):
+    # Half of a surrogate pair: what a visitor's text holds when a page cut it in the middle of an
+    # emoji. It used to leave save() as a UnicodeEncodeError, past every "except EfpError".
+    half = chr(0xD83D)
+    storage.save("note.txt", "old")
+    for call in (
+        lambda: storage.save("note.txt", "my note " + half),
+        lambda: storage.save_json("note.txt", {"text": "my note " + half}),
+        lambda: storage.save_json("note.txt", {half: 1}),
+    ):
+        with pytest.raises(errors.StorageError) as caught:
+            call()
+        assert caught.value.code == "invalid_text" and "U+D83D" in caught.value.message
+        assert "my note" not in caught.value.message and caught.value.__cause__ is None
+    assert storage.load("note.txt") == b"old"  # nothing was written
+    storage.save("note.txt", "whole " + chr(0x1F600))  # a whole emoji is text like any other
+    assert storage.load("note.txt").decode("utf-8") == "whole " + chr(0x1F600)
+
+
 def test_an_object_cannot_also_be_a_folder(place):
     storage.save("a", b"object")
     with pytest.raises(errors.InvalidKeyError):
@@ -437,6 +456,101 @@ def test_deleting_removes_empty_folders(tmp_path):
     assert (objects / "a" / "keep").is_file()
     storage.delete("a/keep")
     assert objects.is_dir() and list(objects.iterdir()) == []
+
+
+def test_a_save_that_meets_the_delete_of_its_folder_goes_through(tmp_path, monkeypatch):
+    # delete() removes a folder it left empty. Here that happens under a save into the same
+    # folder, after the save made sure the folder is there and before it opens its file.
+    storage.save("votes/poll/bob.json", "{}")
+    real = storage.secrets.token_hex
+    deleted = []
+
+    def name_after_the_delete(count):  # put() asks for the temporary name between those two steps
+        if not deleted:
+            deleted.append(storage.delete("votes/poll/bob.json"))
+            assert not (tmp_path / ".efp-data" / "objects" / "votes").exists()  # the folders went with it
+        return real(count)
+
+    monkeypatch.setattr(storage.secrets, "token_hex", name_after_the_delete)
+    storage.save("votes/poll/alice.json", "{}")  # used to be: StorageError, "No such file or directory"
+    assert deleted == [True]
+    assert [item.key for item in storage.list()] == ["votes/poll/alice.json"]
+
+
+def test_a_folder_that_goes_away_while_it_is_made_is_made_again(tmp_path, monkeypatch):
+    # mkdir looks twice: "it exists", then "is it a folder?". A delete() between the two looks
+    # leaves a FileExistsError although nothing is in the way; that is not a bad key.
+    real = Path.mkdir
+    calls = []
+
+    def vanishes_once(self, *args, **options):
+        calls.append(self.name)
+        if len(calls) == 1:
+            raise FileExistsError(errno.EEXIST, "File exists")
+        return real(self, *args, **options)
+
+    monkeypatch.setattr(Path, "mkdir", vanishes_once)
+    storage.save("room/a.json", "{}")
+    assert calls[:2] == ["room", "room"] and storage.load("room/a.json") == b"{}"
+
+
+def test_a_folder_that_keeps_going_away_is_a_failed_save_not_a_bad_key(tmp_path, monkeypatch):
+    calls = []
+
+    def always_gone(self, *args, **options):
+        calls.append(self.name)
+        raise FileExistsError(errno.EEXIST, "File exists")
+
+    monkeypatch.setattr(Path, "mkdir", always_gone)
+    monkeypatch.setattr(storage.time, "sleep", lambda seconds: None)
+    with pytest.raises(errors.StorageError) as caught:
+        storage.save("room/a.json", "{}")
+    assert not isinstance(caught.value, errors.InvalidKeyError)  # the key is fine: no object lies above it
+    assert len(calls) == storage._SAVE_ATTEMPTS
+
+
+def test_an_object_in_the_way_is_a_bad_key_at_once(tmp_path, monkeypatch):
+    storage.save("room", "an object, not a folder")
+    real = Path.mkdir
+    calls = []
+
+    def counted(self, *args, **options):
+        calls.append(self.name)
+        return real(self, *args, **options)
+
+    monkeypatch.setattr(Path, "mkdir", counted)
+    for key in ("room/a.json", "room/deeper/a.json"):
+        del calls[:]
+        with pytest.raises(errors.InvalidKeyError) as caught:
+            storage.save(key, "{}")
+        assert "lies below an existing object" in caught.value.message
+        assert calls.count(Path(key).parent.name) == 1  # told apart by looking, not tried again
+    assert storage.load("room") == b"an object, not a folder"
+
+
+def test_requests_that_save_and_delete_in_one_folder_never_fail(monkeypatch, tmp_path):
+    # One object per writer, as the reference advises: each thread saves and deletes its own object,
+    # and the folder is empty (and removed) again and again while another thread saves into it.
+    monkeypatch.setenv("EFP_APP_ID", "app-1")
+    monkeypatch.setenv("EFP_APP_DATA_DIR", str(tmp_path / "data"))
+    failures = []
+
+    def worker(number):
+        key = "room/%d.json" % number
+        try:
+            for _round in range(150):
+                storage.save(key, "{}")
+                assert storage.delete(key) is True
+        except Exception as exc:  # collected: an error in a thread would otherwise be lost
+            failures.append(repr(exc))
+
+    threads = [threading.Thread(target=worker, args=(number,)) for number in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(120)
+    assert failures == [] and not any(thread.is_alive() for thread in threads)
+    assert storage.list() == []
 
 
 def test_list_times_come_from_the_file(tmp_path):

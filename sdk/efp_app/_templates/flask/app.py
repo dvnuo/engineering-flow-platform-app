@@ -22,6 +22,9 @@ from efp_app.errors import BudgetExceededError, EfpError
 from efp_app.integrations.flask import get_visitor
 
 SYSTEM_PROMPT = "You are a helpful assistant. Keep your answers short."
+# Every call is paid from the app's daily budget, whoever asks: both ends of it are capped.
+MAX_QUESTION_CHARS = 8000
+MAX_OUTPUT_TOKENS = 1000
 
 log = logging.getLogger("app")
 app = Flask(__name__)
@@ -69,7 +72,12 @@ def ask():
     try:
         # stream() sends the request, so a refusal is raised here, before any
         # text has gone to the browser. visitor= lets the Portal record who asked.
-        stream = llm.stream(question[:8000], system=SYSTEM_PROMPT, visitor=get_visitor())
+        stream = llm.stream(
+            question[:MAX_QUESTION_CHARS],
+            system=SYSTEM_PROMPT,
+            max_output_tokens=MAX_OUTPUT_TOKENS,
+            visitor=get_visitor(),
+        )
     except BudgetExceededError as exc:
         # The app's daily budget is used up: say so instead of failing.
         return problem(exc)

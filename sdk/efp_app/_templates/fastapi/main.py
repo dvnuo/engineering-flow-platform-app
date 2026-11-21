@@ -27,6 +27,9 @@ from efp_app.integrations.fastapi import get_visitor
 
 HERE = Path(__file__).parent
 SYSTEM_PROMPT = "You are a helpful assistant. Keep your answers short."
+# Every call is paid from the app's daily budget, whoever asks: both ends of it are capped.
+MAX_QUESTION_CHARS = 8000
+MAX_OUTPUT_TOKENS = 1000
 
 log = logging.getLogger("app")
 app = FastAPI(title="My EFP app")
@@ -34,7 +37,7 @@ app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
 
 class Question(BaseModel):
-    text: str = Field(max_length=8000)
+    text: str = Field(max_length=MAX_QUESTION_CHARS)
 
 
 class Note(BaseModel):
@@ -80,7 +83,9 @@ async def ask(question: Question, visitor: Optional[Visitor] = Depends(get_visit
     try:
         # Awaiting sends the request, so a refusal is raised here, before any
         # text has gone to the browser. visitor= lets the Portal record who asked.
-        stream = await llm.astream(question.text, system=SYSTEM_PROMPT, visitor=visitor)
+        stream = await llm.astream(
+            question.text, system=SYSTEM_PROMPT, max_output_tokens=MAX_OUTPUT_TOKENS, visitor=visitor
+        )
     except BudgetExceededError as exc:
         # The app's daily budget is used up: say so instead of failing.
         return problem(exc)

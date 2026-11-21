@@ -150,14 +150,14 @@ needed, and only for the model, the connectors and `app.info`.
 |---|---|---|---|---|
 | `EFP_APP_ID` | `config.APP_ID` | the app's id | never set it | the process counts as a developer's machine (2.2) |
 | `EFP_APP_SLUG` | `config.APP_SLUG` | the slug | not needed (`efp-app dev --prefix NAME` sets it) | `app.slug()` returns `None` |
-| `EFP_APP_TOKEN` | `config.APP_TOKEN` | the app token | the app token, from the app's page in the Portal | every call to the Portal raises `ConfigurationError`: the functions of `llm` and `connectors`, `app.info`, `app.ainfo`. Storage, `visitor.parse` and the other functions of `app` still work |
+| `EFP_APP_TOKEN` | `config.APP_TOKEN` | the app token | the app token, from the app's page in the Portal | every call to the Portal raises `ConfigurationError`: the functions of `llm` and `connectors`, `app.info`, `app.ainfo`. Storage, `visitor.parse` and the other functions of `app` still work. A token with a character no token has (a blank, a control character, a character outside ASCII) raises `ConfigurationError` as well; the message names the variable and the position, never the token |
 | `EFP_PORTAL_URL` | `config.PORTAL_URL` | the Portal's address inside the cluster | the Portal's address as a browser opens it, for example `https://efp.example.com` | as for the token. A value that does not start with `http://` or `https://` raises `ConfigurationError` as well |
 | `EFP_APP_BASE_PATH` | `config.APP_BASE_PATH` | `/{slug}` | not needed: `efp-app dev` removes it, `efp-app dev --prefix NAME` sets it to `/NAME` | `app.base_path()` returns `""` |
 | `EFP_APP_PUBLIC_URL` | `config.APP_PUBLIC_URL` | `{apps address}/{slug}/` | not needed (`efp-app dev --prefix NAME` sets it) | `app.public_url()` returns `http://127.0.0.1:{PORT}/` on a developer's machine when `PORT` is set, else `None` |
-| `EFP_VISITOR_KEY` | `config.VISITOR_KEY` | the app's visitor key, base64url text | not needed: no gateway signs a header there | no `X-EFP-Visitor` value can be verified: `visitor.parse` returns `None` |
+| `EFP_VISITOR_KEY` | `config.VISITOR_KEY` | the app's visitor key, base64url text | leave it out: no gateway signs a header there, and with it set there is no local stand-in (3.2) | no `X-EFP-Visitor` value can be verified: `visitor.parse` returns `None` |
 | `EFP_APP_DATA_DIR` | `config.APP_DATA_DIR` | on a host in `sandbox` mode: the app's own directory | not needed | storage chooses another place (6.1) |
 | `EFP_APP_STORAGE_SOCKET` | `config.APP_STORAGE_SOCKET` | on a host in `hidden` mode: the unix socket of the storage service | not needed | storage chooses another place (6.1) |
-| `EFP_DEV_VISITOR` | `config.DEV_VISITOR` | not set; ignored when deployed | optional: the username to act as, or `anonymous` | the local visitor is the owner of the app (3.2) |
+| `EFP_DEV_VISITOR` | `config.DEV_VISITOR` | not set; ignored when deployed, and wherever `EFP_VISITOR_KEY` is set | optional: the username to act as, or `anonymous` | the local visitor is the owner of the app (3.2) |
 | `PORT` | `config.PORT` | the loopback port the app listens on | optional: `efp-app dev` listens there unless `--port` is given; it sets `PORT` for the app | `app.public_url()` cannot name a local address; nothing else in the SDK reads it |
 
 The SDK also reads these, when it builds an HTTP client (section 8):
@@ -213,10 +213,15 @@ The process is **deployed** when `EFP_APP_ID` is set and not blank. Nothing
 else is looked at. `app.is_deployed()` and `config.is_deployed()` return that
 answer.
 
+One thing looks at a second variable: the local stand-in for the visitor.
+Only a host gives an app a visitor key, so a process with `EFP_VISITOR_KEY`
+is taken to stand behind a gateway, deployed or not, and gets no stand-in
+(3.2).
+
 | | Deployed | A developer's machine |
 |---|---|---|
-| A request without `X-EFP-Visitor` | `visitor.current` returns `None`: an anonymous visitor | `visitor.current` returns the user named by `EFP_DEV_VISITOR`, else the owner of the app, else `None` |
-| A header whose payload names another app | refused: the app id in it must be `EFP_APP_ID` | not checked |
+| A request without `X-EFP-Visitor` | `visitor.current` returns `None`: an anonymous visitor | `visitor.current` returns the user named by `EFP_DEV_VISITOR`, else the owner of the app, else `None`. With `EFP_VISITOR_KEY` set: `None`, as when deployed |
+| A header whose payload names another app, or no app | refused: the app id in it must be `EFP_APP_ID` | not checked |
 | `Visitor.raw` | the header value; `visitor=who` forwards it | `None` for the local stand-in; nothing is forwarded |
 | Storage | `EFP_APP_DATA_DIR` or `EFP_APP_STORAGE_SOCKET`; with neither, `StorageUnavailableError` | `./.efp-data/` in the current working directory, unless one of the two variables is set |
 | `app.base_path()` | `/{slug}` | `""`, or `/NAME` under `efp-app dev --prefix NAME` |
@@ -317,7 +322,7 @@ developer's machine (3.2).
 Its names: `visitor.Visitor`, `visitor.current`, `visitor.parse`,
 `visitor.header_value`, `visitor.dev_visitor_id`, `visitor.reset_dev_visitor`, `visitor.HEADER` (the
 name of the header, `"X-EFP-Visitor"`) and `visitor.log` (the logger
-`efp_app`, which gets the one warning of 3.2).
+`efp_app`, which gets the two warnings of 3.2).
 
 ### 3.1 `visitor.Visitor`
 
@@ -362,7 +367,7 @@ Returns the `Visitor`, or `None` for an anonymous visitor. Raises nothing.
 |---|---|---|
 | present and valid | the `Visitor` | the `Visitor` (this needs `EFP_VISITOR_KEY`) |
 | present and not valid: wrong signature, expired, made for another app, no key | `None` | `None` |
-| absent | `None` | the local stand-in below |
+| absent | `None` | the local stand-in below; `None` when `EFP_VISITOR_KEY` is set |
 
 The local stand-in, in this order:
 
@@ -371,14 +376,29 @@ The local stand-in, in this order:
 2. `EFP_DEV_VISITOR` is another name: a `Visitor` with that name as
    `username` and as `name`, the id `visitor.dev_visitor_id(name)` (3.6) and
    no group. The Portal is not asked.
-3. Otherwise the owner of the app, from `app.info(cached=True)`: the owner's
-   id, username, display name, group name and group id. The Portal is asked
-   once and the answer is kept for the life of the process.
+3. Otherwise the owner of the app, as `app.info(cached=True)` gives it: the
+   owner's id, username, display name, group name and group id. The Portal
+   is asked once and the answer is kept for the life of the process. A
+   request of the app waits for that answer, so it is one `GET /app` that is
+   not tried again and waits at most 5 seconds for each step of the
+   exchange; requests that arrive meanwhile wait for the same answer instead
+   of asking themselves.
 4. The owner cannot be learnt (no token, the Portal refuses or cannot be
    reached): `None`, and one warning on the logger `efp_app`. The Portal is
    asked again after 30 seconds at the earliest.
 
 A local stand-in has `raw=None`.
+
+**No stand-in next to a visitor key.** When `EFP_VISITOR_KEY` is set, a
+request without the header has no visitor, on a developer's machine too:
+`EFP_DEV_VISITOR` is not used and the Portal is not asked for the owner.
+Only a host sets that key, so a process that has it is behind a gateway,
+where a missing header means an anonymous visitor; a stand-in there would
+turn every anonymous visitor into the owner of the app. The first such
+request leaves one warning on the logger `efp_app`, and `efp-app dev` prints
+one when it starts the app. To verify signed headers on your own machine,
+set the key and send the header with every request (`testing.visitor_headers`,
+14.6); to work with a stand-in, leave the key out.
 
 Deployed:
 
@@ -429,6 +449,18 @@ from efp_app import visitor
 assert visitor.current({}) is None                     # the app as a visitor who is not signed in sees it
 ```
 
+With a visitor key next to `EFP_DEV_VISITOR=carol`:
+
+<!-- environment: local EFP_DEV_VISITOR=carol EFP_VISITOR_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 -->
+<!-- runnable -->
+```python
+from efp_app import testing, visitor
+
+assert visitor.current({}) is None                     # a key means a gateway: no stand-in, carol is not used
+who = visitor.current(testing.visitor_headers("bob"))  # a header signed with that key is verified as on the host
+assert who.username == "bob"
+```
+
 ### 3.3 `visitor.parse`
 
 <!-- signature: efp_app.visitor.parse -->
@@ -456,7 +488,8 @@ Returns the `Visitor`. Returns `None`, and never raises, when
 - the payload is not a JSON object;
 - `exp` is not a number, or `now` is later than `exp` (at `now == exp` the
   value still counts);
-- `EFP_APP_ID` is set and the payload names another app;
+- `EFP_APP_ID` is set and the payload names another app, or no app at all
+  (the gateway always names it);
 - `sub` is not a whole number, or `username` is not a non-empty string.
 
 An app treats every one of these as an anonymous visitor.
@@ -508,8 +541,8 @@ def reset_dev_visitor() -> None:
 ```
 
 Forgets the owner that `visitor.current` remembered (3.2, step 3) and lets
-the warning of step 4 be logged again. For tests. Returns `None`, raises
-nothing.
+the warning of step 4, and the one about a visitor key, be logged again.
+For tests. Returns `None`, raises nothing.
 
 <!-- runnable -->
 ```python
@@ -780,13 +813,23 @@ async def aclose(self) -> None:
 7. After the end, after an error and after `close()` the iteration yields
    nothing more. `close()` before the end is not an error: `completion()`
    then returns the text received so far with `finish_reason=None` and an
-   empty `Usage()`.
+   empty `Usage()`. A request that was refused or could not be made is such
+   an end too: an `llm.astream(...)` whose first step raised is over, and
+   another `await` or `async for` on it sends nothing. A model call is never
+   sent twice.
 8. When the app stops reading early it must close the stream (`close()`,
    `aclose()`, `with`, `async with`). A `CompletionStream` that is dropped
    without that closes its connection only when the object is collected; an
    `AsyncCompletionStream` has no such safety net.
 9. When the Portal answers a stream request with JSON instead of events, the
    whole text arrives as one piece.
+10. A success that is neither events nor JSON (`Content-Type` is not
+    `text/event-stream` and not `application/json`: a sign-in page, the page
+    of a proxy) raises `UnexpectedResponseError` with the status of that
+    answer, where the request is sent: in `llm.stream(...)`, or at the first
+    step of `llm.astream(...)`. The connection is closed. Usually
+    `EFP_PORTAL_URL` is wrong. An answer that names no content type is read
+    as events.
 
 #### 4.6.1 The events (`efp_app._sse`)
 
@@ -828,7 +871,7 @@ def flush(self) -> Optional[Dict[str, Any]]:
 | Raised | When |
 |---|---|
 | `ValueError` | `reasoning_effort` is not `None`, `"low"`, `"medium"` or `"high"`. Before any request. Not an `EfpError`. |
-| `InvalidRequestError` | `messages` cannot be sent: not a string, message or sequence; a role other than `user`, `assistant`, `system`; a `content` that is not a `str`; `system=` together with a system message; no user or assistant message. Before any request. Also the Portal's `invalid_request`. |
+| `InvalidRequestError` | `messages` cannot be sent: not a string, message or sequence; a role other than `user`, `assistant`, `system`; a `content` that is not a `str`; `system=` together with a system message; no user or assistant message; a text that UTF-8 cannot carry (half of a surrogate pair, which is what cutting a string in the middle of an emoji leaves); a `temperature` that JSON cannot carry (NaN, an infinity). Before any request. Also the Portal's `invalid_request`. |
 | `ConfigurationError` | `EFP_APP_TOKEN` or `EFP_PORTAL_URL` is missing or unusable (when no `client=` is given). |
 | `ModelNotAllowedError` | `model` is not one of the app's models. |
 | `InvalidTokenError` | The token was reset or is wrong. |
@@ -839,7 +882,7 @@ def flush(self) -> Optional[Dict[str, Any]]:
 | `BudgetExceededError` | The app's daily budget is used up. `retry_after`. |
 | `ProviderError` | The model provider failed; also an error event without a code. |
 | `PortalUnreachableError`, `PortalTimeoutError` | The Portal could not be reached, or was silent for longer than the timeout. |
-| `UnexpectedResponseError` | The answer is not what the contract says: no `text`, not JSON, a redirect, an error page. |
+| `UnexpectedResponseError` | The answer is not what the contract says: no `text`, not JSON, a redirect, an error page, a page where a stream was asked for (4.6). |
 | `StreamInterruptedError` | A stream ended before its final event. |
 
 Section 10 has the code, the status and the sentence of each class.
@@ -1135,7 +1178,7 @@ truncated: bool = False
 | `status` | The HTTP status of the other system. |
 | `headers` | Its response headers. The names are in lower case. |
 | `json` | The decoded body when the other system answered with JSON, else `None`. |
-| `content` | The body as `bytes`; empty when there was none. For a JSON answer these are not the bytes the other system sent: the SDK encodes `json` again, as UTF-8 without escaping non-ASCII characters. |
+| `content` | The body as `bytes`; empty when there was none. For a JSON answer these are not the bytes the other system sent: the SDK encodes `json` again, as UTF-8 without escaping non-ASCII characters. A character that UTF-8 cannot carry (half of a surrogate pair, in a text the other system cut in the middle of an emoji) is a `?` here; `json` keeps it. |
 | `truncated` | `True` when the body was longer than 5 MiB and was cut. |
 | `ok` | A property: `True` when `200 <= status < 300`. |
 | `text` | A property: `content` decoded as UTF-8; a byte that cannot be decoded becomes the replacement character. |
@@ -1199,7 +1242,7 @@ such as Jira's `currentUser()` names that account, not the visitor.
 
 | Raised | When |
 |---|---|
-| `InvalidRequestError` | Before any request: `type` is not a connector name, `method` is empty or not a `str`, `json` and `body` are both given. Also the Portal's `invalid_request`. |
+| `InvalidRequestError` | Before any request: `type` is not a connector name, `method` is empty or not a `str`, `json` and `body` are both given, or `json`, `body`, `query` or `headers` hold a text that UTF-8 cannot carry (half of a surrogate pair) or a number that JSON cannot carry (NaN, an infinity). Also the Portal's `invalid_request`. |
 | `InvalidPathError` | Before any request: the path breaks a rule of 5.5. Also the Portal's `invalid_path`. |
 | `ConfigurationError` | `EFP_APP_TOKEN` or `EFP_PORTAL_URL` is missing or unusable. |
 | `InvalidTokenError`, `AppDisabledError` | The token is wrong; the app is disabled. |
@@ -1380,7 +1423,7 @@ written. A bad key raises `InvalidKeyError`.
 
 `.hidden`, `a.b..c` and `reports/2026/q4.json` are valid keys.
 
-Two more rules:
+Three more rules:
 
 - A name is an object or a folder, never both. With an object `a`, saving
   `a/b` raises `InvalidKeyError`; with an object `a/b`, saving `a` does.
@@ -1388,6 +1431,10 @@ Two more rules:
   dot or is a device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1` to `COM9`,
   `LPT1` to `LPT9`, with or without an extension) raises `InvalidKeyError`.
   The key is valid on the host. `storage.windows_problem` tells in advance.
+- Keys that differ only in upper and lower case (`Notes/a.txt` and
+  `notes/a.txt`) are two objects on the host and one object on a
+  developer's machine with Windows or macOS, whose file systems do not tell
+  the two apart. Write a key the same way everywhere.
 
 A prefix (for `storage.list`) follows the same rules, except that it may be
 empty and may end with `/`.
@@ -1428,7 +1475,10 @@ def save(key: str, data: Union[bytes, bytearray, memoryview, str]) -> None:
 Stores `data` under `key` and replaces what was there. The object is written
 completely or not at all: a failed save leaves the old content. Returns
 `None`. Also raises `TooLargeError` (more than 64 MiB), `QuotaExceededError`
-(6.3) and `TypeError` for any other type of `data`.
+(6.3) and `TypeError` for any other type of `data`. A `str` that UTF-8
+cannot carry raises `StorageError` with the code `invalid_text`, and nothing
+is written: such a text holds half of a surrogate pair, which is what a
+visitor's text is left with when a page cut it in the middle of an emoji.
 
 #### `storage.load`
 
@@ -1476,9 +1526,10 @@ def save_json(key: str, value: Any) -> None:
 ```
 
 Stores `json.dumps(value, ensure_ascii=False)` as UTF-8 under `key`. Returns
-`None`. Raises what `storage.save` raises. A value that JSON cannot express
-raises the error of `json.dumps`: `TypeError`, or `ValueError` for a value
-that contains itself.
+`None`. Raises what `storage.save` raises, `StorageError` (`invalid_text`)
+for a text in the value that UTF-8 cannot carry included. A value that JSON
+cannot express raises the error of `json.dumps`: `TypeError`, or
+`ValueError` for a value that contains itself.
 
 #### `storage.load_json`
 
@@ -1588,6 +1639,9 @@ There are no transactions and no locks.
   half-written one.
 - Two saves of the same key: the later one wins. Nothing is merged and
   nothing is reported.
+- A save and a delete in one folder do not disturb each other. `delete`
+  removes a folder it left empty, also when a save into that folder is on
+  its way; the save then makes the folder again. Neither call fails.
 - On a developer's Windows machine the file system refuses to replace,
   read or remove a file that is open elsewhere at that very moment. The
   SDK therefore lets the requests of one process take turns on an object
@@ -2024,9 +2078,12 @@ def __init__(
 | `settings` | `None` | A `config.Settings` to use instead of reading the environment. |
 
 The constructor raises `ConfigurationError` when the token or the address is
-missing, when the address does not start with `http://` or `https://`, or
-when a CA bundle named by the environment cannot be loaded. It sends
-nothing.
+missing, when the token holds a character no token has (anything but
+visible ASCII: a blank, a control character, an invisible character that
+came with a copy and paste), when the address does not start with `http://`
+or `https://`, or when a CA bundle named by the environment cannot be
+loaded. It sends nothing. The message about a token names `EFP_APP_TOKEN`,
+the character and its position, never the token.
 
 <!-- signature: efp_app.client.Client.get efp_app.client.Client.post efp_app.client.Client.stream efp_app.client.Client.close -->
 ```python
@@ -2084,6 +2141,12 @@ async def aclose(self) -> None:
   repeated after an answer with an error status or after a read timeout.
 - A `POST` is never repeated. Every model call and every connector call is
   a `POST`.
+- A body goes out as compact JSON in UTF-8 with
+  `Content-Type: application/json`; the SDK encodes it itself, the same way
+  with every release of `httpx`. A body with a text that UTF-8 cannot carry
+  (half of a surrogate pair), a NaN or an infinity raises
+  `InvalidRequestError` and nothing is sent. A value of a type JSON does not
+  know raises `TypeError`.
 - A redirect is not followed: it raises `UnexpectedResponseError`, whose
   message says that `EFP_PORTAL_URL` must be the Portal's own address.
 - An answer with a status of 400 or more and the body
@@ -2147,6 +2210,23 @@ Returns the `X-EFP-Visitor` value that `visitor=visitor` would send, or
 `None` when nothing would be sent (3.7). Raises nothing.
 
 ### 8.7 Examples
+
+A token that came with an invisible character:
+
+<!-- runnable -->
+```python
+from efp_app import client
+from efp_app.errors import ConfigurationError
+
+pasted = "efpa_" + "x" * 20 + chr(0x200B) + "y" * 23   # a zero-width space came along with the copy
+caught = None
+try:
+    client.Client(token=pasted)
+except ConfigurationError as exc:
+    caught = exc
+assert "EFP_APP_TOKEN" in caught.message and "U+200B at position 26" in caught.message
+assert "xxxx" not in caught.message and "yyyy" not in repr(caught)   # the name of the variable, never the token
+```
 
 A shared client with another timeout:
 
@@ -2448,12 +2528,12 @@ has it.
 | Class | Derives from | `code` | Status | `user_message` | Raised when |
 |---|---|---|---|---|---|
 | `errors.EfpError` | `Exception` | `error` | none | Something went wrong. Please try again. | Itself only for an error code of the Portal that this SDK has no class for; `code` and `status` are then the Portal's. |
-| `errors.ConfigurationError` | `EfpError` | `not_configured` | none | This app is not set up yet. Its owner needs to finish the configuration. | `EFP_APP_TOKEN` or `EFP_PORTAL_URL` is missing; the address is not an `http(s)` URL; a CA bundle cannot be loaded. Raised when a client is built: at the first call that needs the Portal, not at import. |
+| `errors.ConfigurationError` | `EfpError` | `not_configured` | none | This app is not set up yet. Its owner needs to finish the configuration. | `EFP_APP_TOKEN` or `EFP_PORTAL_URL` is missing; the token holds a character no token has; the address is not an `http(s)` URL; a CA bundle cannot be loaded. Raised when a client is built: at the first call that needs the Portal, not at import. |
 | `errors.PortalUnreachableError` | `EfpError` | `portal_unreachable` | none | The app cannot reach the EFP Portal right now. Please try again in a moment. | The connection to the Portal could not be made or broke: DNS, refused, TLS, reset. Also in the middle of a stream. |
 | `errors.PortalTimeoutError` | `PortalUnreachableError` | `portal_timeout` | none | The EFP Portal took too long to answer. Please try again. | The Portal did not answer within the timeout. |
-| `errors.UnexpectedResponseError` | `EfpError` | `unexpected_response` | none | The EFP Portal gave an unexpected answer. Please try again. | The answer is not part of the contract: a redirect, an error status without the error body, a body that is not JSON, a model answer without text, a connector answer without a status. `status` is the HTTP status of that answer when there was one. Usually `EFP_PORTAL_URL` is wrong. |
+| `errors.UnexpectedResponseError` | `EfpError` | `unexpected_response` | none | The EFP Portal gave an unexpected answer. Please try again. | The answer is not part of the contract: a redirect, an error status without the error body, a body that is not JSON, a page where a stream of events was asked for, a model answer without text, a connector answer without a status. `status` is the HTTP status of that answer when there was one. Usually `EFP_PORTAL_URL` is wrong. |
 | `errors.StreamInterruptedError` | `EfpError` | `stream_interrupted` | none | The answer was cut off. Please try again. | A streamed answer ended before its final event. |
-| `errors.InvalidRequestError` | `EfpError` | `invalid_request` | 400 | The app sent a request the EFP Portal could not accept. | A malformed call. The SDK raises it before the call for bad `messages`, a bad connector `type` or `method`, or `json` together with `body`. |
+| `errors.InvalidRequestError` | `EfpError` | `invalid_request` | 400 | The app sent a request the EFP Portal could not accept. | A malformed call. The SDK raises it before the call for bad `messages`, a bad connector `type` or `method`, `json` together with `body`, and a request with a text that UTF-8 cannot carry (half of a surrogate pair) or a number that JSON cannot carry (NaN, an infinity). |
 | `errors.ModelNotAllowedError` | `EfpError` | `model_not_allowed` | 400 | The requested model is not available to this app. | `model=` names a model the app may not use. |
 | `errors.InvalidPathError` | `EfpError` | `invalid_path` | 400 | The app asked for an address that is not allowed. | A connector path that breaks a rule of 5.5. The SDK raises it before the call. |
 | `errors.InvalidTokenError` | `EfpError` | `invalid_token` | 401 | This app is not connected to the EFP Portal: its token is missing or no longer valid. | The token was reset or is mistyped. |
@@ -2468,7 +2548,7 @@ has it.
 | `errors.ProviderError` | `EfpError` | `provider_error` | 502 | The AI provider returned an error. Please try again. | The model provider failed. Also an error event without a code inside a stream. |
 | `errors.UpstreamError` | `EfpError` | `upstream_error` | 502 | The other system returned an error. Please try again. | The Portal got no usable answer from the connector's system. |
 | `errors.UpstreamTimeoutError` | `EfpError` | `upstream_timeout` | 504 | The other system took too long to answer. Please try again. | The connector's system was too slow. |
-| `errors.StorageError` | `EfpError` | `storage_error` | none | The app could not read or save its data. Please try again. | The base of the storage errors. Itself for a failed read or write, a storage service that answers wrongly, an object that is not JSON (`code` is `invalid_json`), and a code of the storage service without a class, such as `bad_request` (`code` is that code). |
+| `errors.StorageError` | `EfpError` | `storage_error` | none | The app could not read or save its data. Please try again. | The base of the storage errors. Itself for a failed read or write, a storage service that answers wrongly, an object that is not JSON (`code` is `invalid_json`), a text to save that UTF-8 cannot carry (`code` is `invalid_text`), and a code of the storage service without a class, such as `bad_request` (`code` is that code). |
 | `errors.StorageNotFoundError` | `StorageError` | `not_found` | none | That item does not exist. | `storage.load` or `storage.load_json` of a missing key without a default. |
 | `errors.InvalidKeyError` | `StorageError` | `invalid_key` | none | The app could not read or save its data. Please try again. | A key or prefix that breaks a rule of 6.2. |
 | `errors.TooLargeError` | `StorageError` | `too_large` | none | That is too large to save. | An object of more than 64 MiB. |
@@ -2546,6 +2626,27 @@ off = errors.LlmDisabledError("llm is off for app 0b0f")
 assert answer_for(off) == (502, {"error": {"code": "llm_disabled", "message": "The owner has not turned on the AI model for this app."}})
 assert answer_for(errors.StorageNotFoundError())[1]["error"]["message"] == "That item does not exist."
 assert getattr(off, "retry_after", None) is None       # only two classes have the attribute
+```
+
+A text that cannot be stored or sent is such an error as well. A page that
+cuts a text by length can cut an emoji in two, and the half that arrives is
+a character UTF-8 cannot carry:
+
+<!-- runnable -->
+```python
+from efp_app import llm, storage
+from efp_app.errors import EfpError, InvalidRequestError, StorageError
+
+text = "my note " + chr(0xD83D)                        # half of a surrogate pair, as a visitor's browser sent it
+caught = []
+for call in (lambda: storage.save("note.txt", text), lambda: llm.complete(text, max_output_tokens=200)):
+    try:
+        call()
+    except EfpError as exc:                            # what the app catches anyway
+        caught.append(exc)
+assert isinstance(caught[0], StorageError) and caught[0].code == "invalid_text"
+assert isinstance(caught[1], InvalidRequestError) and caught[1].status == 400
+assert not storage.exists("note.txt")                   # nothing was written, nothing was sent
 ```
 
 ### 10.5 Functions
@@ -2890,7 +2991,9 @@ app's requirements must be installed in the same environment.
 
 `EFP_APP_ID` is never set by `efp-app dev`, so the SDK behaves as on a
 developer's machine (2.2). When the variable is set in the environment
-anyway, a warning says so.
+anyway, a warning says so. `EFP_VISITOR_KEY` is not set either; when the
+environment or `.env` holds it, a warning says that `EFP_DEV_VISITOR` is
+not used.
 
 **The `.env` file.** One `NAME=value` per line. Blank lines and lines that
 start with `#` are skipped. A leading `export ` is allowed. Quotes around a
@@ -2939,8 +3042,9 @@ efp-app dev: Mind map (fastapi)
 More lines appear when they apply: `sets NAME=value` for each variable it
 sets, `note` for a difference from the host (Flask on Windows, the static
 preview), `gateway` with `--prefix`, and `warning` when `EFP_APP_TOKEN` or
-`EFP_PORTAL_URL` is not set or `EFP_APP_ID` is set. The token itself is
-never printed. A missing token does not stop the app from starting: the
+`EFP_PORTAL_URL` is not set, when `EFP_APP_ID` is set, or when
+`EFP_VISITOR_KEY` is set (the app then has no local stand-in for the
+visitor, 3.2). The token and the key themselves are never printed. A missing token does not stop the app from starting: the
 model and connector calls then raise `ConfigurationError`. A `static` app
 has no `Portal` and `token` lines.
 
@@ -3154,6 +3258,8 @@ What a reader of the signatures alone would get wrong.
    developer's machine the same call returns a stand-in: the user of
    `EFP_DEV_VISITOR`, else the owner of the app. Set
    `EFP_DEV_VISITOR=anonymous` to see the app as an anonymous visitor.
+   A process with `EFP_VISITOR_KEY` gets no stand-in, deployed or not:
+   only a host sets that key.
 2. **A header that fails the check is `None` everywhere.** Also on a
    developer's machine: a present but unverifiable header does not fall back
    to the stand-in.
@@ -3243,7 +3349,10 @@ What a reader of the signatures alone would get wrong.
     `./.efp-data/`. Start the app from the same directory each time, or use
     `efp-app dev`.
 34. **`TypeError`, not an `EfpError`,** for `storage.save("k", {"a": 1})`.
-    Use `storage.save_json`.
+    Use `storage.save_json`. Half an emoji in a text, however, is an
+    `EfpError`: `StorageError` (`invalid_text`) from `storage.save`,
+    `InvalidRequestError` from a model or connector call. Such a text comes
+    from a visitor, and the `except EfpError` of the app answers it.
 35. **The quota is the host's.** `QuotaExceededError` comes from a host in
     `hidden` mode, or from a full disk.
 
@@ -3629,7 +3738,7 @@ requests.
 | `answer` is | The app's call gets |
 |---|---|
 | a `dict`, or another value that `json` can encode, a `list` excepted | status `200` with the value as its JSON body: `testing.completion(...)`, `testing.connector_answer(...)`, `testing.app_info(...)` |
-| an `httpx.Response` | that response: `testing.stream(...)`, `testing.error(...)`, or one built by hand. One response can answer any number of calls |
+| an `httpx.Response` | a copy of that response (its status, headers and body) for each call: `testing.stream(...)`, `testing.error(...)`, or one built by hand. One response can answer any number of calls, of the synchronous and of the asynchronous functions alike. A response built around a stream of your own (`stream=`) cannot be copied: it is handed on as it is and answers one call |
 | an exception (an instance) | The exception is raised where the SDK sends the request, as a broken connection would be. An `httpx.ConnectError` reaches the app as `PortalUnreachableError`, an `httpx.ReadTimeout` as `PortalTimeoutError` (8.3). On a `GET` route the SDK tries a failed connection three times before it gives up, with its usual pauses, and the three requests are recorded |
 | a callable | It is called with the `httpx.Request`. What it returns is used as one of the three forms above |
 | a `list` of these | One item per call, in order. The last item stays: it answers every later call. `on` copies the list, so the one you passed stays as it is; an empty list is refused with `ValueError` |

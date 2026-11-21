@@ -21,6 +21,28 @@ from efp_app.errors import BudgetExceededError, EfpError
 from efp_app.integrations.streamlit import get_visitor
 
 SYSTEM_PROMPT = "You are a helpful assistant. Keep your answers short."
+# Every call is paid from the app's daily budget, whoever asks: both ends of it are capped.
+MAX_QUESTION_CHARS = 8000
+MAX_OUTPUT_TOKENS = 1000
+MAX_MESSAGES = 21  # what goes to the model: the question and the ten exchanges before it
+
+
+def recent(messages):
+    """The end of a conversation: what goes to the model with a question.
+
+    Each question sends the conversation again, so a long chat would cost
+    more with every turn. Only the newest messages go, each cut to
+    MAX_QUESTION_CHARS, and the first of them is the user's: a conversation
+    starts with a question.
+    """
+    kept = [
+        {"role": message["role"], "content": message["content"][:MAX_QUESTION_CHARS]}
+        for message in messages[-MAX_MESSAGES:]
+    ]
+    while kept and kept[0]["role"] != "user":
+        kept.pop(0)
+    return kept
+
 
 st.set_page_config(page_title="My EFP app")
 
@@ -64,7 +86,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-prompt = st.chat_input("Ask something")
+prompt = st.chat_input("Ask something", max_chars=MAX_QUESTION_CHARS)
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -72,7 +94,12 @@ if prompt:
     with st.chat_message("assistant"):
         try:
             # visitor= lets the Portal record who asked.
-            stream = llm.stream(st.session_state.messages, system=SYSTEM_PROMPT, visitor=visitor)
+            stream = llm.stream(
+                recent(st.session_state.messages),
+                system=SYSTEM_PROMPT,
+                max_output_tokens=MAX_OUTPUT_TOKENS,
+                visitor=visitor,
+            )
             answer = st.write_stream(stream)
             st.session_state.messages.append({"role": "assistant", "content": answer})
         except BudgetExceededError as exc:

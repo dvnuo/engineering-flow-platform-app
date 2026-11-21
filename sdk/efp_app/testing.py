@@ -70,6 +70,25 @@ def _json_of(request: httpx.Request) -> Any:
     return json.loads(request.content.decode("utf-8")) if request.content else None
 
 
+def _copy_of(answer: httpx.Response) -> httpx.Response:
+    """A response of its own for one call: the status, the headers and the body of ``answer``.
+
+    httpx binds a response to the client that sent the request. The same
+    object handed out again works for a second call of the same kind, and
+    fails with a bare ``AssertionError`` when an asynchronous call follows a
+    synchronous one (or the other way round). A canned answer is meant for
+    any number of calls of either kind, so each call gets a copy.
+    """
+    try:
+        body = answer.content
+    except httpx.ResponseNotRead:
+        return answer  # built around a stream of the caller's own: it can only be handed on as it is
+    # The body is the decoded one, so the headers that describe how it travelled are left to httpx.
+    travel = ("content-encoding", "content-length", "transfer-encoding")
+    headers = [(name, value) for name, value in answer.headers.multi_items() if name.lower() not in travel]
+    return httpx.Response(answer.status_code, headers=headers, content=body, extensions=dict(answer.extensions))
+
+
 class FakePortal:
     """A Portal for tests: canned answers for the routes an app calls, and a record of what it sent.
 
@@ -87,10 +106,12 @@ class FakePortal:
         """Answer ``method path`` with ``answer`` from now on.
 
         ``answer`` is a JSON-able value (sent with status 200), an
-        ``httpx.Response``, an exception (raised, as a broken connection
-        would), a callable that takes the request and returns one of those,
-        or a list of those: one per call, the last one for every later call.
-        The list is copied, so the caller's own list stays as it is.
+        ``httpx.Response`` (every call gets a copy of it, so one response
+        answers any number of calls), an exception (raised, as a broken
+        connection would), a callable that takes the request and returns one
+        of those, or a list of those: one per call, the last one for every
+        later call. The list is copied, so the caller's own list stays as it
+        is.
         """
         if isinstance(answer, list):
             if not answer:
@@ -116,7 +137,7 @@ class FakePortal:
         if isinstance(answer, BaseException):
             raise answer
         if isinstance(answer, httpx.Response):
-            return answer
+            return _copy_of(answer)
         return httpx.Response(200, json=answer)
 
     @property

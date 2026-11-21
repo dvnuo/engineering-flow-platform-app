@@ -118,6 +118,22 @@ def info(*, cached: bool = False, client: Optional[_client.Client] = None) -> Ap
     return found
 
 
+def _info_once(timeout: float) -> AppInfo:
+    """What ``info(cached=True)`` returns, from one short request when the Portal has to be asked.
+
+    For ``visitor.current`` on a developer's machine: a request of the app
+    waits for this answer, so it is not tried again and does not wait long.
+    """
+    http = _client.get_client()
+    if isinstance(http.cached_app_info, AppInfo):
+        return http.cached_app_info
+    # A client that somebody put in the place of the shared one may be a stand-in without this method.
+    once = getattr(http, "_get_once", None)
+    found = _parse(once("/app", timeout=timeout) if once is not None else http.get("/app"))
+    http.cached_app_info = found
+    return found
+
+
 async def ainfo(*, cached: bool = False, client: Optional[_client.AsyncClient] = None) -> AppInfo:
     """:func:`info` for asynchronous code."""
     http = client or _client.get_async_client()
