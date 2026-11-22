@@ -5,10 +5,12 @@
 
     efp-app dev [directory] [--port N] [--prefix NAME]
         start the app of efp-app.json the way the host starts it
-        (docs/CONTRACTS.md, section 8.1), without a path prefix; the token
-        and the Portal address come from the environment or from .env.
-        With --prefix the app runs under /NAME/ behind a local stand-in for
-        the gateway, which is how it is addressed once deployed
+        (docs/CONTRACTS.md, section 8.1), behind a local stand-in for the
+        gateway that answers /_efp/lib/ (the shared browser libraries) and
+        passes everything else on, without a path prefix; the token and the
+        Portal address come from the environment or from .env. With
+        --prefix the app runs under /NAME/, which is how it is addressed
+        once deployed
 
     efp-app check [directory] [--strict]
         check the manifest, the files it names and the pages' URLs before
@@ -400,11 +402,12 @@ def cmd_dev(args: argparse.Namespace) -> int:
     port = args.port
     if port is None:
         port = config.load(os.environ).port or config.load(env_file).port or DEFAULT_PORT
-    # With --prefix the gateway listens on the port that was asked for, and the app on a free one behind it.
+    # The gateway listens on the port that was asked for, and the app on a free one behind it: the
+    # gateway answers /_efp/lib/ as the host does and, with --prefix, puts the app under /NAME/.
     slug = args.prefix
     base = "/" + slug if slug else ""
     app_port = port
-    while slug and app_port == port:
+    while app_port == port:
         app_port = _devgateway.free_port()
     env = child_environment(os.environ, env_file, app_port, system_proxy=system_proxy_settings())
     launch = build_launch(found, app_port, base_path=base)
@@ -414,7 +417,9 @@ def cmd_dev(args: argparse.Namespace) -> int:
         # process as deployed (config.Settings.deployed), and identity and storage are to stay local.
         sets[config.APP_BASE_PATH] = base
         sets[config.APP_SLUG] = slug
-        sets[config.APP_PUBLIC_URL] = "http://%s:%d%s/" % (HOST, port, base)
+    # The address of the gateway, not the app's own port behind it: app.public_url() would
+    # otherwise name the port that has no gateway.
+    sets[config.APP_PUBLIC_URL] = "http://%s:%d%s/" % (HOST, port, base)
     env.update(sets)
 
     if launch.needs and importlib.util.find_spec(launch.needs) is None:
@@ -449,6 +454,10 @@ def cmd_dev(args: argparse.Namespace) -> int:
         _say("             open the address above, not the one the app's own server prints: that port has no gateway")
     else:
         _say("  address    http://%s:%d/" % (HOST, port))
+        _say("  gateway    %s:%d -> the app on %s:%d, paths unchanged" % (HOST, port, HOST, app_port))
+        _say("             open the address above, not the one the app's own server prints: that port has no gateway")
+    lib_dir = _devgateway.library_directory()
+    _say("  libraries  %s answered from %s" % (_devgateway.LIB_PREFIX, lib_dir or "nowhere: this SDK has no shared libraries"))
     _say("  command    %s" % " ".join(_quote(argument) for argument in launch.argv))
     for name in sorted(sets):
         _say("  sets       %s=%s" % (name, sets[name]))
@@ -486,17 +495,16 @@ def cmd_dev(args: argparse.Namespace) -> int:
         except Exception:
             pass
     try:
-        if slug:
-            gateway = _devgateway.Gateway(
-                slug,
-                app_port,
-                strip_prefix=found.strip_prefix,
-                say=_report,
-                startup_timeout=found.startup_timeout,
-                local_file_server=found.type == "static",
-            )
-            return _run_behind_gateway(gateway, port, launch.argv, directory, env)
-        return subprocess.call(launch.argv, cwd=str(directory), env=env)
+        gateway = _devgateway.Gateway(
+            slug or "",
+            app_port,
+            strip_prefix=found.strip_prefix,
+            say=_report,
+            startup_timeout=found.startup_timeout,
+            local_file_server=found.type == "static",
+            lib_dir=lib_dir,
+        )
+        return _run_behind_gateway(gateway, port, launch.argv, directory, env)
     except KeyboardInterrupt:
         return 130
     except OSError as exc:
@@ -630,8 +638,8 @@ def build_parser() -> argparse.ArgumentParser:
     dev = commands.add_parser(
         "dev",
         help="run the app locally, the way the host runs it",
-        description="Start the app of efp-app.json the way the host starts it: without a path prefix, "
-        "or with --prefix under /NAME/ behind a local stand-in for the gateway.",
+        description="Start the app of efp-app.json the way the host starts it, behind a local stand-in for "
+        "the gateway that also answers /_efp/lib/: without a path prefix, or with --prefix under /NAME/.",
     )
     dev.add_argument("directory", nargs="?", default=None, help="the app's directory (default: the current one)")
     dev.add_argument("--port", type=int, default=None, help="the port to listen on (default: $PORT, else 8000)")

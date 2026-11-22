@@ -4,54 +4,115 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Repo pulse</title>
-  {# Every URL comes from url_for(): it adds the /{slug} prefix once deployed. #}
+  {# The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+     app at /_efp/lib/ (docs/UI_KIT.md); the weekly line is ECharts, loaded by
+     the kit when it is first drawn. For another look, link
+     /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="nord" (or any
+     daisyUI theme) on <html>. The app's own URLs come from url_for(): it adds
+     the /{slug} prefix once deployed. #}
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-  <main data-pulse-url="{{ url_for('read_pulse') }}" data-refresh-url="{{ url_for('refresh') }}">
-    <h1>Repo pulse</h1>
-    <p class="lede">A year of commits, the hours they are made in, who makes them, and how long pull requests wait. GitHub is read with the app owner's connector, and what it says is kept for an hour.</p>
-
-    <form id="choose" class="controls">
-      <div class="wide">
-        <label for="repository">Repository</label>
-        <input type="text" id="repository" placeholder="owner/name" maxlength="140" autocomplete="off" spellcheck="false" required>
-      </div>
-      <button type="submit" id="show">Show</button>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="heart-pulse"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Repo pulse</h1>
+      <p id="status" role="status" class="text-xs text-base-content/60 truncate">GitHub is read with the app owner's connector</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
       {% if visitor %}
         {# Asking GitHub again is for members: the server checks it too. #}
-        <button type="button" id="refresh" disabled>Refresh</button>
+        <button type="button" id="refresh" class="btn btn-sm btn-soft btn-primary efp-press" title="Ask GitHub again" disabled>
+          <i data-lucide="refresh-cw"></i><span class="hidden sm:inline">Refresh</span>
+        </button>
       {% endif %}
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
+
+  <main class="efp-container py-6 sm:py-8 grid gap-6" data-pulse-url="{{ url_for('read_pulse') }}" data-refresh-url="{{ url_for('refresh') }}">
+    <form id="choose" class="rp-choose efp-surface efp-rise">
+      <label class="rp-repo input input-lg">
+        <i data-lucide="git-branch" class="opacity-50"></i>
+        <span class="sr-only">Repository</span>
+        <input type="text" id="repository" placeholder="owner/name" maxlength="140" autocomplete="off" spellcheck="false" required>
+      </label>
+      <button type="submit" id="show" class="btn btn-lg btn-primary efp-press efp-shine">
+        <i data-lucide="scan-search"></i> Show
+      </button>
+      <p class="rp-intro text-sm text-base-content/60">
+        A year of commits, the hours they are made in, who makes them, and how
+        long pull requests wait. What GitHub says is kept for an hour.
+      </p>
     </form>
-    <p id="status" role="status">Enter a repository to see its pulse.</p>
 
-    <div id="result" hidden>
-      <dl id="tiles" class="tiles"></dl>
+    <div id="start" class="efp-surface efp-empty">
+      <span class="efp-empty-icon"><i data-lucide="git-pull-request-arrow"></i></span>
+      <strong>Which repository?</strong>
+      <span class="text-sm max-w-md">Type it as owner/name and press Show: the charts of its last year appear here.</span>
+      <ul class="rp-start-list">
+        <li><i data-lucide="calendar-days"></i>Commits, week by week and day by day</li>
+        <li><i data-lucide="clock"></i>The hours they are made in</li>
+        <li><i data-lucide="users"></i>Who makes them</li>
+        <li><i data-lucide="hourglass"></i>How long pull requests wait</li>
+      </ul>
+    </div>
 
-      <section class="card" aria-labelledby="commits-title">
-        <h2 id="commits-title">Commits, day by day</h2>
+    <div id="problem" hidden></div>
+
+    <div id="loading" class="grid gap-6" aria-hidden="true" hidden>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="skeleton h-28 rounded-box"></div><div class="skeleton h-28 rounded-box"></div>
+        <div class="skeleton h-28 rounded-box"></div><div class="skeleton h-28 rounded-box"></div>
+      </div>
+      <div class="skeleton h-80 rounded-box"></div>
+      <div class="grid lg:grid-cols-2 gap-6"><div class="skeleton h-64 rounded-box"></div><div class="skeleton h-64 rounded-box"></div></div>
+    </div>
+
+    <div id="result" class="grid gap-6" hidden>
+      <dl id="tiles" class="grid grid-cols-2 lg:grid-cols-4 gap-4"></dl>
+
+      <section class="efp-surface rp-card" aria-labelledby="commits-title">
+        <div class="rp-card-head">
+          <h2 id="commits-title"><span class="rp-icon" style="--rp-tone: var(--color-primary)"><i data-lucide="git-commit-horizontal"></i></span> Commits, week by week</h2>
+          <p class="text-xs text-base-content/60">The last year; days are counted in UTC</p>
+        </div>
+        <div id="weekly" class="rp-weekly" role="img" aria-label="Commits per week over the last year; the calendar below has every day"></div>
         <div id="commits"></div>
       </section>
 
-      <div class="pair">
-        <section class="card" aria-labelledby="punch-title">
-          <h2 id="punch-title">When commits are made</h2>
+      <div class="grid lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] gap-6">
+        <section class="efp-surface rp-card" aria-labelledby="punch-title">
+          <div class="rp-card-head">
+            <h2 id="punch-title"><span class="rp-icon" style="--rp-tone: var(--color-accent)"><i data-lucide="clock"></i></span> When commits are made</h2>
+            <p class="text-xs text-base-content/60">Weekday and hour, in each commit's own time zone</p>
+          </div>
           <div id="punch-card"></div>
         </section>
-        <section class="card" aria-labelledby="people-title">
-          <h2 id="people-title">Top contributors</h2>
+        <section class="efp-surface rp-card" aria-labelledby="people-title">
+          <div class="rp-card-head">
+            <h2 id="people-title"><span class="rp-icon" style="--rp-tone: var(--color-secondary)"><i data-lucide="users"></i></span> Top contributors</h2>
+            <p class="text-xs text-base-content/60">Commits on the default branch, all time</p>
+          </div>
           <div id="contributors"></div>
         </section>
       </div>
 
-      <section class="card" aria-labelledby="pulls-title">
-        <h2 id="pulls-title">Open pull requests by age</h2>
+      <section class="efp-surface rp-card" aria-labelledby="pulls-title">
+        <div class="rp-card-head">
+          <h2 id="pulls-title"><span class="rp-icon" style="--rp-tone: var(--color-warning)"><i data-lucide="git-pull-request"></i></span> Open pull requests by age</h2>
+          <p class="text-xs text-base-content/60">How long they have been waiting</p>
+        </div>
         <div id="pulls"></div>
       </section>
     </div>
-    <p id="spoken" class="spoken" aria-live="polite"></p>
+    <p id="spoken" class="sr-only" aria-live="polite"></p>
   </main>
-  <div id="tooltip" class="tooltip" hidden></div>
+  <div id="tooltip" class="rp-tooltip" role="tooltip" hidden></div>
   <script type="module" src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

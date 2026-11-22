@@ -21,8 +21,9 @@ and an empty story never reaches the model.
 
 Path prefix: the host sets GRADIO_SERVER_NAME, GRADIO_SERVER_PORT and
 GRADIO_ROOT_PATH, and launch() reads them (docs/CONTRACTS.md, section 8.1).
-So demo.launch() takes no arguments here: a value written in the code would
-replace what the host set, and the app would not answer under /{slug}/.
+So demo.launch() names no address, port or prefix here: a value written in
+the code would replace what the host set, and the app would not answer under
+/{slug}/. It gets the theme only, which is where Gradio 6 takes it.
 
 Gradio is used through a few plain calls only. Everything that decides
 something (what is a key, what is sent, what the answer may cost) is a plain
@@ -320,6 +321,16 @@ def write_scenarios(story, typed_key, count, style, request: gr.Request) -> Iter
 
 # --- The page --------------------------------------------------------------------------------------
 
+# The look of the EFP kit (docs/UI_KIT.md) in Gradio's own theme: its blue
+# on cool greys. The fonts are the system's: the theme's default names a
+# web font, and an app loads nothing from another host.
+THEME = gr.themes.Soft(
+    primary_hue="blue",
+    neutral_hue="slate",
+    font=["ui-sans-serif", "system-ui", "Segoe UI", "sans-serif"],
+    font_mono=["ui-monospace", "Consolas", "monospace"],
+)
+
 with gr.Blocks(title="Test case writer") as demo:
     gr.Markdown(
         "# Test case writer\n"
@@ -362,5 +373,5 @@ with gr.Blocks(title="Test case writer") as demo:
 if __name__ == "__main__":
     # No server_name, server_port or root_path, and never share=True: the
     # host sets GRADIO_SERVER_NAME, GRADIO_SERVER_PORT and GRADIO_ROOT_PATH,
-    # and so does `efp-app dev`.
-    demo.launch()
+    # and so does `efp-app dev`. Gradio 6 takes the theme here, not in Blocks().
+    demo.launch(theme=THEME)

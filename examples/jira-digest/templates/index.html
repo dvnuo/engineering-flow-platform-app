@@ -4,46 +4,106 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Jira digest</title>
-  {# Every URL comes from url_for(): it adds the /{slug} prefix once deployed. #}
+  {# The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+     app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+     /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="corporate" (or any
+     daisyUI theme) on <html>. The app's own URLs come from url_for(): it adds
+     the /{slug} prefix once deployed. #}
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-  <main data-issues-url="{{ url_for('issues') }}" data-digest-url="{{ url_for('digest') }}">
-    <h1>Jira digest</h1>
-    <p class="muted">What moved in a project lately. Jira is read with the app owner's connector.</p>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="newspaper"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Jira digest</h1>
+      <p id="status" role="status" class="text-xs text-base-content/60 truncate">What moved in a project lately</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span id="me"></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
 
-    <form id="search-form">
-      <div class="row">
-        <div>
-          <label for="project">Project key</label>
-          <input type="text" id="project" placeholder="ABC" maxlength="20" required>
-        </div>
-        <div>
-          <label for="days">Days back</label>
-          <input type="number" id="days" min="1" max="30" value="7" required>
-        </div>
-        <div>
-          <label for="assignee">Assignee (optional)</label>
-          <input type="text" id="assignee" placeholder="everybody" maxlength="64">
-        </div>
+  <main class="efp-container py-6 sm:py-8 grid gap-6" data-issues-url="{{ url_for('issues') }}" data-digest-url="{{ url_for('digest') }}">
+    <form id="search-form" class="jd-form efp-surface efp-rise">
+      <label class="jd-field">
+        <span class="jd-label">Project key</span>
+        <span class="input jd-project">
+          <i data-lucide="folder-kanban" class="opacity-50"></i>
+          <input type="text" id="project" placeholder="ABC" maxlength="20" autocomplete="off" spellcheck="false" required>
+        </span>
+      </label>
+      <label class="jd-field jd-days-field">
+        <span class="jd-label">Days back <output id="days-out" class="jd-days efp-number" for="days">7 days</output></span>
+        <input type="range" id="days" class="range range-primary range-sm" min="1" max="30" value="7">
+      </label>
+      <label class="jd-field">
+        <span class="jd-label">Assignee <span class="font-normal text-base-content/50">(optional)</span></span>
+        <span class="input">
+          <i data-lucide="user-round" class="opacity-50"></i>
+          <input type="text" id="assignee" placeholder="everybody" maxlength="64" autocomplete="off" spellcheck="false">
+        </span>
+      </label>
+      <div class="jd-actions">
+        <button type="submit" id="search-button" class="btn btn-primary efp-press efp-shine"><i data-lucide="search"></i> Show issues</button>
+        {% if visitor %}
+          {# The visitor by name: the connector is the owner's account, so JQL's currentUser() would be the owner. #}
+          <button type="button" id="mine-button" class="btn btn-soft efp-press" data-username="{{ visitor.username }}">Only mine ({{ visitor.username }})</button>
+        {% endif %}
+        <button type="button" id="digest-button" class="btn btn-soft btn-secondary efp-press" disabled><i data-lucide="sparkles"></i> Write a digest</button>
       </div>
-      <button type="submit" id="search-button">Show issues</button>
-      {% if visitor %}
-        {# The visitor by name: the connector is the owner's account, so JQL's currentUser() would be the owner. #}
-        <button type="button" id="mine-button" data-username="{{ visitor.username }}">Only mine ({{ visitor.username }})</button>
-      {% endif %}
-      <button type="button" id="digest-button" disabled>Write a digest</button>
+      <p class="jd-intro text-xs text-base-content/60">
+        Jira is read with the app owner's connector; a digest is written by the
+        owner's language model from what Jira says when you ask.
+      </p>
     </form>
 
-    <p id="status" class="muted" role="status"></p>
-    <pre id="digest" aria-live="polite"></pre>
-    <table id="issues" hidden>
-      <thead>
-        <tr><th>Key</th><th>Summary</th><th>Status</th><th>Assignee</th><th>Updated</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <div id="start" class="efp-surface efp-empty">
+      <span class="efp-empty-icon"><i data-lucide="folder-search"></i></span>
+      <strong>Which project?</strong>
+      <span class="text-sm max-w-md">Type its key, such as ABC, and press Show issues: what was updated in the last days appears here, and the model can sum it up.</span>
+    </div>
+
+    <div id="problem" hidden></div>
+
+    <div id="loading" class="efp-surface jd-loading" aria-hidden="true" hidden>
+      <div class="skeleton h-5 w-40"></div>
+      <div class="skeleton h-3 w-64"></div>
+      <div class="skeleton h-14"></div><div class="skeleton h-14"></div><div class="skeleton h-14"></div><div class="skeleton h-14"></div>
+    </div>
+
+    <section id="digest-card" class="jd-digest efp-surface" aria-labelledby="digest-title" hidden>
+      <div class="jd-digest-head">
+        <span class="jd-digest-icon" aria-hidden="true"><i data-lucide="sparkles"></i></span>
+        <div class="min-w-0">
+          <h2 id="digest-title" class="font-semibold">Digest</h2>
+          <p id="digest-note" class="text-xs text-base-content/60"></p>
+        </div>
+        <button type="button" id="copy" class="btn btn-ghost btn-sm btn-square ml-auto" aria-label="Copy the digest" title="Copy the digest" hidden><i data-lucide="copy"></i></button>
+      </div>
+      <div id="digest" class="jd-digest-body" aria-live="polite"></div>
+    </section>
+
+    <section id="results" class="efp-surface jd-results" aria-labelledby="results-title" hidden>
+      <div class="jd-results-head">
+        <div>
+          <h2 id="results-title" class="font-semibold"><span id="count" class="efp-number">0</span> <span id="count-word">issues</span></h2>
+          <p id="results-note" class="text-xs text-base-content/60"></p>
+        </div>
+        <div id="mix" class="jd-mix" role="img"></div>
+      </div>
+      <ul id="legend" class="jd-legend" aria-hidden="true"></ul>
+      <div class="jd-head" aria-hidden="true">
+        <span>Issue</span><span>Status</span><span>Assignee</span><span class="text-right">Updated</span>
+      </div>
+      <ul id="issues" class="jd-issues" aria-label="Issues"></ul>
+      <div id="none" hidden></div>
+    </section>
   </main>
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

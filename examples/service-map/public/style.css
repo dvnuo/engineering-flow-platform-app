@@ -1,494 +1,1056 @@
-/* Light and dark from one set of variables: light-dark() picks by the visitor's setting. */
+/*
+ * Service map's own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them): the map with its services and arrows, the panel
+ * that slides in, the legend, and the numbers under the map. Every colour is
+ * the theme's, so data-theme on <html> recolours the whole map.
+ */
+
+[hidden] {
+  display: none !important;
+}
+
 :root {
-  color-scheme: light dark;
-  --page: light-dark(#f5f6f8, #14161a);
-  --panel: light-dark(#ffffff, #1d2026);
-  --text: light-dark(#1c2026, #e7e9ee);
-  --muted: light-dark(#5d6673, #9ba4b3);
-  --line: light-dark(#d5d9e0, #343943);
-  --edge: light-dark(#9aa3b0, #5b6472);
-  --accent: light-dark(#2456c9, #8db0ff);
-  --needs: light-dark(#1f5fd0, #7fb0ff);
-  --users: light-dark(#c2560a, #ffa860);
-  --cycle: light-dark(#b3261e, #ff8a80);
-  --team-0: light-dark(#4a78d6, #6f9cf5);
-  --team-1: light-dark(#2f9e77, #4cc79b);
-  --team-2: light-dark(#c9862a, #e2a64e);
-  --team-3: light-dark(#8a63d2, #a98bea);
-  --team-4: light-dark(#c8507c, #e57aa2);
-  --team-5: light-dark(#3a9bb5, #5fc2dc);
-  --team-6: light-dark(#7a8a2e, #a9bb55);
-  --team-7: light-dark(#8b7355, #b89f80);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
+  /* Eight team colours: turns of the theme's primary colour around the
+     colour wheel, at about its lightness, with a floor under the chroma so
+     that a grey theme still tells the teams apart. The turns leave out the
+     olive greens that a mid lightness makes muddy (for the kit's blue
+     primary), and neighbours in the list are far apart on the wheel. */
+  --team-0: oklch(from var(--color-primary) clamp(0.58, l, 0.76) max(c, 0.13) calc(h + 26));
+  --team-1: oklch(from var(--color-primary) clamp(0.58, l, 0.76) max(c, 0.13) calc(h + 273));
+  --team-2: oklch(from var(--color-primary) clamp(0.58, l, 0.76) max(c, 0.13) calc(h + 138));
+  --team-3: oklch(from var(--color-primary) clamp(0.58, l, 0.76) max(c, 0.13) calc(h + 348));
+  --team-4: oklch(from var(--color-primary) clamp(0.58, l, 0.76) max(c, 0.13) calc(h + 236));
+  --team-5: oklch(from var(--color-primary) clamp(0.58, l, 0.76) max(c, 0.13) calc(h + 63));
+  --team-6: oklch(from var(--color-primary) clamp(0.58, l, 0.76) max(c, 0.13) calc(h + 311));
+  --team-7: oklch(from var(--color-primary) clamp(0.58, l, 0.76) max(c, 0.13) calc(h + 101));
+
+  /* What the chosen service needs, what needs it, and a cycle. */
+  --sm-needs: var(--color-primary);
+  --sm-users: color-mix(in oklab, var(--color-warning) 78%, var(--color-base-content));
+  --sm-cycle: var(--color-error);
+  --sm-edge: color-mix(in oklab, var(--color-base-content) 26%, transparent);
+  --sm-map: color-mix(in oklab, var(--color-base-200) 60%, var(--color-base-100));
 }
 
-* {
-  box-sizing: border-box;
+.sm-stage {
+  overflow: clip;
 }
 
-body {
-  max-width: 82rem;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 4rem;
-  background: var(--page);
-  color: var(--text);
-}
+/* ---- The bar above the map ------------------------------------------------------------- */
 
-h1 {
-  margin: 0;
-  font-size: 1.6rem;
-}
-
-h2 {
-  margin: 0 0 0.25rem;
-  font-size: 1.2rem;
-  overflow-wrap: anywhere;
-}
-
-h3 {
-  margin: 1rem 0 0.1rem;
-  font-size: 1rem;
-}
-
-h4 {
-  margin: 0.5rem 0 0.2rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-p {
-  margin: 0.25rem 0;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.toolbar {
+.sm-toolbar {
+  position: relative;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: end;
-  margin-top: 1rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--efp-line);
 }
 
-.field {
-  display: block;
+.sm-search {
+  position: relative;
+  flex: 1 1 16rem;
+  max-width: 24rem;
 }
 
-.label {
-  display: block;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--muted);
+.sm-search .input:focus-within {
+  outline-color: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-primary) 14%, transparent);
 }
 
-input[type="search"],
-select,
-button {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--panel);
-  color: inherit;
-  font: inherit;
+.sm-filter:focus,
+.sm-filter:focus-within {
+  outline-color: var(--color-primary);
 }
 
-input[type="search"] {
-  width: 14rem;
-  max-width: 100%;
+.sm-filter {
+  width: auto;
+  min-width: 8.5rem;
 }
 
-button {
+.sm-results {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 20;
+  margin: 0;
+  padding: 0.35rem;
+  max-height: 21rem;
+  overflow: auto;
+  list-style: none;
+  background: var(--color-base-100);
+  border: 1px solid var(--efp-line);
+  border-radius: var(--radius-box);
+  box-shadow: var(--efp-shadow-lg);
+  transform-origin: top center;
+  animation: sm-drop 200ms var(--efp-ease-out);
+}
+
+.sm-result {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.6rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
-button:hover {
-  border-color: var(--accent);
+.sm-result[aria-selected="true"] {
+  background: color-mix(in oklab, var(--color-primary) 11%, transparent);
 }
 
-.buttons {
-  display: flex;
-  gap: 0.35rem;
-  margin-left: auto;
+.sm-result mark {
+  padding: 0 1px;
+  border-radius: 3px;
+  color: inherit;
+  background: color-mix(in oklab, var(--color-primary) 24%, transparent);
 }
 
-.buttons button {
-  min-width: 2.4rem;
+.sm-noresult {
+  padding: 0.6rem;
+  font-size: 0.875rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* A team's colour as a dot: in the legend, the search, the panel and the ranking. */
+.sm-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: var(--team);
+  box-shadow: 0 0 0 2.5px color-mix(in oklab, var(--team) 22%, transparent);
 }
 
-.status {
-  min-height: 1.5rem; /* keeps its place while empty, so the map does not jump */
-  margin: 0.5rem 0 0.25rem;
-  color: var(--muted);
-}
+/* ---- The map ---------------------------------------------------------------------------- */
 
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 20rem;
-  gap: 1rem;
-  align-items: start;
-}
-
-.map-area {
+.sm-canvas {
   position: relative;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  background: var(--panel);
-  overflow: hidden;
+}
+
+.sm-mapwrap {
+  position: relative;
 }
 
 #map {
   display: block;
   width: 100%;
-  height: min(70vh, 44rem);
-  min-height: 22rem;
+  height: min(72vh, 46rem);
+  min-height: 24rem;
   cursor: grab;
   touch-action: none; /* the map handles drags and pinches itself */
   user-select: none;
+  outline: none;
+  background-color: var(--sm-map);
+  /* Dots that move and grow with the map (app.js sets the three variables). */
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--color-base-content) 15%, transparent) 1px, transparent 1.6px);
+  background-size: var(--grid, 28px) var(--grid, 28px);
+  background-position: var(--grid-x, 0) var(--grid-y, 0);
 }
 
-#map:active {
+#map:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+#map.is-dragging {
   cursor: grabbing;
 }
 
-.empty {
+/* The shape of a map while services.json is on its way. */
+.sm-loading {
   position: absolute;
-  inset: 40% 1rem auto;
-  text-align: center;
+  inset: 0;
 }
 
-/* --- The drawing --- */
-
-.edge line {
-  stroke: var(--edge);
-  stroke-width: 1.3;
+.sm-bone {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  translate: -50% -50%;
 }
 
-.edge .head {
-  fill: var(--edge);
+.sm-bone.is-small {
+  width: 2rem;
+  height: 2rem;
 }
+
+.sm-empty {
+  position: absolute;
+  inset: 0;
+  align-content: center;
+  background: color-mix(in oklab, var(--sm-map) 70%, transparent);
+}
+
+/* ---- Services and arrows ------------------------------------------------------------------ */
 
 .node {
   cursor: pointer;
+  outline: none;
+  transition: opacity 280ms var(--efp-ease-out);
 }
 
-.node circle {
-  stroke: var(--panel);
+/* The body scales about the centre of the circle: its own origin, set by the group's translate(). */
+.node .body {
+  transform-origin: 0 0;
+  transition: transform 420ms var(--efp-spring);
+}
+
+.node:hover .body,
+.node.is-focus .body {
+  transform: scale(1.14);
+}
+
+.node .disc {
+  fill: color-mix(in oklab, var(--team) 20%, var(--color-base-100));
+  stroke: var(--team);
   stroke-width: 2;
+  transition: fill 240ms ease, stroke-width 240ms ease;
+}
+
+/* A glow only for the service in focus: one filter, not one per service in every frame of the layout. */
+.node.is-focus .disc {
+  filter: drop-shadow(0 2px 8px color-mix(in oklab, var(--team) 45%, transparent));
 }
 
 .node .tier {
-  fill: light-dark(#ffffff, #10131a);
+  fill: color-mix(in oklab, var(--team) 72%, var(--color-base-content));
   font-size: 12px;
   font-weight: 700;
   text-anchor: middle;
   pointer-events: none;
+  transition: fill 240ms ease;
 }
 
 .node .name {
-  fill: var(--text);
-  font-size: 12px;
+  fill: var(--color-base-content);
+  font-size: 11.5px;
+  font-weight: 550;
   text-anchor: middle;
-  /* a halo in the background colour keeps a label readable across an arrow */
+  /* a halo in the map's colour keeps a label readable across an arrow */
   paint-order: stroke;
-  stroke: var(--panel);
-  stroke-width: 3px;
+  stroke: var(--sm-map);
+  stroke-width: 4px;
   stroke-linejoin: round;
 }
 
-.node:focus-visible {
-  outline: none;
+.node .halo {
+  fill: none;
+  stroke: var(--color-base-content);
+  stroke-width: 2.5;
+  opacity: 0;
+  transition: opacity 260ms ease, stroke 260ms ease;
 }
 
-.node:focus-visible circle {
-  stroke: var(--accent);
-  stroke-width: 4;
+.node .ripple {
+  fill: none;
+  stroke: var(--team);
+  stroke-width: 2.5;
+  transform-origin: 0 0;
+  pointer-events: none;
 }
 
-.team-0 circle,
-.swatch.team-0 {
-  fill: var(--team-0);
-  background: var(--team-0);
+.node.is-chosen .disc {
+  fill: var(--team);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--team) 60%, transparent));
 }
 
-.team-1 circle,
-.swatch.team-1 {
-  fill: var(--team-1);
-  background: var(--team-1);
+.node.is-chosen .tier {
+  fill: var(--color-base-100);
 }
 
-.team-2 circle,
-.swatch.team-2 {
-  fill: var(--team-2);
-  background: var(--team-2);
+.node.is-chosen .name,
+.node.is-focus .name,
+.node.is-match .name {
+  font-weight: 700;
 }
 
-.team-3 circle,
-.swatch.team-3 {
-  fill: var(--team-3);
-  background: var(--team-3);
+.node.is-focus .halo,
+.node.is-chosen .halo,
+.node:focus-visible .halo {
+  opacity: 1;
 }
 
-.team-4 circle,
-.swatch.team-4 {
-  fill: var(--team-4);
-  background: var(--team-4);
+.node:focus-visible .halo {
+  stroke: var(--color-primary);
+  stroke-width: 3;
 }
 
-.team-5 circle,
-.swatch.team-5 {
-  fill: var(--team-5);
-  background: var(--team-5);
+.node.is-match .halo {
+  opacity: 1;
+  stroke: var(--color-primary);
+  stroke-dasharray: 2 3;
 }
 
-.team-6 circle,
-.swatch.team-6 {
-  fill: var(--team-6);
-  background: var(--team-6);
+/* What the service in focus needs: the primary colour; what needs it: amber;
+   a solid ring is a direct neighbour, a dashed one is further away. */
+.node.needs .halo {
+  opacity: 1;
+  stroke: var(--sm-needs);
 }
 
-.team-7 circle,
-.swatch.team-7 {
-  fill: var(--team-7);
-  background: var(--team-7);
+.node.users .halo {
+  opacity: 1;
+  stroke: var(--sm-users);
+}
+
+.node.far .halo {
+  stroke-dasharray: 4 3;
+}
+
+.node.in-cycle .halo {
+  opacity: 1;
+  stroke: var(--sm-cycle);
+}
+
+.node.is-dimmed {
+  opacity: 0.16;
 }
 
 .is-hidden {
   display: none;
 }
 
-.is-dimmed {
-  opacity: 0.18;
+.edge {
+  transition: opacity 280ms var(--efp-ease-out);
 }
 
-.node.is-match .name {
-  font-weight: 700;
-  text-decoration: underline;
+.edge .line {
+  fill: none;
+  stroke: var(--sm-edge);
+  stroke-width: 1.4;
+  transition: stroke 260ms ease, stroke-width 260ms ease;
 }
 
-.node.is-chosen circle {
-  stroke: var(--text);
-  stroke-width: 4;
+.edge .head {
+  fill: var(--sm-edge);
+  transition: fill 260ms ease;
 }
 
-.node.is-chosen .name {
-  font-weight: 700;
+/* Beads wider than the line, in its colour, far apart: the line stays whole
+   (a dashed line means "through others"), and the beads show which way it runs. */
+.edge .flow {
+  fill: none;
+  stroke: none;
+  stroke-width: 5.5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.1 28;
+  pointer-events: none;
 }
 
-/* What the chosen service needs is blue, what needs it is orange; a solid
-   line is a direct dependency, a dashed one runs through other services. */
-.node.needs circle,
-.edge.needs line {
-  stroke: var(--needs);
-}
-
-.node.users circle,
-.edge.users line {
-  stroke: var(--users);
+.edge.needs .line {
+  stroke: var(--sm-needs);
 }
 
 .edge.needs .head {
-  fill: var(--needs);
+  fill: var(--sm-needs);
+}
+
+.edge.users .line {
+  stroke: var(--sm-users);
 }
 
 .edge.users .head {
-  fill: var(--users);
+  fill: var(--sm-users);
 }
 
-.node.direct circle {
-  stroke-width: 4;
+.edge.direct .line {
+  stroke-width: 2.4;
 }
 
-.node.far circle {
-  stroke-width: 3;
-  stroke-dasharray: 4 3;
-}
-
-.edge.direct line {
-  stroke-width: 2.6;
-}
-
-.edge.far line {
+.edge.far .line {
   stroke-width: 1.6;
   stroke-dasharray: 5 4;
 }
 
-.edge.cycle line {
-  stroke: var(--cycle);
+.edge.cycle .line {
+  stroke: color-mix(in oklab, var(--sm-cycle) 70%, transparent);
   stroke-dasharray: 2 3;
 }
 
 .edge.cycle .head {
-  fill: var(--cycle);
+  fill: var(--sm-cycle);
 }
 
-.node.in-cycle circle,
-.edge.in-cycle line {
-  stroke: var(--cycle);
-  stroke-width: 4;
-}
-
-.edge.in-cycle line {
+.edge.in-cycle .line {
+  stroke: var(--sm-cycle);
   stroke-width: 2.6;
 }
 
-/* --- Legend, panel, lists --- */
-
-.legend {
-  padding: 0.5rem 0.75rem;
-  border-top: 1px solid var(--line);
-  font-size: 0.85rem;
-  color: var(--muted);
+.edge.is-dimmed {
+  opacity: 0.08;
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem 1rem;
-  margin: 0.15rem 0;
-  padding: 0;
-  list-style: none;
-}
-
-.chips li,
-.meta {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-}
-
-.swatch {
-  display: inline-block;
-  width: 0.8rem;
-  height: 0.8rem;
-  border-radius: 50%;
-}
-
-.key {
-  display: inline-block;
-  width: 1.4rem;
-}
-
-.key.arrow {
-  border-top: 2px solid var(--edge);
-}
-
-.key.arrow.cycle {
-  border-top: 2px dotted var(--cycle);
-}
-
-.key.ring {
-  width: 0.9rem;
-  height: 0.9rem;
-  border: 3px solid var(--needs);
-  border-radius: 50%;
-}
-
-.key.ring.users {
-  border-color: var(--users);
-}
-
-.key.ring.far {
-  border: 2px dashed var(--muted);
-}
-
-.panel,
-.block {
-  padding: 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  background: var(--panel);
-}
-
-.block {
-  margin-top: 1rem;
-}
-
-.badge {
-  margin-left: auto;
-  padding: 0 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: 1rem;
-  font-size: 0.85rem;
-}
-
-.links,
-.names,
-.plain {
-  margin: 0.25rem 0;
-  padding: 0;
-  list-style: none;
-}
-
-.links,
-.names {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem 0.5rem;
-}
-
-.links a {
-  color: var(--accent);
-}
-
-button.link {
-  padding: 0.1rem 0.5rem;
-  border-radius: 1rem;
-  font-size: 0.9rem;
-}
-
-.relatives.needs h3 {
-  border-left: 0.25rem solid var(--needs);
-  padding-left: 0.5rem;
-}
-
-.relatives.users h3 {
-  border-left: 0.25rem solid var(--users);
-  padding-left: 0.5rem;
-}
-
-.warning {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--cycle);
-  border-left-width: 0.25rem;
-  border-radius: 0.4rem;
-  overflow-wrap: anywhere;
-}
-
-.panel > button {
-  margin-top: 1rem;
-}
-
-[hidden] {
-  display: none !important;
-}
-
-/* Narrow screens: the details go under the map. */
-@media (max-width: 56rem) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  #map {
-    height: 60vh;
-  }
-
-  .buttons {
-    margin-left: 0;
-  }
-}
-
-/* Dimming is the only transition, and it is dropped for visitors who want less motion. */
+/* Motion: the map grows level by level, and particles run along the arrows
+   in focus in the direction of the dependency. Nothing of it under reduced
+   motion; the arrow heads say the direction as well. */
 @media (prefers-reduced-motion: no-preference) {
-  .node,
+  .node .body {
+    animation: sm-pop 660ms var(--efp-bounce) backwards;
+    animation-delay: calc(var(--level, 0) * 110ms + 80ms);
+  }
+
   .edge {
-    transition: opacity 0.15s;
+    animation: sm-fade 700ms var(--efp-ease-out) backwards;
+    animation-delay: calc(var(--level, 0) * 110ms + 360ms);
+  }
+
+  .edge.needs.direct .flow {
+    stroke: var(--sm-needs);
+  }
+
+  .edge.users.direct .flow {
+    stroke: var(--sm-users);
+  }
+
+  .edge.in-cycle .flow {
+    stroke: var(--sm-cycle);
+  }
+
+  /* Six runs, then the beads fade: motion with an end, so a tab left open uses no processor. */
+  .edge.direct .flow,
+  .edge.in-cycle .flow {
+    animation: sm-flow 1.2s linear 6, sm-rest 600ms ease 6.6s forwards;
+  }
+}
+
+@keyframes sm-pop {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+
+@keyframes sm-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sm-flow {
+  to {
+    stroke-dashoffset: -28.1;
+  }
+}
+
+@keyframes sm-rest {
+  to {
+    stroke-opacity: 0;
+  }
+}
+
+@keyframes sm-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+/* ---- Controls and legend, floating on the map ------------------------------------------------ */
+
+.sm-controls {
+  position: absolute;
+  z-index: 3;
+  bottom: 0.75rem;
+  background: color-mix(in oklab, var(--color-base-100) 94%, transparent);
+  border: 1px solid var(--efp-line);
+  border-radius: 0.9rem;
+  box-shadow: var(--efp-shadow-md);
+}
+
+.sm-canvas[data-empty] .sm-controls {
+  display: none;
+}
+
+.sm-controls {
+  right: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.25rem;
+  transition: right 560ms var(--efp-spring);
+}
+
+.sm-legend {
+  border-top: 1px solid var(--efp-line);
+  font-size: 0.75rem;
+  background: var(--color-base-100);
+}
+
+.sm-legend-head {
+  display: none;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border-radius: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sm-legend-head:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.sm-chevron {
+  margin-left: auto;
+  transition: transform 360ms var(--efp-spring);
+}
+
+.sm-legend[data-folded] .sm-chevron {
+  transform: rotate(180deg);
+}
+
+.sm-legend-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 380ms var(--efp-ease-out);
+}
+
+.sm-legend[data-folded] .sm-legend-body {
+  grid-template-rows: 0fr;
+}
+
+.sm-legend-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sm-legend-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1.5rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.sm-teams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sm-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.55rem 0.15rem 0.45rem;
+  border: 1px solid var(--efp-line);
+  border-radius: 999px;
+  background: var(--color-base-100);
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.sm-team:hover {
+  border-color: var(--efp-line-strong);
+}
+
+.sm-team[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--team) 16%, var(--color-base-100));
+  border-color: var(--team);
+}
+
+.sm-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: color-mix(in oklab, var(--color-base-content) 72%, transparent);
+}
+
+.sm-keys li {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sm-key {
+  flex-shrink: 0;
+  width: 1.9rem;
+  height: 0.75rem;
+  overflow: visible;
+}
+
+.k-line {
+  fill: none;
+  stroke: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+  stroke-width: 1.6;
+}
+
+.k-head {
+  fill: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+}
+
+.k-line.k-needs {
+  stroke: var(--sm-needs);
+  stroke-width: 2.4;
+}
+
+.k-head.k-needs {
+  fill: var(--sm-needs);
+}
+
+.k-line.k-users {
+  stroke: var(--sm-users);
+  stroke-width: 2.4;
+}
+
+.k-head.k-users {
+  fill: var(--sm-users);
+}
+
+.k-line.k-far {
+  stroke-dasharray: 5 4;
+}
+
+.k-line.k-cycle {
+  stroke: var(--sm-cycle);
+  stroke-dasharray: 2 3;
+  stroke-width: 2;
+}
+
+.k-node {
+  fill: color-mix(in oklab, var(--color-primary) 20%, var(--color-base-100));
+  stroke: var(--color-primary);
+  stroke-width: 1.3;
+}
+
+.sm-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+/* Keyboard hints are for keyboards: not on a phone, not where they would crowd the bar. */
+@media (hover: none), (max-width: 63.99rem) {
+  .sm-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .sm-legend-head {
+    display: flex;
+  }
+
+  .sm-legend-content {
+    display: grid;
+    gap: 0.7rem;
+    padding-top: 0;
+  }
+
+  .sm-keys {
+    display: grid;
+    gap: 0.3rem;
+  }
+}
+
+/* ---- The panel: under the map on a narrow screen, sliding in over it on a wide one ----------- */
+
+.sm-panel {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 1.1rem 1.1rem 1.25rem;
+}
+
+@media (max-width: 63.99rem) {
+  .sm-panel {
+    border-top: 1px solid var(--efp-line);
+  }
+
+  .sm-canvas:not([data-panel]) .sm-panel {
+    display: none;
+  }
+}
+
+@media (min-width: 64rem) {
+  .sm-panel {
+    position: absolute;
+    z-index: 4;
+    top: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    width: 23rem;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: color-mix(in oklab, var(--color-base-100) 88%, transparent);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    border: 1px solid var(--efp-line);
+    border-radius: calc(var(--radius-box) - 2px);
+    box-shadow: var(--efp-shadow-lg);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(calc(100% + 1.5rem));
+    transition: transform 460ms var(--efp-ease-out), opacity 300ms ease, visibility 0s linear 460ms;
+  }
+
+  .sm-canvas[data-panel] .sm-panel {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: transform 620ms var(--efp-spring), opacity 220ms ease, visibility 0s;
+  }
+
+  /* The zoom buttons step aside for the panel. */
+  .sm-canvas[data-panel] .sm-controls {
+    right: calc(23rem + 1.75rem);
+  }
+}
+
+.sm-panel-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.sm-panel-mark {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.75rem;
+  color: var(--team);
+  background: color-mix(in oklab, var(--team) 15%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--team) 30%, transparent);
+}
+
+.sm-panel-title {
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  outline: none;
+}
+
+.sm-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sm-counts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.sm-counts > div {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  background: color-mix(in oklab, var(--tone) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tone) 22%, transparent);
+}
+
+.sm-counts .needs,
+.sm-rel.needs {
+  --tone: var(--sm-needs);
+}
+
+.sm-counts .users,
+.sm-rel.users {
+  --tone: var(--sm-users);
+}
+
+.sm-counts dt {
+  font-size: 0.72rem;
+  color: color-mix(in oklab, var(--color-base-content) 62%, transparent);
+}
+
+.sm-counts dd {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: color-mix(in oklab, var(--tone) 80%, var(--color-base-content));
+}
+
+.sm-rel h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.15rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.sm-rel-bar {
+  width: 0.25rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: var(--tone);
+}
+
+.sm-rel h4 {
+  margin: 0.65rem 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.sm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem 0.2rem 0.45rem;
+  border: 1px solid var(--efp-line-strong);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  background: var(--color-base-100);
+  cursor: pointer;
+  transition: transform 260ms var(--efp-spring), border-color 160ms ease, background 160ms ease;
+}
+
+.sm-chip:hover,
+.sm-chip:focus-visible {
+  transform: translateY(-1px);
+  border-color: color-mix(in oklab, var(--tone, var(--color-primary)) 70%, transparent);
+  background: color-mix(in oklab, var(--tone, var(--color-primary)) 7%, var(--color-base-100));
+}
+
+.sm-chip:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.sm-chip.is-far {
+  border-style: dashed;
+}
+
+.sm-loop {
+  --tone: var(--sm-cycle);
+}
+
+.sm-loop-arrow {
+  display: grid;
+  place-items: center;
+  color: var(--sm-cycle);
+}
+
+/* ---- Under the map ----------------------------------------------------------------------------- */
+
+/* daisyUI's soft warning writes its text in the warning colour, too pale on white to read a list in. */
+.sm-problems-alert {
+  color: color-mix(in oklab, var(--color-warning) 35%, var(--color-base-content));
+}
+
+.sm-problems-alert > svg {
+  color: color-mix(in oklab, var(--color-warning) 75%, var(--color-base-content));
+}
+
+.sm-problems {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+  font-size: 0.85rem;
+}
+
+.sm-tile {
+  --tone: var(--color-primary);
+  position: relative;
+  display: grid;
+  gap: 0.2rem;
+  padding: 1.1rem 1.2rem;
+  overflow: hidden;
+}
+
+.sm-tile::after {
+  content: "";
+  position: absolute;
+  right: -2.5rem;
+  top: -2.5rem;
+  width: 7rem;
+  height: 7rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, color-mix(in oklab, var(--tone) 18%, transparent), transparent 70%);
+  pointer-events: none;
+}
+
+.sm-tile dt {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
+.sm-tile-icon {
+  display: grid;
+  place-items: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 0.6rem;
+  color: color-mix(in oklab, var(--tone) 80%, var(--color-base-content));
+  background: color-mix(in oklab, var(--tone) 14%, transparent);
+}
+
+.sm-value {
+  margin: 0.35rem 0 0;
+  font-size: 2.1rem;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.sm-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.sm-ranking,
+.sm-cycles {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sm-rank {
+  display: grid;
+  grid-template-columns: minmax(6rem, 10rem) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.6rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.sm-rank:hover,
+.sm-rank:focus-visible {
+  background: color-mix(in oklab, var(--color-primary) 7%, transparent);
+}
+
+.sm-rank-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 550;
+}
+
+.sm-track {
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+}
+
+.sm-bar {
+  display: block;
+  width: var(--w, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--team) 45%, transparent), var(--team));
+  transition: width 1s var(--efp-ease-out);
+  transition-delay: calc(var(--i, 0) * 70ms);
+}
+
+.sm-cycle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  color: color-mix(in oklab, var(--color-error) 82%, var(--color-base-content));
+  background: color-mix(in oklab, var(--color-error) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-error) 22%, transparent);
+  transition: background 160ms ease, transform 260ms var(--efp-spring);
+}
+
+.sm-cycle:hover,
+.sm-cycle:focus-visible {
+  background: color-mix(in oklab, var(--color-error) 13%, transparent);
+  transform: translateX(2px);
+}
+
+.sm-nocycle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  font-size: 0.85rem;
+  color: color-mix(in oklab, var(--color-success) 80%, var(--color-base-content));
+  background: color-mix(in oklab, var(--color-success) 9%, transparent);
+}
+
+.sm-rank:focus-visible,
+.sm-cycle:focus-visible,
+.sm-team:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ---- A phone ------------------------------------------------------------------------------------ */
+
+@media (max-width: 40rem) {
+  #map {
+    height: 62vh;
+    min-height: 20rem;
+  }
+
+  .sm-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  .sm-filter {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .sm-rank {
+    grid-template-columns: minmax(5.5rem, 8rem) minmax(0, 1fr) auto;
+    gap: 0.5rem;
   }
 }

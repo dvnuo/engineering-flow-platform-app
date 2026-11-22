@@ -407,7 +407,8 @@ def test_planning_poker_page_and_socket_work_under_a_prefix(poker):
             script = client.get("/poker/static/" + name)
             assert script.status_code == 200 and "javascript" in script.headers["content-type"], name
             imported = re.findall(r'^import .* from "([^"]+)";$', script.text, flags=re.MULTILINE)
-            assert all(source.startswith("./") for source in imported), name
+            # The app's own modules relatively; the shared libraries at the one address every gateway serves.
+            assert all(source.startswith(("./", "/_efp/lib/")) for source in imported), name
         calls = client.get("/poker/static/api.js").text
         assert 'api("GET", "api/rooms")' in calls and re.search(r'api\("[A-Z]+", "/', calls) is None
         # The address of the WebSocket is made from the page's own, with the scheme that matches.

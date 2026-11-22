@@ -12,7 +12,14 @@ A line of totals sums up the whole list.
   time it was asked;
 - a "Refresh" that only a signed-in member may use (`require_visitor`), and
   not more than once a minute;
-- charts drawn by hand as SVG: no chart library, nothing from another host.
+- the strips of builds and the sparklines drawn by hand as SVG (the
+  arithmetic is in `static/charts.mjs`, tested with node), and two overview
+  charts with ECharts through `kit.chart`, in the theme's colours: nothing
+  from another host (the libraries are the gateway's own, see
+  [docs/UI_KIT.md](../../docs/UI_KIT.md));
+- a dashboard that looks finished from its first paint: skeletons where
+  the numbers will be, tiles that count up, squares that pop in one after
+  the other.
 
 **Turn on in the Portal:** the Jenkins connector (read-only is enough), on
 the app's page.
@@ -41,7 +48,11 @@ Jenkins answers, try it in [setup-check](../setup-check/) first:
 2. List your jobs in `jobs.json`: a `name` for the page and the job's `path`
    as its folders and name (`team/web-app/main` for the job at
    `/job/team/job/web-app/job/main`). At most 24 jobs.
-3. `efp-app check`, push, register the directory as an app in the Portal,
+3. Change the look if you like: a daisyUI theme
+   ([docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours)) changes the colours
+   of the results too, since success, unstable and failure are the theme's
+   success, warning and error.
+4. `efp-app check`, push, register the directory as an app in the Portal,
    turn on Jenkins and press Deploy.
 
 ## Things to notice

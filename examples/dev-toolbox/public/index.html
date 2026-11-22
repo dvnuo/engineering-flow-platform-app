@@ -4,23 +4,84 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dev toolbox</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="dracula" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <header class="top">
-    <h1>Dev toolbox</h1>
-    <p class="privacy">
-      <strong>Nothing leaves this tab.</strong>
-      This app has no backend. Every tool runs in your browser; what you paste is not sent, stored or logged anywhere.
-    </p>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="wrench"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Dev toolbox</h1>
+      <p class="text-xs text-base-content/60 truncate">Ten small tools that run in this tab</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <button type="button" id="palette-open" class="btn btn-sm btn-ghost dt-find" aria-keyshortcuts="Control+K" title="Find a tool (Ctrl+K)">
+        <i data-lucide="search"></i><span class="hidden sm:inline">Find a tool</span>
+        <kbd class="kbd kbd-xs hidden sm:inline-flex">Ctrl K</kbd>
+      </button>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
   </header>
-  <div class="layout">
-    <nav id="tools" aria-label="Tools"></nav>
-    <main id="stage">
-      <p class="muted">Loading the tools... If this line stays, the browser is too old for this page or JavaScript is switched off.</p>
+
+  <div class="efp-container dt-layout">
+    <nav class="dt-side" aria-label="Tools">
+      <label class="input input-sm dt-filter">
+        <i data-lucide="list-filter" class="opacity-50"></i>
+        <input id="filter" type="search" class="grow" placeholder="Filter the tools" autocomplete="off" spellcheck="false" aria-label="Filter the tools" aria-controls="tools">
+        <kbd class="kbd kbd-xs">/</kbd>
+      </label>
+      <div class="dt-list-wrap">
+        <span id="indicator" class="dt-indicator" aria-hidden="true"></span>
+        <ul id="tools" class="dt-list"></ul>
+      </div>
+      <p id="no-tool" class="dt-no-tool" hidden>No tool is called that. <kbd class="kbd kbd-xs">Esc</kbd> shows them all.</p>
+      <div class="dt-privacy">
+        <i data-lucide="shield-check"></i>
+        <p><strong>Nothing leaves this tab.</strong> This app has no backend. Every tool runs in your browser; what you paste is not sent, stored or logged anywhere.</p>
+      </div>
+      <dl class="dt-keys" aria-label="Keyboard shortcuts">
+        <div><dt><kbd class="kbd kbd-xs">Ctrl</kbd> <kbd class="kbd kbd-xs">K</kbd></dt><dd>find a tool</dd></div>
+        <div><dt><kbd class="kbd kbd-xs">Alt</kbd> <kbd class="kbd kbd-xs">1</kbd>-<kbd class="kbd kbd-xs">0</kbd></dt><dd>open tool 1 to 10</dd></div>
+        <div><dt><kbd class="kbd kbd-xs">Alt</kbd> <kbd class="kbd kbd-xs">&uarr;</kbd> <kbd class="kbd kbd-xs">&darr;</kbd></dt><dd>previous, next tool</dd></div>
+        <div><dt><kbd class="kbd kbd-xs">/</kbd></dt><dd>filter the list</dd></div>
+      </dl>
+    </nav>
+
+    <main id="stage" class="dt-stage">
+      <div class="dt-loading" aria-hidden="true">
+        <div class="flex items-center gap-4"><div class="skeleton size-12 rounded-2xl"></div><div class="grid gap-2 grow"><div class="skeleton h-5 w-40"></div><div class="skeleton h-4 w-3/4"></div></div></div>
+        <div class="skeleton h-44 rounded-box"></div>
+        <div class="skeleton h-28 rounded-box"></div>
+      </div>
+      <noscript><p class="p-6">This page needs JavaScript: every tool runs in the browser.</p></noscript>
     </main>
   </div>
+
+  <dialog id="palette" class="modal modal-top sm:modal-middle" aria-label="Find a tool">
+    <div class="modal-box dt-palette">
+      <label class="dt-palette-search">
+        <i data-lucide="search" class="opacity-60"></i>
+        <input id="palette-input" type="text" placeholder="Find a tool: json, token, cron..." autocomplete="off" spellcheck="false"
+               role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list" aria-label="Find a tool">
+        <kbd class="kbd kbd-xs">Esc</kbd>
+      </label>
+      <ul id="palette-list" class="dt-palette-list" role="listbox" aria-label="Tools"></ul>
+      <p class="dt-palette-foot">
+        <span><kbd class="kbd kbd-xs">&uarr;</kbd> <kbd class="kbd kbd-xs">&darr;</kbd> move</span>
+        <span><kbd class="kbd kbd-xs">Enter</kbd> open</span>
+        <span><kbd class="kbd kbd-xs">Esc</kbd> close</span>
+      </p>
+    </div>
+  </dialog>
+
   <script type="module" src="app.js"></script>
 </body>
 </html>

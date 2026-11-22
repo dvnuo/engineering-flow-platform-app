@@ -4,31 +4,77 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Environment status</title>
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="business" (or any
+       daisyUI theme) on <html>: up and down are the theme's success and error. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
   <!-- Relative URLs only. This app is served under /{slug}/ once deployed, and for a
        "command" app the prefix is part of every request that reaches the server. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <header>
-      <h1>Environment status</h1>
-      <p id="who" class="muted">Loading...</p>
-    </header>
-
-    <div class="bar">
-      <p id="headline" class="headline" role="status"></p>
-      <button type="button" class="primary" id="check" disabled>Check now</button>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="radar"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Environment status</h1>
+      <p id="who" class="text-xs text-base-content/60 truncate">Loading...</p>
     </div>
-    <p id="status" class="muted" role="status"></p>
+    <div class="ml-auto flex items-center gap-1">
+      <span id="me" class="mx-1"></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
 
-    <div id="groups"></div>
-    <p id="empty" class="muted" hidden>No environment is listed. The owner of this app adds them to targets.json.</p>
+  <main class="efp-container py-6 sm:py-8 grid gap-6">
+    <div id="problem" hidden></div>
 
-    <p class="muted small">
-      Up and down are also told by the shape of the mark: a dot is up, a square is down, a ring has not been checked.
-      Nothing here refreshes by itself; press "Check now".
-    </p>
+    <!-- The whole picture in one sentence, the counts, and the one button. -->
+    <section id="summary" class="efp-surface es-summary efp-rise" aria-labelledby="headline">
+      <div class="es-verdict">
+        <span id="verdict-icon" class="es-verdict-icon" data-state="unknown" aria-hidden="true"><i data-lucide="radar"></i></span>
+        <div class="min-w-0">
+          <h2 id="headline" class="es-headline" role="status"><span class="skeleton h-7 w-64 inline-block align-middle"></span></h2>
+          <p id="checked-at" class="text-sm text-base-content/60 mt-1"></p>
+        </div>
+      </div>
+      <dl class="es-counts" aria-label="How many are up, down and not checked">
+        <div class="es-count" data-tone="up"><dt>Up</dt><dd id="count-up" class="efp-number">-</dd></div>
+        <div class="es-count" data-tone="down"><dt>Down</dt><dd id="count-down" class="efp-number">-</dd></div>
+        <div class="es-count" data-tone="unknown"><dt>Not checked</dt><dd id="count-unknown" class="efp-number">-</dd></div>
+      </dl>
+      <div class="es-action">
+        <button type="button" id="check" class="btn btn-primary btn-lg efp-press efp-shine w-full sm:w-auto" disabled>
+          <i data-lucide="radar"></i> Check now
+        </button>
+        <p id="check-note" class="text-xs text-base-content/55 mt-2 text-center sm:text-right"></p>
+      </div>
+    </section>
+
+    <!-- One card per group of targets.json, one row per environment. -->
+    <div id="groups" class="grid gap-6">
+      <div class="skeleton h-56 rounded-box"></div>
+      <div class="skeleton h-40 rounded-box"></div>
+    </div>
+
+    <div id="empty" class="efp-surface efp-empty" hidden>
+      <span class="efp-empty-icon"><i data-lucide="server-cog"></i></span>
+      <strong>No environment is listed yet</strong>
+      <span class="text-sm max-w-md">Put the health pages of your environments into targets.json and deploy again. Only the addresses in that file are ever asked.</span>
+    </div>
+
+    <ul class="es-legend" aria-label="What the marks mean">
+      <li><span class="es-mark" data-state="up" aria-hidden="true"></span> a dot is up</li>
+      <li><span class="es-mark" data-state="down" aria-hidden="true"></span> a square is down</li>
+      <li><span class="es-mark" data-state="unknown" aria-hidden="true"></span> a ring has not been checked</li>
+      <li class="grow"></li>
+      <li><span>Nothing here refreshes by itself.</span><span class="hidden sm:inline">Press <kbd class="kbd kbd-xs">C</kbd> or "Check now".</span></li>
+    </ul>
   </main>
+
   <script type="module" src="static/app.js"></script>
 </body>
 </html>

@@ -14,3 +14,8 @@
 Dockerfile text eol=lf
 host/bin/* text eol=lf
 k8s/apparmor/* text eol=lf
+
+# Shared browser libraries: byte for byte as downloaded (scripts/vendor_libs.py).
+lib/** -text
+lib/efp-kit@*/** text eol=lf
+lib/MANIFEST.json text eol=lf

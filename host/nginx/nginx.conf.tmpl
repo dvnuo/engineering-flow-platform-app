@@ -164,6 +164,36 @@ http {
             proxy_read_timeout 30s;
         }
 
+        # The shared browser libraries (section 6.6): files of the image, the
+        # same for every app and every visitor, so no sign-in is asked for
+        # them. A path names a version and never changes its content, hence
+        # the year-long cache; one download serves every app on this host.
+        location ^~ /_efp/lib/ {
+            alias {{LIB_DIR}}/;
+            access_log off;
+            autoindex off;
+            disable_symlinks on;
+            limit_except GET {
+                deny all;
+            }
+            types {
+                text/css css;
+                application/javascript js;
+                application/json json;
+                image/svg+xml svg;
+                image/png png;
+                font/woff2 woff2;
+            }
+            default_type text/plain;
+            charset utf-8;
+            charset_types text/css application/javascript application/json text/plain;
+            gzip on;
+            gzip_vary on;
+            gzip_types text/css application/javascript application/json image/svg+xml text/plain;
+            add_header Cache-Control "public, max-age=31536000, immutable" always;
+            add_header X-Content-Type-Options nosniff always;
+        }
+
         # Nothing else under /_efp/ exists for a browser. "^~" keeps the
         # regular-expression locations below from being tried.
         location ^~ /_efp/ {

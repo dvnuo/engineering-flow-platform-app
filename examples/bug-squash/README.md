@@ -14,7 +14,12 @@ points and your combo. Every member's best run is on the leaderboard.
 - `efp_app.storage` written by many members at once: one object per member;
 - a run that can be finished once, with `storage.delete()` as the claim;
 - game logic in a module without any page in it (`static/game.js`), tested
-  under node, and limits the server derives from the same `rules.json`.
+  under node, and limits the server derives from the same `rules.json`;
+- a game page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md))
+  where every event answers: a squash splatters and the score pops, a higher
+  combo announces itself and a broken one shakes, squashing a feature shakes
+  the board, the countdown beats, the last seconds turn red, and the result
+  counts up, with confetti for a new personal best.
 
 **Turn on in the Portal:** nothing. The app uses no model and no connector,
 so it costs nothing to run.
@@ -41,7 +46,12 @@ files under `.efp-data/`.
    the limits follow by themselves. For a kind of your own, add it there and
    give it a drawing in `static/render.js` and a way of moving in
    `static/game.js` (without them it looks and moves like a typo).
-3. `efp-app check`, push, register the directory as an app in the Portal and
+3. Give it another look if you like: link
+   `/_efp/lib/daisyui@5.8.2/themes.css` in `static/index.html` and set
+   `data-theme="synthwave"` (or any daisyUI theme) on `<html>`. The board and
+   the bugs take its colours (`readPalette()` in `static/app.js` says which
+   bug gets which).
+4. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy.
 
 ## Things to notice
@@ -73,8 +83,11 @@ files under `.efp-data/`.
   board is loaded when the page opens, after a run and on "Refresh".
 - **Less motion is a variant, not a missing page.** With "reduce motion" set
   in the system, calm mode is on: the same bugs with the same worth sit
-  still and leave sooner. Letters on the bugs make the game playable from
-  the keyboard.
+  still and leave sooner, and the board neither shakes nor splatters.
+  Letters on the bugs make the game playable from the keyboard.
+- **A canvas does not read CSS.** The theme's colours are CSS variables; a
+  canvas wants plain colours. `app.js` reads them once with `kit.color()`,
+  hands them to `render.js` and reads them again when the theme changes.
 - **Drawn, not loaded.** Every bug is a few ellipses and lines on the canvas
   (`static/render.js`). There is no image file and nothing from another
   host.

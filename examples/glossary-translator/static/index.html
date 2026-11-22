@@ -4,82 +4,155 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Glossary translator</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="nord" (or any
+       daisyUI theme) on <html>; the marks of the glossary terms follow. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <header>
-      <h1>Glossary translator</h1>
-      <p class="muted">
-        Translation between English, Simplified Chinese and Traditional
-        Chinese (Hong Kong) that keeps to the team's terms. Markdown is kept;
-        code, addresses and file paths are left as they are.
-      </p>
-    </header>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="languages"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Glossary translator</h1>
+      <p class="text-xs text-base-content/60 truncate">English and Chinese that keep to the team's terms</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span id="model" class="gt-model" hidden></span>
+      <span id="me"></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
 
-    <p id="notice" class="notice" role="status" hidden></p>
+  <main class="efp-container gt-main">
+    <div id="notice" hidden></div>
 
-    <section aria-labelledby="translate-heading">
-      <h2 id="translate-heading">Translate</h2>
+    <!-- The translator: the text on the left, the translation on the right. -->
+    <section class="efp-surface gt-translator efp-rise" aria-labelledby="translate-heading">
+      <h2 id="translate-heading" class="sr-only">Translate</h2>
       <form id="translate-form">
-        <div class="pair">
-          <div>
-            <label for="source">From</label>
-            <select id="source"></select>
+        <div class="gt-langbar">
+          <label id="source-wrap" class="gt-lang">
+            <span class="gt-lang-label">From</span>
+            <select id="source" class="select select-ghost gt-select"></select>
+          </label>
+          <button type="button" id="swap-button" class="btn btn-circle btn-sm gt-swap efp-press" aria-label="Swap the two languages" title="Swap the two languages">
+            <i data-lucide="arrow-left-right"></i>
+          </button>
+          <label id="target-wrap" class="gt-lang">
+            <span class="gt-lang-label">To</span>
+            <select id="target" class="select select-ghost gt-select"></select>
+          </label>
+        </div>
+
+        <div class="gt-panes">
+          <div id="source-pane" class="gt-pane">
+            <div id="editor" class="gt-editor">
+              <!-- Behind the text area and in step with it: the same text, with the glossary terms marked. -->
+              <div id="mirror" class="gt-mirror" aria-hidden="true"></div>
+              <textarea id="text" class="gt-text" spellcheck="false" placeholder="Type or paste the text to translate. Markdown is kept; code, addresses and file paths are left as they are."
+                aria-label="Text to translate" aria-describedby="count found"></textarea>
+            </div>
+            <div class="gt-pane-foot">
+              <span id="found" class="gt-found" aria-live="polite"></span>
+              <span class="grow"></span>
+              <span id="count" class="efp-number"></span>
+              <button type="button" id="clear-button" class="btn btn-ghost btn-xs btn-square" aria-label="Clear the text" title="Clear the text" hidden><i data-lucide="x"></i></button>
+            </div>
+            <span id="meter" class="gt-meter" aria-hidden="true"><span></span></span>
           </div>
-          <button type="button" id="swap-button" aria-label="Swap the two languages">Swap</button>
-          <div>
-            <label for="target">To</label>
-            <select id="target"></select>
+
+          <div id="target-pane" class="gt-pane gt-target">
+            <div id="output" class="gt-output" tabindex="0" aria-live="polite" aria-label="Translation"></div>
+            <div id="output-empty" class="gt-output-empty">
+              <i data-lucide="languages"></i>
+              <span>The translation appears here, with the glossary terms marked.</span>
+            </div>
+            <div class="gt-pane-foot">
+              <span id="status" class="gt-status" role="status"></span>
+              <span class="grow"></span>
+              <button type="button" id="stop-button" class="btn btn-ghost btn-xs" hidden><i data-lucide="square"></i> Stop <kbd class="kbd kbd-xs">Esc</kbd></button>
+              <button type="button" id="copy-button" class="btn btn-ghost btn-xs btn-square" aria-label="Copy the translation" title="Copy the translation" hidden><i data-lucide="copy"></i></button>
+            </div>
           </div>
         </div>
-        <label for="text">Text</label>
-        <textarea id="text" rows="9" placeholder="Type or paste the text to translate"></textarea>
-        <div class="bar">
-          <button type="submit" id="translate-button" class="primary">Translate</button>
-          <button type="button" id="stop-button" hidden>Stop</button>
-          <span id="count" class="muted"></span>
+
+        <div class="gt-actions">
+          <p class="text-xs text-base-content/60 hidden sm:block">Only the glossary terms that occur in the text are sent along.</p>
+          <span class="grow"></span>
+          <span class="text-xs text-base-content/50 hidden sm:inline" aria-hidden="true"><kbd class="kbd kbd-xs">Ctrl</kbd> <kbd class="kbd kbd-xs">Enter</kbd></span>
+          <button type="submit" id="translate-button" class="btn btn-primary efp-press efp-shine"><i data-lucide="sparkles"></i> Translate</button>
         </div>
       </form>
-      <p id="status" class="status" role="status"></p>
 
-      <div id="result" hidden>
-        <h3 id="output-heading">Translation</h3>
-        <pre id="output" aria-labelledby="output-heading" aria-live="polite" tabindex="0"></pre>
-        <div class="bar">
-          <button type="button" id="copy-button">Copy</button>
+      <div id="terms-panel" class="gt-terms" hidden>
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h3 class="text-sm font-semibold">Glossary terms in this text</h3>
+          <p id="terms-note" class="text-xs text-base-content/60"></p>
         </div>
-        <h3>Glossary terms in this text</h3>
-        <p id="terms-note" class="muted"></p>
-        <ul id="terms" class="terms"></ul>
+        <ul id="terms" class="gt-chips"></ul>
       </div>
     </section>
 
-    <section aria-labelledby="glossary-heading">
-      <h2 id="glossary-heading">Glossary</h2>
-      <p id="glossary-facts" class="muted" role="status">Loading...</p>
-      <div class="bar">
-        <label for="filter" class="inline">Find</label>
-        <input type="search" id="filter" autocomplete="off" placeholder="a term in any language">
-        <a id="export-link" href="api/glossary.csv" download="glossary.csv">Export as CSV</a>
+    <!-- The glossary: everybody reads it, the owner changes it. -->
+    <section class="efp-surface gt-glossary efp-rise" style="--i: 1" aria-labelledby="glossary-heading">
+      <div class="gt-glossary-head">
+        <span class="gt-icon" aria-hidden="true"><i data-lucide="book-a"></i></span>
+        <div class="min-w-0 flex-1">
+          <h2 id="glossary-heading" class="font-semibold leading-tight flex items-center gap-2">Glossary <span id="sample-badge" class="badge badge-soft badge-sm" hidden>Sample</span></h2>
+          <p id="glossary-facts" class="text-xs text-base-content/60" role="status">Loading...</p>
+        </div>
+        <span id="dirty-badge" class="badge badge-soft badge-warning gap-1.5" hidden><i data-lucide="circle-dot"></i> Changes not saved</span>
       </div>
-      <div class="table-wrap">
-        <table id="glossary">
-          <thead><tr id="glossary-head"></tr></thead>
-          <tbody id="glossary-rows"></tbody>
-        </table>
+      <div class="gt-glossary-tools">
+        <label class="input input-sm gt-filter">
+          <i data-lucide="search" class="opacity-50"></i>
+          <input type="search" id="filter" autocomplete="off" placeholder="Find a term in any language" aria-label="Find a term in any language">
+        </label>
+        <span class="grow"></span>
+        <a id="export-link" class="btn btn-sm btn-ghost efp-press" href="api/glossary.csv" download="glossary.csv" title="Export as CSV" aria-label="Export as CSV"><i data-lucide="file-down"></i><span class="hidden sm:inline">CSV</span></a>
+        <span id="owner-tools" class="contents" hidden>
+          <button type="button" id="import-button" class="btn btn-sm btn-ghost efp-press" title="Import a CSV file into the list" aria-label="Import a CSV file"><i data-lucide="file-up"></i><span class="hidden sm:inline">Import</span></button>
+          <input type="file" id="import-file" accept=".csv,text/csv" hidden>
+          <button type="button" id="add-button" class="btn btn-sm btn-soft btn-primary efp-press"><i data-lucide="plus"></i> Add a term</button>
+          <button type="button" id="save-button" class="btn btn-sm btn-primary efp-press" disabled><i data-lucide="save"></i> Save</button>
+        </span>
       </div>
-      <p id="glossary-empty" class="muted" hidden></p>
-      <div id="owner-tools" class="bar" hidden>
-        <button type="button" id="add-button">Add a term</button>
-        <button type="button" id="import-button">Import a CSV file</button>
-        <input type="file" id="import-file" accept=".csv,text/csv" hidden>
-        <button type="button" id="save-button" class="primary" disabled>Save the glossary</button>
+      <div id="glossary-status" class="px-4 sm:px-5" hidden></div>
+      <div class="gt-list">
+        <div id="glossary-head" class="gt-entry gt-entry-head" aria-hidden="true"></div>
+        <ul id="glossary-rows" class="gt-rows" aria-labelledby="glossary-heading">
+          <li class="gt-skeleton"><span class="skeleton h-5"></span><span class="skeleton h-5"></span><span class="skeleton h-5"></span><span class="skeleton h-5"></span></li>
+          <li class="gt-skeleton"><span class="skeleton h-5"></span><span class="skeleton h-5"></span><span class="skeleton h-5"></span><span class="skeleton h-5"></span></li>
+          <li class="gt-skeleton"><span class="skeleton h-5"></span><span class="skeleton h-5"></span><span class="skeleton h-5"></span><span class="skeleton h-5"></span></li>
+        </ul>
       </div>
-      <p id="glossary-status" class="status" role="status"></p>
+      <div id="glossary-empty" class="efp-empty" hidden></div>
     </section>
   </main>
+
+  <dialog id="confirm" class="modal modal-bottom sm:modal-middle" aria-labelledby="confirm-title">
+    <form method="dialog" class="modal-box">
+      <div class="flex gap-4">
+        <span id="confirm-icon" class="gt-confirm-icon" aria-hidden="true"></span>
+        <div>
+          <h2 id="confirm-title" class="text-lg font-semibold"></h2>
+          <p id="confirm-text" class="text-sm text-base-content/70 mt-1"></p>
+        </div>
+      </div>
+      <div class="modal-action">
+        <button type="button" id="confirm-cancel" class="btn btn-ghost">Cancel</button>
+        <button type="submit" id="confirm-ok" class="btn btn-primary" value="ok">OK</button>
+      </div>
+    </form>
+    <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+  </dialog>
+
   <script type="module" src="static/app.js"></script>
 </body>
 </html>

@@ -91,6 +91,8 @@ def test_dev_toolbox_modules_stay_inside_the_served_directory():
         text = script.read_text(encoding="utf-8")
         addresses = re.findall(r'^import [^"]*"([^"]+)";$', text, flags=re.MULTILINE) + re.findall(r'new URL\("([^"]+)", import\.meta\.url\)', text)
         for address in addresses:
+            if address.startswith("/_efp/lib/"):
+                continue  # the shared libraries, at the one address every gateway serves (docs/UI_KIT.md)
             assert address.startswith(("./", "../")) and address.endswith(".js"), (script.name, address)
             target = (script.parent / address).resolve()
             assert target.is_file() and PUBLIC.resolve() in target.parents, (script.name, address)

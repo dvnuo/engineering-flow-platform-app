@@ -17,6 +17,14 @@ the real one does (docs/CONTRACTS.md, sections 6.1 and 6.2):
 - every other address answers 404 and is printed on the console: a request
   that leaves the app is what this mode exists to show.
 
+- ``/_efp/lib/...`` is answered by this gateway from the shared browser
+  libraries (section 6.6), as the host answers it, and never reaches the app.
+
+Without ``--prefix`` the same gateway stands in front of the app at ``/``
+(``slug=""``): it answers ``/_efp/lib/`` and passes everything else on with
+its path and cookies unchanged, so that a page linking the shared libraries
+looks the same as it will once deployed.
+
 Not reproduced: sign-in and the visitor header, the app center, the pages for
 an app that is stopped or switched off, rate limits. Identity and storage
 stay those of a developer's machine.
@@ -37,10 +45,49 @@ import re
 import socket
 import time
 from http import HTTPStatus
+from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
 from urllib.parse import urlsplit
 
 HOST = "127.0.0.1"
+
+# docs/CONTRACTS.md, section 6.6: the shared browser libraries.
+LIB_PREFIX = "/_efp/lib/"
+# Path segments of a library file: no leading dot, so never "." or "..".
+_LIB_PATH = re.compile(r"[A-Za-z0-9_][A-Za-z0-9@._+-]*(?:/[A-Za-z0-9_][A-Za-z0-9@._+-]*)*")
+_LIB_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+    ".woff2": "font/woff2",
+    ".png": "image/png",
+}
+
+
+def library_directory() -> Optional[Path]:
+    """Where the shared libraries are: package data in a wheel, ``lib/`` in a checkout of the repository."""
+    here = Path(__file__).resolve().parent
+    for candidate in (here / "_lib", here.parents[1] / "lib"):
+        if (candidate / "MANIFEST.json").is_file():
+            return candidate
+    return None
+
+
+def library_file(lib_dir: Path, relative: str) -> Optional[Path]:
+    """The file ``/_efp/lib/<relative>`` names, or ``None``: never a directory, never outside ``lib_dir``."""
+    if not _LIB_PATH.fullmatch(relative):
+        return None
+    candidate = lib_dir.joinpath(*relative.split("/"))
+    return candidate if candidate.is_file() else None
+
+
+def library_versions(lib_dir: Path, relative: str) -> List[str]:
+    """The directories in ``lib_dir`` of the library ``relative`` starts with, such as ``["daisyui@5.8.2"]``."""
+    name = relative.partition("/")[0].partition("@")[0]
+    if not name or not lib_dir.is_dir():
+        return []
+    return sorted(p.name for p in lib_dir.iterdir() if p.is_dir() and p.name.partition("@")[0] == name)
 
 # docs/CONTRACTS.md, section 1.
 _SLUG = re.compile(r"[a-z0-9][a-z0-9-]{1,38}[a-z0-9]")
@@ -86,7 +133,7 @@ p.note { color: #52606d; font-size: 0.9rem; }
 <h1>%(title)s</h1>
 <p>%(message)s</p>
 <p><a href="%(base)s/">Open the app at %(base)s/</a></p>
-<p class="note">efp-app dev --prefix: a local stand-in for the EFP gateway.</p>
+<p class="note">efp-app dev: a local stand-in for the EFP gateway.</p>
 </body>
 </html>
 """
@@ -214,7 +261,9 @@ class Gateway:
     app is still starting waits for it, for up to ``startup_timeout`` seconds
     after ``start``. ``local_file_server`` marks a static app, which the host
     serves from nginx and ``efp-app dev`` from Python's file server: see
-    ``_location``.
+    ``_location``. ``slug=""`` puts the gateway in front of an app served at
+    ``/``. ``lib_dir`` is where ``/_efp/lib/`` is read from (by default
+    ``library_directory()``).
     """
 
     def __init__(
@@ -226,9 +275,11 @@ class Gateway:
         say: Callable[[str], None] = print,
         startup_timeout: float = 0.0,
         local_file_server: bool = False,
+        lib_dir: Optional[Path] = None,
     ) -> None:
         self.slug = slug
-        self.base = "/" + slug
+        self.base = "/" + slug if slug else ""
+        self.lib_dir = lib_dir if lib_dir is not None else library_directory()
         self.app_port = app_port
         self.strip_prefix = strip_prefix
         self.say = say
@@ -290,6 +341,8 @@ class Gateway:
             return self._reply(writer, 400, "bad_request", "Bad request", message % reserved[0], navigation)
 
         path = target.partition("?")[0]
+        if path.startswith(LIB_PREFIX):
+            return self._library(writer, method, target, path, navigation)
         if path == self.base:
             return _send(writer, 301, ["Location: %s/%s" % (self.base, target[len(path) :])])
         if path.startswith(self.base + "/"):
@@ -307,6 +360,34 @@ class Gateway:
             'A URL that starts with "/" in a page, script or style sheet points here, to the top of the host.'
         )
         self._reply(writer, 404, "app_not_found", "This address is outside the app", message % (path, self.base), navigation)
+
+    def _library(self, writer: asyncio.StreamWriter, method: str, target: str, path: str, navigation: bool) -> None:
+        """Section 6.6: a file of the shared browser libraries, the same for every app."""
+        if method not in ("GET", "HEAD"):
+            self.say("refused with 405: %s %s  (the shared libraries are read-only)" % (method, target))
+            return self._reply(writer, 405, "method_not_allowed", "Not allowed", "The shared libraries can only be read.", navigation)
+        relative = path[len(LIB_PREFIX) :]
+        found = library_file(self.lib_dir, relative) if self.lib_dir is not None else None
+        if found is None:
+            self.say("not in the shared libraries: %s %s%s" % (method, target, self._library_hint(relative)))
+            message = "%s is not one of the shared libraries. docs/UI_KIT.md lists them with their versions."
+            return self._reply(writer, 404, "not_found", "No such library file", message % path, navigation)
+        body = found.read_bytes()
+        kind = _LIB_TYPES.get(found.suffix.lower(), "text/plain; charset=utf-8")
+        lines = ["HTTP/1.1 200 OK", "Content-Type: " + kind, "Content-Length: %d" % len(body)]
+        # Not cached here: the next run on this port may serve another checkout. The host caches for a year.
+        lines += ["Cache-Control: no-cache"] + _ADDED_TO_ANSWER + ["Connection: close"]
+        # Two writes, not one joined copy: ECharts alone is a megabyte.
+        writer.write(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
+        if method != "HEAD":
+            writer.write(body)
+
+    def _library_hint(self, relative: str) -> str:
+        """For a missing file: the versions there are of the same library, or where the libraries are not."""
+        if self.lib_dir is None or not self.lib_dir.is_dir():
+            return "  (this installation of the SDK has no shared libraries)"
+        versions = library_versions(self.lib_dir, relative)
+        return "  (there is %s)" % ", ".join(versions) if versions else ""
 
     def _outside_line(self, method: str, target: str, headers: Headers) -> str:
         """The console line for a request that is not under the prefix."""
@@ -366,8 +447,9 @@ class Gateway:
             "X-Forwarded-For: " + ", ".join(seen + [peer]),
             "X-Forwarded-Proto: " + (proto if proto in ("http", "https") else "http"),
             "X-Forwarded-Host: " + host,
-            "X-Forwarded-Prefix: " + self.base,
         ]
+        if self.base:
+            lines.append("X-Forwarded-Prefix: " + self.base)
         # One request per connection, unless the browser asks to switch protocols (a WebSocket).
         lines += ["Upgrade: " + upgrade, "Connection: upgrade"] if upgrade else ["Connection: close"]
         if _get(headers, "expect").lower() == "100-continue":
@@ -417,7 +499,7 @@ class Gateway:
             lower = name.lower()
             if lower in _TAKEN_FROM_ANSWER or (lower in ("connection", "keep-alive") and not switched):
                 continue
-            if lower == "set-cookie":
+            if lower == "set-cookie" and self.slug:  # an app at "/" keeps its cookies as they are
                 cookie = rewrite_set_cookie(value, self.slug)
                 if cookie is None:
                     continue

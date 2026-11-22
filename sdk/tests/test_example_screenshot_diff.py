@@ -87,6 +87,8 @@ def test_screenshot_diff_is_a_page_that_cannot_upload_anything():
         for call in ("fetch(", "XMLHttpRequest", "WebSocket", "sendBeacon", "EventSource", "FormData", "importScripts"):
             assert call not in text, "%s could send the images somewhere (%s)" % (script.name, call)
         for address in re.findall(r'^import [^"]*"([^"]+)";$', text, flags=re.MULTILINE):
+            if address.startswith("/_efp/lib/"):
+                continue  # the shared libraries, at the one address every gateway serves (docs/UI_KIT.md)
             target = (script.parent / address).resolve()  # relative, so it holds under /{slug}/
             assert address.startswith("./") and target.is_file() and PUBLIC.resolve() in target.parents, (script.name, address)
 

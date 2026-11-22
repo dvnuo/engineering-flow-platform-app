@@ -305,7 +305,8 @@ def explore(data: bytes, sample: bool, asking: bool, visitor) -> None:
             show_ask(table, file, visitor)
 
 
-st.set_page_config(page_title="CSV explorer", layout="wide")
+# A Material icon by name (ASCII, unlike an emoji) for the browser tab.
+st.set_page_config(page_title="CSV explorer", page_icon=":material/table_chart:", layout="wide")
 
 # The gateway signs the visitor into the request that opens the session.
 visitor = get_visitor()

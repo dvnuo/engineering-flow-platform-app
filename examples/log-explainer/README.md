@@ -10,7 +10,11 @@ failed, why it probably failed and what to try next. The answer is streamed.
   the answer is capped (`max_output_tokens`);
 - masking passwords, tokens and keys before the text leaves the app
   (`mask_secrets`);
-- what a visitor sees when the budget is used up or the model is off.
+- what a visitor sees when the budget is used up or the model is off;
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)) that
+  makes the wait feel alive: skeleton lines while the model reads, then each
+  piece of the answer inks in from a blur behind a glowing caret, a Stop
+  button (or `Escape`) while it writes, and the time it took at the end.
 
 **Turn on in the Portal:** the language model, on the app's page.
 
@@ -22,14 +26,18 @@ efp-app dev examples/log-explainer
 ```
 
 Open http://127.0.0.1:8000/. Without a token in `.env` the page loads and
-the answer says that the app is not set up yet. With the token, calls are real:
+the answer says that the app is not set up yet. Paste a log and press
+`Ctrl` + `Enter` to explain it. With the token, calls are real:
 they run on your model provider and count against the app's budget.
 
 ## Make it yours
 
 1. Copy this directory into your own repository.
 2. Change `SYSTEM_PROMPT` in `main.py` to your stack: name your build tool,
-   your test framework, the mistakes your team makes most.
+   your test framework, the mistakes your team makes most. For another look,
+   set `data-theme="dim"` (or any daisyUI theme) on `<html>` in
+   `static/index.html` and link `/_efp/lib/daisyui@5.8.2/themes.css`
+   ([docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours)).
 3. `efp-app check`, push, register the directory as an app in the Portal,
    turn the model on and press Deploy.
 
@@ -46,4 +54,9 @@ they run on your model provider and count against the app's budget.
   (`password=...`, `Authorization: Bearer ...`, AWS and GitHub keys, private
   key blocks). Tell your visitors not to paste logs that hold customer data.
 - **The log is data.** The system prompt says so, and the answer is put into
-  the page with `textContent`, so nothing a log contains is run or rendered.
+  the page as text (each piece a `<span>` made with `kit.h`), so nothing a
+  log or the model contains is run or rendered.
+- **Reading a stream is a loop.** `response.body.getReader()` gives the
+  pieces as they come, and an `AbortController` is how Stop ends the
+  request. On the server, `pieces` closes the model's stream in `finally`,
+  however the answer ends.

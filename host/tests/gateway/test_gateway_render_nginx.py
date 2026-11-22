@@ -297,6 +297,35 @@ def test_the_gateway_server_routes_as_the_contract_says(conf, parsed, settings):
         assert expected in auth, expected
 
 
+def test_the_shared_libraries_are_files_of_the_image_cached_for_a_year(parsed):
+    from efp_app_host.gateway.resources import lib_dir
+
+    body = block(parsed, "location ^~ /_efp/lib/")
+    own = directives(body)
+    assert f"alias {lib_dir().resolve().as_posix()}/" in own
+    assert (lib_dir() / "MANIFEST.json").is_file()
+    for expected in (
+        "access_log off",
+        "autoindex off",
+        "disable_symlinks on",
+        'add_header Cache-Control "public, max-age=31536000, immutable" always',
+        "add_header X-Content-Type-Options nosniff always",
+        "gzip on",
+    ):
+        assert expected in own, expected
+    # Read-only, and nothing about them is asked of the manager: no sign-in, no secret.
+    assert directives(block(parsed, "limit_except GET")) == ["deny all"]
+    assert "auth_request" not in body and "proxy_pass" not in body
+    types = directives(block(parsed, "types"))
+    assert "application/javascript js" in types and "text/css css" in types and "font/woff2 woff2" in types
+
+
+def test_a_host_without_the_shared_libraries_is_not_built(settings, monkeypatch, tmp_path):
+    monkeypatch.setattr(render_nginx, "lib_dir", lambda: tmp_path / "lib")
+    with pytest.raises(RenderError, match="shared browser libraries are missing"):
+        render(settings)
+
+
 def test_the_app_location_does_what_section_6_2_asks(parsed):
     app = directives(block(parsed, "location ~ ^/(?<efp_slug>[a-z0-9][a-z0-9-]*[a-z0-9])/"))
     for expected in (

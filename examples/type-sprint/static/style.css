@@ -1,396 +1,548 @@
-:root {
-  color-scheme: light dark;
-  --ink: light-dark(#1f2633, #e9ecf2);
-  --muted: light-dark(#5b6676, #a3adbd);
-  --page: light-dark(#ffffff, #0f1216);
-  --surface: light-dark(#f6f7fa, #151920);
-  --line: light-dark(#d3d9e3, #2c3440);
-  --accent: light-dark(#2f5fc4, #8fb0f5);
-  --on-accent: light-dark(#ffffff, #0f1216);
-  --good: light-dark(#1d7a46, #6fd29a);
-  --bad: light-dark(#b3261e, #f2b8b5);
-  --bad-back: light-dark(#fbe3e1, #5c1f1b);
-  --mono: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", Menlo, monospace;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
-  color: var(--ink);
-  background: var(--page);
+/*
+ * Type sprint's own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them). This file holds the line being typed, the meters,
+ * the result and the two SVG charts (charts.js draws them with classes; the
+ * colours are the theme's, so a daisyUI theme repaints them too).
+ */
+
+[hidden] {
+  display: none !important;
 }
 
-body {
-  margin: 0;
+.ts-card {
+  display: grid;
+  gap: 1.25rem;
+  padding: 1.25rem;
 }
 
-main {
-  max-width: 48rem;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 4rem;
+@media (min-width: 640px) {
+  .ts-card {
+    padding: 1.75rem 2rem;
+  }
 }
 
-h1 {
-  margin: 0;
-  font-size: 1.75rem;
+.ts-kicker {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-primary);
 }
 
-h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.2rem;
+.ts-label {
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
 }
 
-h3 {
-  margin: 1.5rem 0 0.25rem;
-  font-size: 1rem;
-}
+/* ---- Choosing a topic ------------------------------------------------------------------------ */
 
-header p {
-  margin: 0.15rem 0 0;
-}
-
-section {
-  margin-top: 2rem;
-}
-
-button {
-  padding: 0.45rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--surface);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-button.primary {
-  padding: 0.6rem 1.75rem;
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-
-:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-/* Choosing a topic */
-
-.topics {
+.ts-topics {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: 0 0 1rem;
+  margin: 0;
   padding: 0;
   border: 0;
 }
 
-.topics legend {
-  margin-bottom: 0.5rem;
-  padding: 0;
-  font-weight: 600;
-}
-
-.topics label {
+.ts-topic {
+  position: relative;
   display: inline-flex;
-  gap: 0.4rem;
   align-items: center;
-  padding: 0.35rem 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: 2rem;
-  background: var(--surface);
-  cursor: pointer;
-}
-
-.topics label:has(input:checked) {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-
-.topics small {
-  color: var(--muted);
-}
-
-#status,
-#hint {
-  min-height: 1.5rem;
-  margin: 0.5rem 0 0;
-}
-
-/* The sprint */
-
-.meters {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
   gap: 0.5rem;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid var(--efp-line-strong);
+  border-radius: 999px;
+  background: var(--color-base-100);
+  font-size: 0.9rem;
+  font-weight: 550;
+  cursor: pointer;
+  transition: border-color var(--efp-fast) ease, background-color var(--efp-fast) ease, transform var(--efp-fast) var(--efp-spring);
 }
 
-.stat {
+.ts-topic:hover {
+  border-color: color-mix(in oklab, var(--color-primary) 50%, transparent);
+}
+
+.ts-topic:active {
+  transform: scale(0.97);
+}
+
+/* The radio itself is invisible but keeps the keyboard: arrows move between topics. */
+.ts-topic input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ts-topic small {
+  font-size: 0.72rem;
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
+}
+
+.ts-topic:has(input:checked) {
+  border-color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100));
+  color: color-mix(in oklab, var(--color-primary) 80%, var(--color-base-content));
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.ts-topic:has(input:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* A line of the chosen topic, as a taste of what is coming. */
+.ts-sample {
+  min-height: 3.1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-field);
+  background: color-mix(in oklab, var(--color-base-200) 80%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.ts-sample::before {
+  content: "$ ";
+  color: var(--color-primary);
+}
+
+/* ---- The sprint ---------------------------------------------------------------------------- */
+
+.ts-meters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.ts-stat {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.stat .label {
-  color: var(--muted);
-  font-size: 0.8rem;
+.ts-value {
+  display: inline-block;
+  font-size: clamp(1.4rem, 4vw, 2.1rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  transform-origin: left center;
 }
 
-.stat .value {
-  font-size: 1.6rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+.ts-stat.is-low .ts-value {
+  color: var(--color-error);
 }
 
-.timebar {
-  height: 0.35rem;
-  margin: 0.5rem 0 1rem;
-  border-radius: 0.2rem;
-  background: var(--line);
+.ts-timebar {
+  height: 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
   overflow: hidden;
 }
 
-.timebar span {
+.ts-timebar span {
   display: block;
   height: 100%;
-  background: var(--accent);
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
   transform-origin: left;
+  transition: transform 1s linear;
 }
 
-.line,
-.typing {
+.ts-timebar.is-low span {
+  background: linear-gradient(90deg, var(--color-error), var(--color-warning));
+}
+
+.ts-typing {
+  position: relative;
+}
+
+.ts-line,
+.ts-box {
   box-sizing: border-box;
   width: 100%;
   margin: 0;
-  padding: 0.75rem 0.9rem;
-  font-family: var(--mono);
-  font-size: clamp(1rem, 3.4vw, 1.25rem);
+  padding: 0.9rem 1.1rem;
+  font-family: var(--font-mono);
+  font-size: clamp(1.05rem, 3.4vw, 1.45rem);
   line-height: 1.6;
 }
 
-.line {
-  min-height: 3.2rem;
-  border: 1px solid var(--line);
+.ts-line {
+  position: relative;
+  min-height: 4.2rem;
+  border: 1px solid var(--efp-line-strong);
   border-bottom: 0;
-  border-radius: 0.5rem 0.5rem 0 0;
-  background: var(--surface);
+  border-radius: var(--radius-field) var(--radius-field) 0 0;
+  background: color-mix(in oklab, var(--color-base-200) 70%, var(--color-base-100));
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.line .ahead,
-.line .next {
-  color: var(--muted);
+.ts-line span {
+  border-radius: 0.2rem;
 }
 
-.line .right {
-  color: var(--good);
+.ts-line .ahead {
+  color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+}
+
+.ts-line .right {
+  color: color-mix(in oklab, var(--color-success) 85%, var(--color-base-content));
 }
 
 /* A wrong character is marked where it stands, by more than its colour. */
-.line .wrong {
-  border-radius: 0.15rem;
-  background: var(--bad-back);
-  color: var(--bad);
+.ts-line .wrong {
+  background: color-mix(in oklab, var(--color-error) 18%, transparent);
+  color: var(--color-error);
   text-decoration: underline wavy;
+  text-underline-offset: 0.2em;
 }
 
-.line .next {
-  box-shadow: inset 0 -0.15rem 0 var(--accent);
-  color: var(--ink);
+/* The next character: a caret under it. */
+.ts-line .next {
+  color: var(--color-base-content);
+  box-shadow: inset 0 -0.18rem 0 var(--color-primary);
 }
 
-.typing {
-  border: 1px solid var(--line);
-  border-radius: 0 0 0.5rem 0.5rem;
-  background: var(--page);
-  color: var(--ink);
+/* A finished line on its way out (app.js moves it). */
+.ts-ghost {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: transparent;
+  border-color: transparent;
 }
 
-.typing:disabled {
+.ts-box {
+  border: 1px solid var(--efp-line-strong);
+  border-radius: 0 0 var(--radius-field) var(--radius-field);
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  outline: none;
+}
+
+.ts-box:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 22%, transparent);
+}
+
+.ts-box:disabled {
   opacity: 0.6;
 }
 
-#stop {
-  margin-top: 0.5rem;
+/* A line typed to the end: "+34" floats up from the box. */
+.ts-plus {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.9rem;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 750;
+  color: var(--color-success);
+  pointer-events: none;
 }
 
-/* The result and the history */
+/* ---- The result ---------------------------------------------------------------------------- */
 
-.headline {
+.ts-result-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+}
+
+.ts-big {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.ts-big > span:first-child {
+  font-size: clamp(3.2rem, 11vw, 4.75rem);
+  font-weight: 850;
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+  background: linear-gradient(120deg, var(--color-primary), var(--color-secondary));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.ts-unit {
+  font-size: 1rem;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.ts-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(5.5rem, auto));
+  gap: 0.5rem;
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1.3;
 }
 
-#verdict {
-  margin: 0.25rem 0 0;
+.ts-figures > div {
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius-field);
+  background: color-mix(in oklab, var(--color-base-200) 80%, transparent);
+}
+
+.ts-figures dt {
+  font-size: 0.7rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.ts-figures dd {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 750;
+}
+
+.ts-verdict {
+  font-weight: 600;
+}
+
+.ts-verdict:empty {
+  display: none;
 }
 
 #worst code {
   display: block;
-  margin-bottom: 0.25rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.4rem;
-  background: var(--surface);
-  font-family: var(--mono);
+  margin-bottom: 0.35rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-field);
+  background: color-mix(in oklab, var(--color-error) 8%, var(--color-base-100));
+  box-shadow: inset 3px 0 0 var(--color-error);
+  font-family: var(--font-mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.chart {
+/* ---- The charts (charts.js) ------------------------------------------------------------------ */
+
+.ts-chart {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 14rem;
+  max-height: 15rem;
+  overflow: visible;
 }
 
-.chart[hidden] {
-  display: none;
-}
-
-.chart .grid {
-  stroke: var(--line);
+.ts-chart .grid {
+  stroke: color-mix(in oklab, var(--color-base-content) 10%, transparent);
   stroke-width: 1;
+  stroke-dasharray: 3 4;
 }
 
-.chart .tick {
-  fill: var(--muted);
+.ts-chart .tick {
+  fill: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+  font-family: var(--font-sans);
   font-size: 11px;
 }
 
-.chart .tick.strong {
-  fill: var(--ink);
-  font-weight: 600;
+.ts-chart .tick.strong {
+  fill: var(--color-base-content);
+  font-weight: 650;
 }
 
-.chart .bar {
-  fill: var(--accent);
+.ts-chart .bar {
+  fill: color-mix(in oklab, var(--color-primary) 75%, var(--color-secondary));
+  transform-box: fill-box;
+  transform-origin: bottom;
 }
 
-.chart .average {
-  stroke: var(--ink);
+.ts-chart .average {
+  stroke: var(--color-base-content);
   stroke-width: 1.5;
   stroke-dasharray: 5 4;
 }
 
-.chart .trend {
+.ts-chart .trend {
   fill: none;
-  stroke: var(--accent);
-  stroke-width: 2;
+  stroke: var(--color-primary);
+  stroke-width: 2.25;
   stroke-linejoin: round;
+  stroke-linecap: round;
 }
 
-.chart .dot {
-  fill: var(--accent);
-  stroke: var(--accent);
+.ts-chart .dot {
+  fill: var(--color-primary);
+  stroke: var(--color-base-100);
   stroke-width: 1.5;
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
-.chart .dot.hollow {
-  fill: var(--page);
+.ts-chart .dot.hollow {
+  fill: var(--color-base-100);
+  stroke: var(--color-primary);
 }
 
-.chart .dot.best {
-  fill: var(--good);
-  stroke: var(--good);
+.ts-chart .dot.best {
+  fill: var(--color-success);
+  stroke: var(--color-base-100);
 }
 
-.key {
-  margin: 0.25rem 0 0;
-  font-size: 0.85rem;
+/* The history sits in the narrow column, where the drawing is shown at about
+ * two thirds of its size: larger letters and dots keep it readable there. */
+#history-chart .tick {
+  font-size: 16px;
 }
 
-.swatch {
+#history-chart .trend {
+  stroke-width: 3;
+}
+
+#history-chart .dot {
+  r: 5px;
+}
+
+#history-chart .dot.best {
+  r: 7.5px;
+}
+
+.ts-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.ts-swatch {
   display: inline-block;
   width: 0.6rem;
   height: 0.6rem;
-  margin-left: 0.75rem;
-  border: 2px solid var(--accent);
+  margin-left: 0.6rem;
+  border: 2px solid var(--color-primary);
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--color-primary);
 }
 
-.swatch:first-child {
+.ts-swatch:first-child {
   margin-left: 0;
 }
 
-.swatch.hollow {
-  background: var(--page);
+.ts-swatch.is-hollow {
+  background: var(--color-base-100);
 }
 
-.swatch.best {
-  border-color: var(--good);
-  background: var(--good);
+.ts-swatch.is-best {
+  border-color: var(--color-success);
+  background: var(--color-success);
 }
 
-/* The leaderboard */
+/* ---- The leaderboard ----------------------------------------------------------------------- */
 
-.heading-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.heading-row h2 {
+.ts-leaders {
+  display: grid;
+  gap: 0.4rem;
   margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.scroll {
-  overflow-x: auto;
+.ts-leaders > li:not(.skeleton) {
+  display: grid;
+  grid-template-columns: 1.9rem auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-field);
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
+.ts-leaders > li.is-you {
+  background: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-primary) 30%, transparent);
 }
 
-th,
-td {
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid var(--line);
-  text-align: left;
-  white-space: nowrap;
+.ts-rank {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 750;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 7%, transparent);
 }
 
-thead th {
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-weight: 600;
+.ts-rank[data-place="1"] {
+  color: var(--color-warning-content);
+  background: var(--color-warning);
 }
 
-.number {
+.ts-rank[data-place="2"] {
+  color: var(--color-neutral-content);
+  background: color-mix(in oklab, var(--color-neutral) 55%, var(--color-base-100));
+}
+
+.ts-rank[data-place="3"] {
+  color: var(--color-warning-content);
+  background: color-mix(in oklab, var(--color-warning) 45%, var(--color-error));
+}
+
+.ts-speed {
   text-align: right;
+  font-weight: 750;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
 }
 
-tr.you {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  font-weight: 600;
+.ts-speed small {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
 }
 
-@media (max-width: 30rem) {
-  .stat .value {
-    font-size: 1.3rem;
+@media (max-width: 520px) {
+  .ts-meters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ts-figures {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+}
+
+/* ---- Motion that runs by itself, for visitors who did not ask for less ------------------------ */
+
+@media (prefers-reduced-motion: no-preference) {
+  .ts-line .next {
+    animation: ts-caret 1.05s steps(1) infinite;
+  }
+
+  .ts-stat.is-low .ts-value {
+    animation: ts-throb 1s var(--efp-ease-out) infinite;
+  }
+}
+
+@keyframes ts-caret {
+  50% {
+    box-shadow: inset 0 -0.18rem 0 transparent;
+  }
+}
+
+@keyframes ts-throb {
+  0% {
+    transform: scale(1.15);
+  }
+  45% {
+    transform: scale(1);
   }
 }

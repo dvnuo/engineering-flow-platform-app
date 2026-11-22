@@ -11,7 +11,14 @@ them for the team.
 - a plain model call (`llm.complete`) that is skipped when there is nothing
   to sum up;
 - how to do "my issues" when the connector is not the visitor;
-- Flask under a path prefix: every URL comes from `url_for()`.
+- Flask under a path prefix: every URL of the app comes from `url_for()`;
+  the shared libraries at `/_efp/lib/` are the one fixed path;
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)) whose
+  motion says something: the issues of a project rise in one after the
+  other, and a new search of the same project moves the ones that stay and
+  brings in the others (`kit.animateList`), so the eye sees what changed;
+  the bar of statuses grows; while the model writes, a line of colour runs
+  along the digest's card, and its text arrives line by line.
 
 **Turn on in the Portal:** the Jira connector (read-only is enough) and the
 language model, both on the app's page.
@@ -32,7 +39,11 @@ Jira; without it the page loads and the search answers with a message.
 2. Adapt `jql()` and `FIELDS` in `app.py` to what your team looks at: a
    component, a sprint, a status. Adapt `SYSTEM_PROMPT` to the digest you
    want to read.
-3. `efp-app check`, push, register the directory as an app in the Portal,
+3. Change the look if you like: a daisyUI theme on `<html>`
+   (`data-theme="corporate"`, [docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours)).
+   The colours of the statuses are the theme's: add your Jira's status
+   names to `STATUS_TONES` in `static/app.js`.
+4. `efp-app check`, push, register the directory as an app in the Portal,
    turn on Jira and the model and press Deploy.
 
 ## Things to notice
@@ -54,5 +65,10 @@ Jira; without it the page loads and the search answers with a message.
 - **The digest searches again on the server.** The page does not post the
   list it shows; what goes to the model is what Jira says, not what a browser
   claims. With no issues there is no model call and nothing is spent.
+- **What the model wrote stays text.** The page splits the digest into
+  lines and makes a line that starts with `-` or `*` an item of a list; every
+  line goes in through `textContent`. Nothing the model or Jira wrote is
+  parsed as HTML or Markdown, so an issue whose summary holds markup shows
+  that markup as it is.
 - The search uses `/rest/api/2/search`, which Jira Server and Data Center
   offer. Jira Cloud names it `/rest/api/3/search/jql`.

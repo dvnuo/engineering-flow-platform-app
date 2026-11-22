@@ -12,7 +12,13 @@ load of each assignee, and lists what was created after the sprint started.
   the issues of a sprint with only the fields the charts need;
 - `st.cache_data` with a time to live, so that a rerun does not ask Jira
   again;
-- arithmetic kept in plain functions that are tested without Streamlit.
+- arithmetic kept in plain functions that are tested without Streamlit;
+- the look of the EFP kit through Streamlit's own theme
+  (`.streamlit/config.toml`, see
+  [docs/UI_KIT.md](../../docs/UI_KIT.md#streamlit-and-gradio)): the kit's
+  blue, greys and rounded corners, and its colours for the lines and bars
+  of the charts, light or dark as the visitor's system is. Streamlit draws
+  the page, so the kit's style sheets and its motion do not apply here.
 
 **Turn on in the Portal:** the Jira connector (read-only is enough), on the
 app's page.
@@ -45,7 +51,12 @@ own):
    `/rest/api/2/field` lists every field with its id (look for "Story
    Points" or "Story point estimate"). While no issue has a value in that
    field, the app counts issues instead and says so.
-3. `efp-app check`, push, register the directory as an app in the Portal,
+3. Change the look in `.streamlit/config.toml`: the colours of
+   `[theme.light]` and `[theme.dark]` (`chartCategoricalColors` colours the
+   charts), or `base = "dark"` in `[theme]` for one look only. The kit's
+   `data-theme` belongs to the HTML examples; a Streamlit page takes its
+   theme from this file.
+4. `efp-app check`, push, register the directory as an app in the Portal,
    turn on Jira and press Deploy.
 
 ## Things to notice

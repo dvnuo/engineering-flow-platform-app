@@ -1,367 +1,708 @@
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
-  /* Every colour of the page, once. light-dark() follows the visitor's scheme. */
-  --plane: light-dark(#f9f9f7, #0d0d0d);
-  --surface: light-dark(#fcfcfb, #1a1a19);
-  --ink: light-dark(#0b0b0b, #f0efec);
-  --ink-2: light-dark(#52514e, #c3c2b7);
-  --hairline: light-dark(#e1e0d9, #2c2c2a);
-  --accent: light-dark(#2a78d6, #3987e5);
-  --good: #0ca30c;
-  --critical: #d03b3b;
-  --neutral: #898781;
-  --faint: light-dark(#c3c2b7, #52514e);
-  --problem: light-dark(#b3261e, #f2b8b5);
+/*
+ * Flaky tests' own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them). This file holds what is particular to the app:
+ * the heatmap of test by build, its wave, the line that ties a square to
+ * its build, the tiles and the three lists. The colours are the theme's:
+ * success for a pass, error for a failure, so a daisyUI theme changes them.
+ */
+
+[hidden] {
+  display: none !important;
 }
 
-body {
-  margin: 0;
-  background: var(--plane);
-  color: var(--ink);
-}
+/* ---- Choosing a job ------------------------------------------------------------------------- */
 
-main {
-  max-width: 68rem;
-  margin: 0 auto;
-  padding: 2rem 1rem 4rem;
-}
-
-h1 {
-  margin: 0 0 0.25rem;
-}
-
-h2 {
-  margin: 0 0 0.75rem;
-  font-size: 1.0625rem;
-}
-
-.lede {
-  max-width: 44rem;
-  margin: 0;
-  color: var(--ink-2);
-}
-
-a {
-  color: inherit;
-}
-
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* --- Controls ---------------------------------------------------------------- */
-
-.controls {
-  display: flex;
-  flex-wrap: wrap;
+.ft-choose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: end;
   gap: 0.75rem 1rem;
-  margin: 1.5rem 0 0.75rem;
+  padding: 1rem 1.25rem;
 }
 
-.card .controls {
-  margin-top: 0;
-}
-
-.controls .wide {
-  flex: 1 1 14rem;
-  max-width: 24rem;
-}
-
-label {
-  display: block;
-  color: var(--ink-2);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-/* One height for every control, so that a row of them shares a baseline. */
-select,
-input[type="search"],
-button {
-  box-sizing: border-box;
-  height: 2.375rem;
-  font: inherit;
-}
-
-select,
-input[type="search"] {
-  width: 100%;
-  padding: 0 0.5rem;
-}
-
-button {
-  padding: 0 1rem;
-  cursor: pointer;
-}
-
-#status {
-  min-height: 1.5rem;
-  margin: 0 0 1rem;
-  color: var(--ink-2);
-}
-
-#status.problem {
-  color: var(--problem);
-}
-
-#result {
-  transition: opacity 0.15s;
-}
-
-#result.stale {
-  opacity: 0.55;
-}
-
-/* --- Tiles and cards ----------------------------------------------------------- */
-
-.tiles {
+.ft-field {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-  gap: 0.75rem;
-  margin: 0 0 1rem;
-}
-
-.tile,
-.card {
-  border: 1px solid var(--hairline);
-  border-radius: 0.5rem;
-  background: var(--surface);
-}
-
-.tile {
-  padding: 0.75rem 1rem;
-}
-
-.tile dt {
-  color: var(--ink-2);
-  font-size: 0.875rem;
-}
-
-.tile dd {
-  margin: 0;
-  font-size: 1.75rem;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.tile dd.note {
-  color: var(--ink-2);
-  font-size: 0.8125rem;
-  font-weight: 400;
-  line-height: 1.5;
-}
-
-.card {
+  gap: 0.3rem;
   min-width: 0;
-  padding: 1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
-.quiet {
-  color: var(--ink-2);
-  font-size: 0.875rem;
+.ft-label {
+  padding: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
 }
 
-.legend {
+.ft-intro {
+  grid-column: 1 / -1;
+  margin: 0;
+  max-width: 48rem;
+}
+
+#builds .btn:checked,
+#builds .btn[aria-pressed="true"] {
+  --btn-color: var(--color-primary);
+  --btn-fg: var(--color-primary-content);
+}
+
+@media (max-width: 640px) {
+  .ft-choose {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .ft-job {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---- The tiles ------------------------------------------------------------------------------- */
+
+.ft-tile {
+  --ft-tone: var(--color-primary);
+  position: relative;
+  display: grid;
+  gap: 0.2rem;
+  padding: 1.1rem 1.2rem;
+  overflow: hidden;
+}
+
+.ft-tile::after {
+  content: "";
+  position: absolute;
+  right: -2.5rem;
+  top: -2.5rem;
+  width: 7rem;
+  height: 7rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, color-mix(in oklab, var(--ft-tone) 18%, transparent), transparent 70%);
+  pointer-events: none;
+}
+
+.ft-tile dt {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
+.ft-tile-icon {
+  display: grid;
+  place-items: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 0.6rem;
+  color: color-mix(in oklab, var(--ft-tone) 80%, var(--color-base-content));
+  background: color-mix(in oklab, var(--ft-tone) 14%, transparent);
+}
+
+.ft-value {
+  margin: 0.35rem 0 0;
+  font-size: clamp(1.55rem, 1rem + 2.4vw, 2.1rem);
+  white-space: nowrap;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.ft-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.ft-ring {
+  --size: 3.2rem;
+  --thickness: 5px;
+  position: absolute;
+  right: 1.1rem;
+  bottom: 1rem;
+  font-size: 0.68rem;
+  font-weight: 650;
+  color: var(--ft-tone);
+}
+
+@media (max-width: 1023px) {
+  /* Two tiles to a line: the ring would sit on the number. */
+  .ft-ring {
+    display: none;
+  }
+}
+
+/* ---- The heatmap ------------------------------------------------------------------------------ */
+
+.ft-heat {
+  padding: 1.25rem 1.25rem 1rem;
+}
+
+.ft-heat-head {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+}
+
+.ft-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0;
+  padding: 0.2rem 0 0;
+  list-style: none;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
+.ft-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ft-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 1rem 0 0.75rem;
+}
+
+.ft-search {
+  width: min(100%, 19rem);
+}
+
+.ft-package-filter {
+  width: auto;
+  max-width: 16rem;
+}
+
+.ft-tools .join-item[aria-pressed="true"] {
+  --btn-color: var(--color-primary);
+  --btn-fg: var(--color-primary-content);
+}
+
+.ft-grid {
+  position: relative;
+  margin-inline: -0.5rem;
+}
+
+/* A row: the test, its squares, and how often it changed. The squares take
+ * the room there is, up to 22 pixels a build (--n is the number of builds),
+ * and stand next to the count of changes. */
+.ft-columns-row,
+.ft-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 20rem) minmax(0, 1fr) 5.5rem;
+  align-items: center;
   gap: 0.25rem 1.25rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.ft-columns-row {
+  padding-block: 0 0.25rem;
+}
+
+.ft-columns,
+.ft-cells {
+  justify-self: end;
+  width: 100%;
+  max-width: calc(var(--n, 30) * 22px);
+}
+
+.ft-columns {
+  position: relative;
+  height: 1.55rem;
+}
+
+.ft-colnum {
+  position: absolute;
+  top: 0;
+  font-size: 0.66rem;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+  transform: translateX(-50%);
+}
+
+.ft-colnum.is-first {
+  left: 0;
+  transform: none;
+}
+
+.ft-colnum.is-last {
+  right: 0;
+  transform: none;
+}
+
+a.ft-colnum:hover,
+a.ft-colnum:focus-visible {
+  color: var(--color-primary);
+}
+
+.ft-tick {
+  position: absolute;
+  top: 0.85rem;
+  width: 1px;
+  height: 0.3rem;
+  background: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+}
+
+.ft-colgap {
+  position: absolute;
+  bottom: 0.05rem;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--color-base-content) 30%, transparent);
+}
+
+.ft-rows {
   margin: 0;
   padding: 0;
   list-style: none;
-  color: var(--ink-2);
-  font-size: 0.875rem;
+  transition: opacity 300ms ease, filter 300ms ease;
 }
 
-.legend li {
+.ft-rows.is-stale {
+  opacity: 0.5;
+  filter: saturate(0.5);
+}
+
+.ft-row {
+  border-radius: 0.6rem;
+  transition: background-color 160ms ease;
+}
+
+.ft-row:hover,
+.ft-row.is-pointed {
+  background: color-mix(in oklab, var(--color-primary) 6%, transparent);
+}
+
+.ft-test {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.ft-name,
+.ft-class {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ft-name {
+  font-size: 0.875rem;
+  font-weight: 550;
+}
+
+.ft-row.is-pointed .ft-name {
+  color: var(--color-primary);
+}
+
+.ft-class {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.ft-package {
+  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+}
+
+.ft-cells-cell {
+  display: grid;
+  min-width: 0;
+}
+
+.ft-cells {
+  display: block;
+  height: auto;
+  overflow: visible;
+  border-radius: 4px;
+}
+
+.ft-cells:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 4px;
+}
+
+.ft-flips {
+  display: grid;
+  justify-items: end;
+  line-height: 1.2;
+}
+
+.ft-flips-count {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.25rem;
+  font-weight: 700;
+  color: color-mix(in oklab, var(--color-warning) 70%, var(--color-base-content));
 }
 
-#shown {
-  margin: 0.5rem 0 0.25rem;
+.ft-flips-rate {
+  font-size: 0.68rem;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
 }
 
-/* --- The matrix: one row per test, one square per build --------------------------- */
+@media (max-width: 700px) {
+  .ft-columns-row,
+  .ft-row {
+    grid-template-columns: minmax(0, 1fr) 4.75rem;
+    gap: 0.35rem 0.75rem;
+  }
 
-/* As wide as its names and squares need, so that a name stands next to its row
-   of squares; a long name wraps before the table gets wider than the card. */
-#matrix {
-  max-width: 100%;
-  border-collapse: collapse;
+  .ft-row > .ft-test {
+    grid-column: 1 / -1;
+  }
+
+  .ft-columns-label:first-child {
+    display: none;
+  }
+
+  .ft-colnum.is-alt {
+    display: none;
+  }
 }
 
-#matrix th,
-#matrix td {
-  padding: 0.1875rem 0;
-  text-align: left;
-  vertical-align: middle;
+/* ---- The squares -------------------------------------------------------------------------------- */
+
+.sq {
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
-#matrix thead th {
-  padding-bottom: 0.25rem;
-  color: var(--ink-2);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  vertical-align: bottom;
+.sq.passed {
+  fill: color-mix(in oklab, var(--color-success) 82%, var(--color-base-100));
 }
 
-#matrix tbody th {
-  padding-right: 1.5rem;
-  font-weight: 400;
+.sq.failed {
+  fill: var(--color-error);
 }
 
-#matrix tbody tr:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+.sq.skipped {
+  fill: color-mix(in oklab, var(--color-base-content) 30%, transparent);
 }
 
-svg {
-  display: block;
-  flex: none;
-  overflow: visible;
+.sq.absent {
+  fill: color-mix(in oklab, var(--color-base-content) 24%, transparent);
 }
 
-.test {
-  display: block;
-  font-size: 0.875rem;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
-.test-class {
-  margin-right: 0.375rem;
-  color: var(--ink-2);
-}
-
-.passed {
-  fill: color-mix(in srgb, var(--good) 45%, var(--surface));
-}
-
-.failed {
-  fill: var(--critical);
-}
-
-.skipped,
+/* A build without a report: a faint place, so the gap reads as a gap. */
 .gap {
-  fill: var(--neutral);
-}
-
-.absent {
-  fill: var(--faint);
+  fill: color-mix(in oklab, var(--color-base-content) 5%, transparent);
+  stroke: color-mix(in oklab, var(--color-base-content) 12%, transparent);
+  stroke-dasharray: 2 2;
 }
 
 .cross {
   fill: none;
-  stroke: var(--surface);
-  stroke-width: 1.5;
+  stroke: var(--color-error-content);
+  stroke-width: 1.8;
   stroke-linecap: round;
+  pointer-events: none;
 }
 
 .cursor {
   fill: none;
-  stroke: var(--ink);
-  stroke-width: 2;
-}
-
-svg.cells:focus-visible {
-  outline-offset: 3px;
-}
-
-.columns text {
-  fill: var(--ink-2);
-  font-size: 11px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.columns .tick {
-  stroke: var(--hairline);
-  stroke-width: 1;
-}
-
-.spoken {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-
-.tooltip {
-  position: fixed;
-  z-index: 10;
-  max-width: 22rem;
-  padding: 0.375rem 0.625rem;
-  border-radius: 0.375rem;
-  background: var(--ink);
-  color: var(--plane);
-  font-size: 0.8125rem;
-  overflow-wrap: anywhere;
+  stroke: var(--color-base-content);
+  stroke-width: 1.6;
   pointer-events: none;
 }
 
-.tooltip strong,
-.tooltip span {
+.ft-mini {
   display: block;
+  height: 0.45rem;
+  width: auto;
 }
 
-/* --- The three lists ------------------------------------------------------------- */
+.ft-mini .passed {
+  fill: color-mix(in oklab, var(--color-success) 82%, var(--color-base-100));
+}
 
-.lists {
+.ft-mini .failed {
+  fill: var(--color-error);
+}
+
+/* The column of the pointed build, across the numbers and every row. */
+.ft-band {
+  position: absolute;
+  top: -0.2rem;
+  bottom: 0;
+  z-index: 2;
+  border-radius: 6px;
+  pointer-events: none;
+  background: color-mix(in oklab, var(--color-primary) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-primary) 22%, transparent);
+  transition: left 120ms var(--efp-ease-out);
+}
+
+.ft-band-label {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 650;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary-content);
+  background: var(--color-primary);
+  box-shadow: var(--efp-shadow-sm);
+}
+
+.ft-foot {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-  gap: 0.75rem;
+  gap: 0.2rem;
   margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--efp-line);
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
-.lists ol {
+.ft-foot p {
+  margin: 0;
+}
+
+.ft-foot p:empty {
+  display: none;
+}
+
+/* ---- The wave of a new answer --------------------------------------------------------------------
+ * Each square pops in a little after the one to its left and the row above
+ * (--c and --r, set by app.js), so the heatmap fills like a wave from the top
+ * left. Past the eighteenth row every row starts with the eighteenth: the
+ * rows below the fold do not wait. */
+
+@media (prefers-reduced-motion: no-preference) {
+  .ft-rows.is-entering .sq {
+    animation: ft-pop 520ms var(--efp-bounce) backwards;
+    animation-delay: calc((var(--r, 0) * 1.5 + var(--c, 0)) * 17ms + 120ms);
+  }
+
+  .ft-rows.is-entering .cross {
+    animation: ft-fade 360ms var(--efp-ease-out) backwards;
+    animation-delay: calc((var(--r, 0) * 1.5 + var(--n, 0)) * 17ms + 260ms);
+  }
+
+  .ft-rows.is-entering .ft-test,
+  .ft-rows.is-entering .ft-flips {
+    animation: ft-slide 560ms var(--efp-ease-out) backwards;
+    animation-delay: calc(var(--r, 0) * 26ms);
+  }
+
+  .ft-bar::before {
+    animation: ft-grow 900ms var(--efp-ease-out) 300ms backwards;
+  }
+}
+
+@keyframes ft-pop {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+
+@keyframes ft-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes ft-slide {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
+@keyframes ft-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* ---- The three lists ---------------------------------------------------------------------------- */
+
+.ft-list {
+  padding: 1.1rem 1.25rem 1.25rem;
+}
+
+.ft-list h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 0.6rem;
+  font-weight: 600;
+}
+
+.ft-list-icon {
+  display: grid;
+  place-items: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 0.6rem;
+  font-size: 0.85rem;
+  color: color-mix(in oklab, var(--ft-tone) 80%, var(--color-base-content));
+  background: color-mix(in oklab, var(--ft-tone) 14%, transparent);
+}
+
+.ft-list ol {
+  display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.lists li {
-  padding: 0.375rem 0;
-  border-top: 1px solid var(--hairline);
+.ft-list li {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--efp-line);
 }
 
-.lists li:first-child {
+.ft-list li:first-child {
   border-top: 0;
-  padding-top: 0;
 }
 
-/* On a narrow screen the name stands above its squares. */
-@media (max-width: 44rem) {
-  #matrix thead th:first-child {
-    display: none;
-  }
-
-  #matrix tr,
-  #matrix th,
-  #matrix td {
-    display: block;
-    width: auto;
-  }
-
-  #matrix tbody tr {
-    padding: 0.375rem 0;
-    border-top: 1px solid var(--hairline);
-  }
-
-  svg.cells,
-  svg.columns {
-    max-width: 100%;
-    height: auto;
-  }
+.ft-jump {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0.2rem 0.4rem;
+  margin: -0.2rem -0.4rem;
+  border-radius: 0.5rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 160ms ease;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #result {
-    transition: none;
+.ft-jump:hover {
+  background: color-mix(in oklab, var(--color-primary) 7%, transparent);
+}
+
+.ft-jump:hover .ft-name {
+  color: var(--color-primary);
+}
+
+.ft-jump:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.ft-jump.is-static {
+  cursor: auto;
+}
+
+.ft-jump.is-static:hover {
+  background: none;
+}
+
+.ft-jump.is-static:hover .ft-name {
+  color: inherit;
+}
+
+.ft-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ft-bar {
+  flex: 1;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+  overflow: hidden;
+}
+
+.ft-bar::before {
+  content: "";
+  display: block;
+  width: calc(var(--share, 0) * 100%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--color-info) 60%, transparent), var(--color-info));
+  transform-origin: left;
+}
+
+.ft-none {
+  display: flex !important;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.ft-none svg {
+  color: var(--color-success);
+}
+
+/* ---- The tooltip ---------------------------------------------------------------------------------- */
+
+.ft-tooltip {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  gap: 0.1rem;
+  max-width: 20rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.75rem;
+  font-size: 0.78rem;
+  pointer-events: none;
+  background: color-mix(in oklab, var(--color-base-100) 90%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--efp-line);
+  box-shadow: var(--efp-shadow-lg);
+  animation: ft-tip 160ms var(--efp-ease-out);
+}
+
+.ft-tooltip span {
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.ft-tooltip .ft-tip-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-base-content);
+}
+
+.ft-tooltip .ft-tip-meta {
+  font-size: 0.7rem;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.ft-tip-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--color-base-content) 20%, transparent);
+}
+
+.ft-tip-dot.passed {
+  background: var(--color-success);
+}
+
+.ft-tip-dot.failed {
+  background: var(--color-error);
+}
+
+@keyframes ft-tip {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
   }
 }

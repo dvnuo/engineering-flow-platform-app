@@ -1,322 +1,304 @@
-:root {
-  color-scheme: light dark;
-  --page: light-dark(#f4f5f7, #121417);
-  --surface: light-dark(#ffffff, #1b1e23);
-  --line: light-dark(#d5dae1, #353b45);
-  --text: light-dark(#1c2024, #e7e9ec);
-  --muted: light-dark(#5b6675, #9aa5b4);
-  --accent: light-dark(#2f5fd0, #8fb2ff);
-  --on-accent: light-dark(#ffffff, #0e1830);
-  --problem: light-dark(#b3261e, #f2b8b5);
-  --focus: light-dark(#1a4fd6, #a9c4ff);
-  --mine: light-dark(#fff7d6, #33301c);
-  --radius: 0.5rem;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--page);
-  color: var(--text);
-}
+/*
+ * Retro board's own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them). The markup and app.js use Tailwind classes for
+ * spacing and type; this file holds the board itself: the columns, the
+ * cards that look like notes, the dot votes.
+ *
+ * Make it yours: each column takes its colour from --rb-tone, which app.js
+ * sets from COLUMN_LOOKS (a colour of the theme and an icon per column).
+ */
 
 [hidden] {
   display: none !important;
 }
 
-main {
-  max-width: 90rem;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 4rem;
-}
-
-h1,
-h2 {
-  margin: 0;
-  line-height: 1.25;
-}
-
-h1 {
-  font-size: 1.6rem;
-}
-
-h2 {
-  font-size: 1.05rem;
-}
-
-p {
-  margin: 0.25rem 0 0;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.problem {
-  color: var(--problem);
-}
-
-.status {
-  min-height: 1.5rem;
-}
-
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-
-button,
-select,
-textarea {
-  font: inherit;
-}
-
-button,
-select {
-  padding: 0.35rem 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-
-button:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-button:disabled,
-select:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-
-button.danger {
-  color: var(--problem);
-}
-
-button.primary.danger {
-  border-color: var(--problem);
-  background: var(--problem);
-  color: var(--surface);
-}
-
-textarea {
+.rb-main {
   width: 100%;
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  resize: vertical;
+  max-width: 96rem;
+  margin-inline: auto;
+  padding: 1.25rem 1rem 4rem;
 }
 
-/* --- Above the board --- */
+/* ---- The bar above the board ------------------------------------------------------------- */
 
-.head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 0.5rem 1.5rem;
-}
-
-.votes-left {
-  padding: 0.2rem 0.8rem;
-  border: 1px solid var(--accent);
-  border-radius: 1rem;
-  color: var(--accent);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.bar {
+.rb-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 0.75rem;
-  margin-top: 1rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-box);
+  background: color-mix(in oklab, var(--color-base-100) 72%, transparent);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid var(--efp-line);
+  box-shadow: var(--efp-shadow-sm);
 }
 
-.bar label {
+.rb-toolbar .join-item[aria-pressed="true"] {
+  --btn-color: var(--color-primary);
+  --btn-fg: var(--color-primary-content);
+}
+
+/* The votes a member has left, as dots that go out one by one. */
+.rb-votes {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  color: var(--muted);
-  font-size: 0.9rem;
+  gap: 0.5rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-base-100) 80%, transparent);
+  border: 1px solid var(--efp-line);
 }
 
-.bar select {
-  max-width: 16rem;
+.rb-dots {
+  display: inline-flex;
+  gap: 0.25rem;
 }
 
-.spacer {
-  flex: 1;
+.rb-dots > span {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  box-shadow: 0 0 8px -1px color-mix(in oklab, var(--color-primary) 70%, transparent);
+  transition: transform 420ms var(--efp-bounce), opacity 300ms ease, background 300ms ease;
 }
 
-.banner {
-  margin-top: 0.75rem;
-  padding: 0.5rem 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+.rb-dots > span.is-used {
+  transform: scale(0.6);
+  opacity: 0.6;
+  background: color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  box-shadow: none;
 }
 
-/* --- The board --- */
+/* ---- The columns -------------------------------------------------------------------------- */
 
-.columns {
+.rb-columns {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: 1rem;
+  margin-top: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
   align-items: start;
 }
 
-.column {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--surface) 60%, var(--page));
-}
-
-.count {
-  padding: 0 0.5rem;
-  border-radius: 1rem;
-  background: color-mix(in srgb, currentColor 12%, transparent);
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 400;
-}
-
-.cards {
+.rb-column {
+  --rb-tone: var(--color-primary);
+  position: relative;
   display: grid;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: calc(var(--radius-box) + 0.25rem);
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--rb-tone) 9%, var(--color-base-100)), var(--color-base-100) 9rem);
+  border: 1px solid color-mix(in oklab, var(--rb-tone) 16%, var(--efp-line));
+  box-shadow: var(--efp-shadow-sm);
+}
+
+.rb-column::before {
+  content: "";
+  position: absolute;
+  inset: 0 1.25rem auto;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(90deg, var(--rb-tone), color-mix(in oklab, var(--rb-tone) 40%, var(--color-secondary)));
+}
+
+.rb-column-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.rb-column-icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border-radius: 0.7rem;
+  /* Darkened towards the text colour, so that a light tone (warning) stays readable. */
+  color: color-mix(in oklab, var(--rb-tone) 78%, var(--color-base-content));
+  background: color-mix(in oklab, var(--rb-tone) 15%, transparent);
+}
+
+.rb-count {
+  min-width: 1.6rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-align: center;
+  color: color-mix(in oklab, var(--rb-tone) 78%, var(--color-base-content));
+  background: color-mix(in oklab, var(--rb-tone) 13%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-cards {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
   margin: 0;
   padding: 0;
-  list-style: none;
 }
 
-.card {
-  padding: 0.6rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+.rb-closed .rb-column {
+  filter: saturate(0.75);
 }
 
-.card.mine {
-  background: var(--mine);
+/* ---- A card: a note in the column's colour ------------------------------------------------ */
+
+.rb-card {
+  position: relative;
+  padding: 0.8rem 0.85rem 0.6rem;
+  border-radius: 0.9rem;
+  background:
+    linear-gradient(165deg, color-mix(in oklab, var(--rb-tone) 12%, var(--color-base-100)),
+      color-mix(in oklab, var(--rb-tone) 5%, var(--color-base-100)));
+  border: 1px solid color-mix(in oklab, var(--rb-tone) 20%, transparent);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--color-neutral) 8%, transparent),
+    0 6px 14px -10px color-mix(in oklab, var(--rb-tone) 60%, transparent);
+  transform: rotate(var(--tilt, 0deg));
+  transition: transform 360ms var(--efp-spring), box-shadow 300ms var(--efp-ease-out);
 }
 
-.card-text {
-  margin: 0;
+.rb-card:hover,
+.rb-card:focus-within {
+  transform: rotate(0deg) translateY(-2px);
+  box-shadow: var(--efp-shadow-md);
+}
+
+.rb-card.is-mine {
+  border-style: dashed;
+  border-color: color-mix(in oklab, var(--rb-tone) 45%, transparent);
+}
+
+.rb-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  font-size: 0.92rem;
+  line-height: 1.5;
 }
 
-.card-foot {
+.rb-foot {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
-  margin-top: 0.5rem;
+  margin-top: 0.55rem;
+  min-height: 1.75rem;
 }
 
-.card-foot button {
-  padding: 0.1rem 0.55rem;
-  font-size: 0.85rem;
+/* The tools of one's own card show when the card is pointed at or focused. */
+.rb-tools {
+  display: flex;
+  gap: 0.15rem;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 200ms ease;
 }
 
-.by {
-  flex: 1;
-  font-size: 0.85rem;
+.rb-card:hover .rb-tools,
+.rb-card:focus-within .rb-tools {
+  opacity: 1;
 }
 
-.vote {
+@media (hover: none) {
+  .rb-tools {
+    opacity: 1;
+  }
+}
+
+/* The dot vote: a pill with the count; filled in the column's colour once given. */
+.rb-vote {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  border-radius: 1rem;
+  height: 1.75rem;
+  padding: 0 0.6rem 0 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--rb-tone) 30%, transparent);
+  background: color-mix(in oklab, var(--color-base-100) 70%, transparent);
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+  font-size: 0.78rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 200ms ease, color 200ms ease, transform 300ms var(--efp-spring), border-color 200ms ease;
 }
 
-.dot {
+.rb-vote:hover:not(:disabled) {
+  border-color: var(--rb-tone);
+  transform: scale(1.05);
+}
+
+.rb-vote:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.rb-vote .rb-dot {
   width: 0.6rem;
   height: 0.6rem;
-  border: 2px solid var(--accent);
-  border-radius: 50%;
+  border-radius: 999px;
+  border: 2px solid var(--rb-tone);
+  transition: background 200ms ease;
 }
 
-.vote[aria-pressed="true"] {
-  border-color: var(--accent);
-  font-weight: 600;
+.rb-vote[aria-pressed="true"] {
+  color: white;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--rb-tone), color-mix(in oklab, var(--rb-tone) 55%, var(--color-secondary)));
+  box-shadow: 0 6px 16px -6px color-mix(in oklab, var(--rb-tone) 80%, transparent);
 }
 
-.vote[aria-pressed="true"] .dot {
-  background: var(--accent);
+.rb-vote[aria-pressed="true"] .rb-dot {
+  border-color: white;
+  background: white;
 }
 
-.empty {
-  margin: 0;
-  padding: 0.75rem;
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  color: var(--muted);
-  font-size: 0.9rem;
-  text-align: center;
+.rb-vote:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
-.add,
-.edit {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+/* A "+1" that floats up from a vote. */
+.rb-plus {
+  position: absolute;
+  pointer-events: none;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--rb-tone);
 }
 
-.add button,
-.edit button,
-.edit select {
-  padding: 0.2rem 0.7rem;
-  font-size: 0.9rem;
+/* ---- Adding a card ------------------------------------------------------------------------- */
+
+.rb-add-open {
+  justify-content: flex-start;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  border: 1.5px dashed color-mix(in oklab, var(--rb-tone) 30%, transparent);
+  background: transparent;
 }
 
-/* --- The dialog --- */
-
-dialog {
-  width: min(26rem, calc(100vw - 2rem));
-  padding: 1.25rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
+.rb-add-open:hover {
+  color: var(--rb-tone);
+  border-color: var(--rb-tone);
+  background: color-mix(in oklab, var(--rb-tone) 6%, transparent);
 }
 
-dialog::backdrop {
-  background: rgb(0 0 0 / 0.45);
+.rb-add textarea,
+.rb-edit textarea {
+  resize: vertical;
+  min-height: 4.5rem;
+  line-height: 1.5;
 }
 
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1.25rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
-  }
+.rb-confirm-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border-radius: 1rem;
+  font-size: 1.3rem;
+  color: var(--color-error);
+  background: color-mix(in oklab, var(--color-error) 14%, transparent);
 }

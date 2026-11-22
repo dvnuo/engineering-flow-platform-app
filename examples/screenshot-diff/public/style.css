@@ -1,366 +1,668 @@
-/* Light and dark from one set of variables: light-dark() picks by the visitor's setting. */
-:root {
-  color-scheme: light dark;
-  --page: light-dark(#f5f6f8, #14161a);
-  --panel: light-dark(#ffffff, #1d2026);
-  --text: light-dark(#1c2026, #e7e9ee);
-  --muted: light-dark(#5d6673, #9ba4b3);
-  --line: light-dark(#d5d9e0, #343943);
-  --accent: light-dark(#2456c9, #8db0ff);
-  --on-accent: light-dark(#ffffff, #0f1320);
-  --bad: light-dark(#b3261e, #f2b8b5);
-  --box: #1f6feb; /* the outlines lie on screenshots, not on the page: one colour for both themes */
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  max-width: 86rem;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 4rem;
-  background: var(--page);
-  color: var(--text);
-}
-
-h1 {
-  margin: 0;
-  font-size: 1.6rem;
-}
-
-h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-h3 {
-  margin: 1rem 0 0.25rem;
-  font-size: 1rem;
-}
-
-p {
-  margin: 0.25rem 0;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.privacy {
-  margin: 0.5rem 0 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--line);
-  border-left: 0.25rem solid var(--accent);
-  border-radius: 0.4rem;
-  background: var(--panel);
-  font-size: 0.95rem;
-}
-
-.inputs {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 1rem;
-  margin-top: 1.25rem;
-}
-
-.drop {
-  padding: 1rem;
-  border: 2px dashed var(--line);
-  border-radius: 0.6rem;
-  background: var(--panel);
-}
-
-.drop.over {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
-}
-
-.drop input {
-  max-width: 100%;
-  margin-top: 0.5rem;
-  font: inherit;
-}
-
-.drop p {
-  overflow-wrap: anywhere;
-}
-
-.row,
-.controls,
-.buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  align-items: center;
-}
-
-.row {
-  margin-top: 0.75rem;
-}
-
-button {
-  padding: 0.4rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--panel);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: var(--accent);
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-
-button.link {
-  padding: 0.1rem 0.5rem;
-  font-size: 0.9rem;
-  text-align: left;
-}
-
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.status {
-  min-height: 1.5rem; /* keeps its place while empty */
-  margin-top: 1rem;
-  font-weight: 600;
-}
-
-.problem {
-  color: var(--bad);
-}
-
-progress {
-  display: block;
-  width: 100%;
-  height: 0.5rem;
-  accent-color: var(--accent);
-}
-
-.controls {
-  margin-top: 0.5rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  background: var(--panel);
-}
-
-.field {
-  display: block;
-}
-
-.label {
-  display: block;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.field input[type="range"] {
-  display: block;
-  width: 14rem;
-  max-width: 100%;
-  accent-color: var(--accent);
-}
-
-.check {
-  display: inline-flex;
-  gap: 0.35rem;
-  align-items: center;
-}
-
-.choice {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.1rem 0.9rem;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.choice legend {
-  padding: 0;
-}
-
-.buttons {
-  gap: 0.35rem;
-}
-
-.buttons output {
-  min-width: 3.2rem;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.buttons button {
-  min-width: 2.4rem;
-}
-
-.result {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 19rem;
-  gap: 1rem;
-  align-items: start;
-  margin-top: 1rem;
-}
-
-/* The stage scrolls in both directions once the images are zoomed past it. */
-.stage {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  max-height: 82vh;
-  padding: 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  /* a checkerboard, so transparent parts of a screenshot can be told from white ones */
-  background:
-    repeating-conic-gradient(color-mix(in srgb, var(--line) 45%, transparent) 0% 25%, transparent 0% 50%) 0 0 / 1rem 1rem,
-    var(--panel);
-  overflow: auto;
-}
-
-.pane {
-  flex: none;
-  margin: 0;
-}
-
-.pane figcaption {
-  margin-bottom: 0.25rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.frame {
-  position: relative;
-  box-shadow: 0 0 0 1px var(--line);
-}
-
-.frame canvas,
-.frame .boxes {
-  position: absolute;
-  left: 0;
-  top: 0;
-}
-
-.frame canvas.crisp {
-  image-rendering: pixelated;
-}
-
-.frame .boxes {
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.boxes rect {
-  fill: none;
-  stroke: var(--box);
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke; /* two screen pixels at every zoom */
-}
-
-.boxes rect.current {
-  stroke-width: 4;
-  stroke-dasharray: 6 3;
-}
-
-/* The line between "expected" and "actual" in the swipe view: wide enough to grab. */
-.divider {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1.5rem;
-  margin-left: -0.75rem;
-  cursor: ew-resize;
-  touch-action: none;
-  background: linear-gradient(to right, transparent 45%, var(--box) 45%, var(--box) 55%, transparent 55%);
-}
-
-.report {
-  padding: 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  background: var(--panel);
-}
-
-dl {
-  margin: 0.5rem 0 0;
-}
-
-dt {
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-dd {
-  margin: 0 0 0.5rem;
-  font-variant-numeric: tabular-nums;
-}
-
-ol {
-  max-height: 22rem;
-  margin: 0.5rem 0;
-  padding-left: 1.75rem;
-  overflow-y: auto;
-}
-
-ol li {
-  margin: 0.25rem 0;
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.5rem;
-  align-items: center;
-  font-size: 0.85rem;
-}
-
-.key {
-  display: inline-block;
-  width: 0.9rem;
-  height: 0.9rem;
-  border-radius: 0.15rem;
-}
-
-.key.changed {
-  background: rgb(226 0 116);
-}
-
-.key.blend {
-  background: rgb(247 201 72);
-}
-
-.key.only {
-  background: repeating-linear-gradient(135deg, rgb(70 120 210) 0 3px, rgb(176 202 244) 3px 6px);
-}
+/*
+ * Screenshot diff's own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them): the two boxes that take the images, the verdict,
+ * the viewer with its four views, and the list of changed regions. The
+ * page's colours are the theme's; the colours of the differences are the
+ * ones lib/diff.js paints into the picture, so the legend uses those.
+ */
 
 [hidden] {
   display: none !important;
 }
 
-/* Narrow screens: the numbers go under the images. */
+/* ---- The two boxes ------------------------------------------------------------------------- */
+
+.sd-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.75rem;
+}
+
+.sd-drop {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  justify-items: center;
+  gap: 0.75rem;
+  min-height: 19rem;
+  padding: 1rem 1rem 1.1rem;
+  border: 2px dashed var(--efp-line-strong);
+  border-radius: var(--radius-box);
+  background: color-mix(in oklab, var(--color-base-100) 70%, transparent);
+  transition: border-color var(--efp-fast) ease, background var(--efp-medium) ease, transform var(--efp-medium) var(--efp-spring),
+    box-shadow var(--efp-medium) ease;
+}
+
+.sd-drop[data-filled] {
+  border-style: solid;
+  border-color: var(--efp-line);
+  background: var(--color-base-100);
+  box-shadow: var(--efp-shadow-sm);
+}
+
+.sd-drop-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-self: start;
+}
+
+.sd-tag {
+  --tag: var(--color-primary);
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: color-mix(in oklab, var(--tag) 85%, var(--color-base-content));
+  background: color-mix(in oklab, var(--tag) 13%, transparent);
+}
+
+.sd-tag.is-actual {
+  --tag: var(--color-secondary);
+}
+
+.sd-tag.is-both {
+  --tag: var(--color-accent);
+}
+
+.sd-tag.is-diff {
+  --tag: var(--color-error);
+}
+
+/* The empty box: an icon, what to do, and what happens on letting go. */
+.sd-art {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.4rem;
+  text-align: center;
+  border-radius: calc(var(--radius-box) - 4px);
+}
+
+.sd-art-icon {
+  display: grid;
+  place-items: center;
+  width: 3.75rem;
+  height: 3.75rem;
+  margin-bottom: 0.35rem;
+  border-radius: 1.25rem;
+  font-size: 1.6rem;
+  color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-primary) 18%, transparent);
+  transition: transform var(--efp-slow) var(--efp-bounce), background var(--efp-medium) ease;
+}
+
+.sd-art-title {
+  font-weight: 600;
+}
+
+.sd-art-over {
+  display: none;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.sd-drop[data-filled] .sd-art {
+  display: none;
+}
+
+.sd-thumb {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 0;
+}
+
+.sd-drop:not([data-filled]) .sd-thumb {
+  display: none;
+}
+
+.sd-thumb canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 14rem;
+  border-radius: 0.6rem;
+  box-shadow: var(--efp-shadow-md), 0 0 0 1px var(--efp-line);
+  background: repeating-conic-gradient(color-mix(in oklab, var(--color-base-content) 7%, transparent) 0 25%, transparent 0 50%) 0 0 / 14px 14px;
+}
+
+.sd-info {
+  max-width: 100%;
+  font-size: 0.78rem;
+  text-align: center;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.sd-pick:has(input:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Files over the page: both boxes say "here"; the box under the pointer says "this one". */
+body.is-dragging .sd-drop {
+  border-style: dashed;
+  border-color: color-mix(in oklab, var(--color-primary) 55%, transparent);
+  background: color-mix(in oklab, var(--color-primary) 4%, var(--color-base-100));
+}
+
+.sd-drop.over {
+  border-color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100));
+  box-shadow: var(--efp-glow);
+  transform: scale(1.015);
+}
+
+.sd-drop.over .sd-art-icon {
+  transform: translateY(-6px) scale(1.12);
+  background: color-mix(in oklab, var(--color-primary) 20%, transparent);
+}
+
+.sd-drop.over .sd-art-title {
+  display: none;
+}
+
+.sd-drop.over .sd-art-over {
+  display: block;
+}
+
+/* A box that holds an image shows what letting go would do on top of it. */
+.sd-drop[data-filled].over .sd-art {
+  display: grid;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: color-mix(in oklab, var(--color-base-100) 78%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.sd-drop.is-reading .sd-thumb,
+.sd-drop.is-reading .sd-art {
+  opacity: 0.45;
+  transition: opacity var(--efp-medium) ease;
+}
+
+.sd-swap {
+  align-self: center;
+  box-shadow: var(--efp-shadow-md);
+  transition: transform var(--efp-slow) var(--efp-spring);
+}
+
+.sd-swap.is-turned svg {
+  transform: rotate(180deg);
+}
+
+.sd-swap svg {
+  transition: transform var(--efp-slow) var(--efp-spring);
+}
+
+.sd-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+}
+
+.sd-privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  max-width: 44rem;
+  font-size: 0.85rem;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+
+.sd-privacy > svg {
+  margin-top: 0.15rem;
+  color: var(--color-success);
+}
+
+.sd-status {
+  min-height: 1.5rem; /* keeps its place while empty, so nothing below it jumps */
+  font-size: 0.875rem;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body.is-dragging .sd-drop:not(.over) {
+    animation: sd-armed 1.1s var(--efp-ease-in-out) infinite alternate;
+  }
+}
+
+@keyframes sd-armed {
+  to {
+    box-shadow: 0 0 0 6px color-mix(in oklab, var(--color-primary) 10%, transparent);
+  }
+}
+
+/* ---- The verdict ------------------------------------------------------------------------------ */
+
+#workbench {
+  --tone: var(--color-primary);
+  transition: opacity var(--efp-medium) ease, filter var(--efp-medium) ease;
+}
+
+#workbench.is-stale {
+  opacity: 0.6;
+  filter: saturate(0.6);
+}
+
+.sd-verdict {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 1.25rem 2rem;
+  padding: 1.4rem 1.6rem;
+  background:
+    radial-gradient(28rem 12rem at 0% 0%, color-mix(in oklab, var(--tone) 13%, transparent), transparent 70%),
+    var(--color-base-100);
+  transition: background var(--efp-slow) ease;
+}
+
+.sd-score {
+  display: grid;
+}
+
+.sd-percent {
+  font-size: 3.2rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.045em;
+  color: color-mix(in oklab, var(--tone) 82%, var(--color-base-content));
+}
+
+.sd-verdict-text {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+}
+
+.sd-headline {
+  font-size: 0.95rem;
+  font-weight: 550;
+}
+
+.sd-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.sd-stats > div {
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.7rem;
+  background: color-mix(in oklab, var(--color-base-200) 70%, transparent);
+}
+
+.sd-stats dt {
+  font-size: 0.7rem;
+  color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+}
+
+.sd-stats dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* ---- The viewer ---------------------------------------------------------------------------- */
+
+.sd-viewer {
+  overflow: clip;
+}
+
+.sd-viewer-bar,
+.sd-viewer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.sd-viewer-bar {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--efp-line);
+}
+
+.sd-viewer-foot {
+  border-top: 1px solid var(--efp-line);
+  min-height: 3rem;
+}
+
+/* The four views stay on one line; on a phone the row scrolls instead of wrapping. */
+.sd-modes {
+  flex-wrap: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sd-zoom .join-item {
+  font-weight: 500;
+}
+
+.sd-zoom-value {
+  min-width: 4.25rem;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The images lie on a checkerboard, so a transparent pixel looks transparent. */
+.sd-stage {
+  display: flex;
+  justify-content: safe center;
+  align-items: flex-start;
+  gap: 1.25rem;
+  min-height: 18rem;
+  max-height: 76vh;
+  padding: 1.25rem;
+  overflow: auto;
+  background-color: color-mix(in oklab, var(--color-base-200) 80%, var(--color-base-100));
+  background-image: repeating-conic-gradient(color-mix(in oklab, var(--color-base-content) 4%, transparent) 0 25%, transparent 0 50%);
+  background-size: 18px 18px;
+  outline: none;
+}
+
+.sd-stage:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+.sd-pane {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.sd-frame {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 4px;
+  box-shadow: var(--efp-shadow-lg), 0 0 0 1px var(--efp-line);
+}
+
+.sd-frame > canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+}
+
+.sd-frame > canvas.crisp {
+  image-rendering: pixelated; /* single pixels as squares when zoomed in */
+}
+
+.boxes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.boxes rect {
+  fill: color-mix(in oklab, var(--color-primary) 6%, transparent);
+  stroke: var(--color-primary);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 100;
+  transition: stroke-width var(--efp-fast) ease, fill var(--efp-fast) ease;
+}
+
+.boxes rect.is-hover {
+  stroke-width: 3.5;
+  fill: color-mix(in oklab, var(--color-primary) 14%, transparent);
+}
+
+.boxes rect.current {
+  stroke: var(--color-secondary);
+  stroke-width: 3.5;
+  fill: color-mix(in oklab, var(--color-secondary) 14%, transparent);
+}
+
+/* The divider of the swipe view: a line with a knob, the expected image left of it. */
+.sd-divider {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-base-100) 70%, transparent);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.sd-divider::before {
+  content: "";
+  position: absolute;
+  inset: 0 -12px;
+}
+
+.sd-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  translate: -50% -50%;
+  color: var(--color-primary-content);
+  background: var(--color-primary);
+  box-shadow: var(--efp-glow), 0 0 0 3px color-mix(in oklab, var(--color-base-100) 80%, transparent);
+  transition: scale var(--efp-medium) var(--efp-spring);
+}
+
+.sd-divider:hover .sd-knob,
+.sd-divider:active .sd-knob {
+  scale: 1.12;
+}
+
+.sd-slider {
+  display: flex;
+  flex: 1 1 18rem;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 28rem;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.sd-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+@media (hover: none) {
+  .sd-keys {
+    display: none;
+  }
+}
+
+/* The outlines draw themselves, the largest region first; a picked one glows a few times. */
+@media (prefers-reduced-motion: no-preference) {
+  .boxes rect {
+    animation: sd-draw 760ms var(--efp-ease-out) backwards;
+    animation-delay: calc(var(--i, 0) * 45ms + 120ms);
+  }
+
+  .boxes rect.current {
+    animation: sd-draw 500ms var(--efp-ease-out) backwards, sd-glow 900ms ease-in-out 500ms 3;
+  }
+}
+
+@keyframes sd-draw {
+  from {
+    stroke-dashoffset: 100;
+  }
+}
+
+@keyframes sd-glow {
+  50% {
+    fill: color-mix(in oklab, var(--color-secondary) 34%, transparent);
+  }
+}
+
+/* ---- Settings and regions -------------------------------------------------------------------- */
+
+.sd-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.sd-toggle .toggle {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+.sd-regions {
+  display: grid;
+  gap: 0.2rem;
+  max-height: 24rem;
+  margin: 0.75rem -0.4rem 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.sd-region {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.4rem;
+  border-radius: 0.7rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--efp-fast) ease;
+}
+
+.sd-region:hover {
+  background: color-mix(in oklab, var(--color-primary) 6%, transparent);
+}
+
+.sd-region[aria-current="true"] {
+  background: color-mix(in oklab, var(--color-secondary) 11%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-secondary) 30%, transparent);
+}
+
+.sd-region:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.sd-crop-frame {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 3.75rem;
+  height: 2.75rem;
+  overflow: hidden;
+  border-radius: 0.45rem;
+  background: repeating-conic-gradient(color-mix(in oklab, var(--color-base-content) 7%, transparent) 0 25%, transparent 0 50%) 0 0 / 10px 10px;
+  box-shadow: inset 0 0 0 1px var(--efp-line);
+}
+
+.sd-crop {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.sd-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0.9rem 0 0;
+  padding: 0.75rem 0 0;
+  border-top: 1px solid var(--efp-line);
+  list-style: none;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
+.sd-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* The colours lib/diff.js paints: a property of the picture, not of the page's theme. */
+.sd-key {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 3px;
+}
+
+.sd-key.changed {
+  background: rgb(226 0 116);
+}
+
+.sd-key.blend {
+  background: rgb(247 201 72);
+}
+
+.sd-key.only {
+  background: repeating-linear-gradient(45deg, rgb(70 120 210) 0 3px, rgb(176 202 244) 3px 6px);
+}
+
+/* ---- A narrow screen ------------------------------------------------------------------------------ */
+
 @media (max-width: 56rem) {
-  .result {
+  .sd-verdict {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .sd-stats {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 40rem) {
+  .sd-inputs {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .stage {
-    max-height: 70vh;
+  .sd-drop {
+    min-height: 14rem;
+  }
+
+  .sd-swap {
+    justify-self: center;
+    margin-block: -0.4rem;
+    z-index: 1;
+  }
+
+  .sd-swap svg {
+    rotate: 90deg;
+  }
+
+  .sd-verdict {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 1.2rem;
+  }
+
+  .sd-stage {
+    max-height: 62vh;
+    padding: 0.75rem;
   }
 }

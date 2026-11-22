@@ -4,23 +4,71 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Log explainer</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="dim" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <h1>Log explainer</h1>
-    <p class="muted">
-      Paste the log of a failed build, test run or deployment. The end of it
-      (about the last 12,000 characters) goes to the model, with passwords
-      and tokens masked.
-    </p>
-    <form id="explain-form">
-      <textarea id="log" rows="14" spellcheck="false" placeholder="Paste a log here" required></textarea>
-      <button type="submit" id="explain-button">Explain</button>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="scroll-text"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Log explainer</h1>
+      <p class="text-xs text-base-content/60 truncate">What failed, why, and what to try next</p>
+    </div>
+    <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm ml-auto"></button>
+  </header>
+
+  <main class="efp-container py-6 sm:py-10 grid gap-6 lg:grid-cols-2 items-stretch">
+    <form id="explain-form" class="efp-surface lx-panel efp-rise">
+      <div class="lx-head">
+        <h2 class="lx-title"><i data-lucide="file-terminal"></i> The log</h2>
+        <span id="size" class="lx-size" aria-live="polite"></span>
+      </div>
+      <textarea id="log" class="textarea lx-log" rows="16" spellcheck="false" autocomplete="off"
+                placeholder="Paste the log of a failed build, test run or deployment" aria-label="The log" aria-describedby="masking"></textarea>
+      <p id="masking" class="lx-note">
+        <i data-lucide="shield-check"></i>
+        <span>Passwords, tokens and keys are masked before anything leaves the app, and only the end of the log (the last 12,000 characters or so) goes to the model.</span>
+      </p>
+      <div class="flex items-center gap-3">
+        <button type="submit" id="explain-button" class="btn btn-primary efp-press efp-shine"><i data-lucide="sparkles"></i> Explain</button>
+        <span class="hidden sm:inline text-xs text-base-content/50"><kbd class="kbd kbd-xs">Ctrl</kbd> <kbd class="kbd kbd-xs">Enter</kbd></span>
+        <button type="button" id="clear" class="btn btn-ghost btn-sm ml-auto" hidden><i data-lucide="eraser"></i> Clear</button>
+      </div>
     </form>
-    <pre id="answer" aria-live="polite"></pre>
+
+    <section class="efp-surface lx-panel efp-rise" style="--i: 1" aria-labelledby="answer-title">
+      <div class="lx-head">
+        <h2 id="answer-title" class="lx-title"><i data-lucide="sparkles"></i> The explanation</h2>
+        <div class="ml-auto flex items-center gap-2">
+          <span id="state" class="lx-state" role="status"></span>
+          <button type="button" id="stop" class="btn btn-xs btn-ghost" hidden><i data-lucide="square"></i> Stop</button>
+          <button type="button" id="copy" class="btn btn-xs btn-ghost" hidden><i data-lucide="copy"></i> Copy</button>
+        </div>
+      </div>
+
+      <div id="empty" class="efp-empty lx-grow">
+        <span class="efp-empty-icon"><i data-lucide="message-square-text"></i></span>
+        <strong>The explanation appears here</strong>
+        <span class="text-sm max-w-xs">Paste a log on the left and press Explain. The answer is written while you watch.</span>
+      </div>
+      <div id="thinking" class="grid gap-3 py-2" aria-hidden="true" hidden>
+        <div class="skeleton h-4 w-11/12"></div>
+        <div class="skeleton h-4 w-4/5"></div>
+        <div class="skeleton h-4 w-2/3"></div>
+      </div>
+      <div id="problem" class="lx-grow" hidden></div>
+      <div id="answer" class="lx-answer" aria-live="polite" hidden></div>
+    </section>
   </main>
-  <script src="static/app.js"></script>
+
+  <script type="module" src="static/app.js"></script>
 </body>
 </html>

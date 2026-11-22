@@ -4,44 +4,82 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Setup check</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="corporate" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <h1>Setup check</h1>
-    <p id="status" class="muted" role="status">Asking the Portal...</p>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="stethoscope"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Setup check</h1>
+      <p id="status" class="text-xs text-base-content/60 truncate" role="status">Asking the Portal...</p>
+    </div>
+    <div class="ml-auto flex items-center gap-1">
+      <button type="button" id="refresh" class="btn btn-ghost btn-sm efp-press" title="Ask the Portal again" aria-label="Ask the Portal again" hidden>
+        <i data-lucide="refresh-cw"></i><span class="hidden sm:inline">Refresh</span>
+      </button>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
 
-    <div id="content" hidden>
-      <section>
-        <h2>The app</h2>
-        <table><tbody id="facts"></tbody></table>
-      </section>
+  <main class="efp-container py-6 sm:py-10 grid gap-6">
+    <div id="problem" hidden></div>
 
-      <section>
-        <h2>The language model</h2>
-        <table><tbody id="model"></tbody></table>
-        <button type="button" id="ping-button">Send a test call</button>
-        <span id="ping-result" class="muted" role="status"></span>
-      </section>
+    <div id="loading" class="grid gap-6" aria-hidden="true">
+      <div class="skeleton h-28 rounded-box"></div>
+      <div class="grid sm:grid-cols-3 gap-4"><div class="skeleton h-24 rounded-box"></div><div class="skeleton h-24 rounded-box"></div><div class="skeleton h-24 rounded-box"></div></div>
+      <div class="grid lg:grid-cols-2 gap-6"><div class="skeleton h-72 rounded-box"></div><div class="skeleton h-72 rounded-box"></div></div>
+    </div>
 
-      <section>
-        <h2>Connectors</h2>
-        <table id="connectors">
-          <thead><tr><th>Type</th><th>Address</th><th>The app may</th></tr></thead>
-          <tbody></tbody>
-        </table>
-        <form id="try-form">
-          <label for="type">Try a path</label>
-          <select id="type" required></select>
-          <input type="text" id="path" maxlength="2000" autocomplete="off" spellcheck="false" required>
-          <button type="submit" id="try-button">GET</button>
+    <div id="content" class="grid gap-6" hidden>
+      <section id="hero" class="efp-surface sc-hero" aria-label="The app"></section>
+
+      <div id="checks" class="grid sm:grid-cols-3 gap-4"></div>
+
+      <div class="grid lg:grid-cols-2 gap-6 items-start">
+        <section class="efp-surface sc-panel" aria-labelledby="model-title">
+          <h2 id="model-title" class="sc-title"><i data-lucide="bot"></i> The language model</h2>
+          <dl id="model" class="sc-facts"></dl>
+          <div id="meters" class="grid gap-4"></div>
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="button" id="ping-button" class="btn btn-primary btn-sm efp-press efp-shine"><i data-lucide="send"></i> Send a test call</button>
+            <span class="text-xs text-base-content/60">One word, a real call: it counts against the budget.</span>
+          </div>
+          <div id="ping-result" aria-live="polite"></div>
+        </section>
+
+        <section class="efp-surface sc-panel" aria-labelledby="connectors-title">
+          <h2 id="connectors-title" class="sc-title"><i data-lucide="plug"></i> Connectors</h2>
+          <ul id="connectors" class="sc-connectors"></ul>
+        </section>
+      </div>
+
+      <section id="try-section" class="efp-surface sc-panel" aria-labelledby="try-title">
+        <div>
+          <h2 id="try-title" class="sc-title"><i data-lucide="terminal"></i> Try a path</h2>
+          <p class="text-sm text-base-content/60 mt-1">One <code class="sc-code">GET</code> with the owner's connector, and what the other system answered. A query may follow the path.</p>
+        </div>
+        <form id="try-form" class="sc-try">
+          <select id="type" class="select sc-type" aria-label="Connector" required></select>
+          <label class="input sc-path">
+            <span class="sr-only">Path</span>
+            <input type="text" id="path" class="grow" maxlength="2000" autocomplete="off" spellcheck="false" required>
+          </label>
+          <button type="submit" id="try-button" class="btn btn-primary efp-press"><i data-lucide="corner-down-left"></i> GET</button>
         </form>
-        <p id="try-status" class="muted" role="status"></p>
-        <pre id="try-body"></pre>
+        <div id="try-result" aria-live="polite"></div>
       </section>
     </div>
   </main>
-  <script src="static/app.js"></script>
+
+  <script type="module" src="static/app.js"></script>
 </body>
 </html>

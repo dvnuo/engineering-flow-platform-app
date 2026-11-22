@@ -16,7 +16,11 @@ sorted by votes and exported as Markdown, and earlier boards stay readable.
 - actions only the owner of the app may take, checked on the server
   (`owner_only`);
 - settings in a file next to the code (`board.json`), remembered in storage
-  so that an old board survives a new one.
+  so that an old board survives a new one;
+- a board built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)):
+  columns with a colour and an icon each, cards like notes, dot votes that
+  pop, and cards that glide into place when one is added, deleted or the
+  order changes.
 
 **Turn on in the Portal:** nothing. The app uses no model and no connector,
 so it costs nothing to run.
@@ -45,7 +49,11 @@ alice's cards without her name.
 2. Write your columns and the number of votes into `board.json`. For the
    next sprint give it a new `"id"`: the board starts empty, and the old one
    moves to the "Past boards" list, read-only.
-3. `efp-app check`, push, register the directory as an app in the Portal and
+3. Pick the colour (a colour of the theme) and the icon (a lucide name,
+   https://lucide.dev/icons) of each column in `COLUMN_LOOKS` at the top of
+   `static/app.js`, or give the whole board another look with a daisyUI
+   theme ([docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours)).
+4. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy.
 
 ## Things to notice
@@ -84,3 +92,7 @@ alice's cards without her name.
 - **No timers.** The board is loaded when the page opens, after each action
   and on "Refresh". A page that asked every few seconds would keep the app
   from ever being idle.
+- **Kept by id, not drawn anew.** Each answer is the whole board, but the
+  page keeps a column's and a card's element by id and only refills it, so
+  that `kit.animateList` can move it to its new place and the keyboard
+  focus stays where it was.

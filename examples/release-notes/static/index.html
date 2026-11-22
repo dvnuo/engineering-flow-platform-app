@@ -4,36 +4,93 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Release notes</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="emerald" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <h1>Release notes</h1>
-    <p class="muted">A first draft from the commits between two tags. GitHub is read with the app owner's connector.</p>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="notebook-pen"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Release notes</h1>
+      <p class="text-xs text-base-content/60 truncate">A first draft from the commits between two tags</p>
+    </div>
+    <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm ml-auto"></button>
+  </header>
 
-    <form id="notes-form">
-      <label for="repository">Repository</label>
-      <input type="text" id="repository" placeholder="owner/name" maxlength="220" autocomplete="off" required>
-      <div class="row">
-        <div>
-          <label for="base">From (the previous release)</label>
-          <input type="text" id="base" placeholder="v1.3.0" maxlength="200" list="tags" autocomplete="off" required>
-        </div>
-        <div>
-          <label for="head">To (the new release)</label>
-          <input type="text" id="head" placeholder="v1.4.0 or main" maxlength="200" list="tags" autocomplete="off" required>
-        </div>
+  <main class="efp-container py-6 sm:py-10 grid gap-6 lg:grid-cols-[minmax(0,23rem)_minmax(0,1fr)] items-start">
+    <form id="notes-form" class="efp-surface rn-form efp-rise">
+      <h2 class="font-semibold">The range</h2>
+
+      <label class="grid gap-1.5">
+        <span class="text-sm font-medium">Repository</span>
+        <span class="input w-full">
+          <i data-lucide="folder-git-2" class="opacity-50"></i>
+          <input type="text" id="repository" class="grow" placeholder="owner/name" maxlength="220" autocomplete="off" spellcheck="false" required>
+        </span>
+        <span id="tags-hint" class="rn-hint" aria-live="polite"></span>
+      </label>
+
+      <div class="rn-range">
+        <label class="grid gap-1.5">
+          <span class="text-sm font-medium">From <span class="font-normal text-base-content/50">(the previous release)</span></span>
+          <span class="input w-full">
+            <i data-lucide="tag" class="opacity-50"></i>
+            <input type="text" id="base" class="grow" placeholder="v1.3.0" maxlength="200" list="tags" autocomplete="off" spellcheck="false" required>
+          </span>
+        </label>
+        <span class="rn-arrow" aria-hidden="true"><i data-lucide="arrow-down"></i></span>
+        <label class="grid gap-1.5">
+          <span class="text-sm font-medium">To <span class="font-normal text-base-content/50">(the new release)</span></span>
+          <span class="input w-full">
+            <i data-lucide="git-branch" class="opacity-50"></i>
+            <input type="text" id="head" class="grow" placeholder="v1.4.0 or main" maxlength="200" list="tags" autocomplete="off" spellcheck="false" required>
+          </span>
+        </label>
       </div>
       <datalist id="tags"></datalist>
-      <button type="submit" id="draft-button">Draft the notes</button>
-      <button type="button" id="again-button" hidden>Write again</button>
-      <button type="button" id="copy-button" hidden>Copy</button>
+
+      <button type="submit" id="draft-button" class="btn btn-primary w-full efp-press efp-shine"><i data-lucide="wand-sparkles"></i> Draft the notes</button>
+      <p class="text-xs text-base-content/60 leading-relaxed">
+        GitHub is read with the app owner's connector. A draft is kept: the
+        same range asked again costs no model call, whoever asks.
+      </p>
     </form>
 
-    <p id="status" class="muted" role="status"></p>
-    <pre id="notes" aria-live="polite"></pre>
+    <section class="efp-surface rn-result efp-rise" style="--i: 1" aria-labelledby="draft-title">
+      <div class="rn-head">
+        <h2 id="draft-title" class="font-semibold">The draft</h2>
+        <div id="meta" class="rn-meta" role="status" aria-live="polite"></div>
+        <div id="actions" class="flex items-center gap-1 ml-auto" hidden>
+          <button type="button" id="copy-button" class="btn btn-sm btn-ghost efp-press"><i data-lucide="copy"></i> Copy</button>
+          <button type="button" id="again-button" class="btn btn-sm btn-soft btn-primary efp-press" title="Skip the kept draft and pay for a new one"><i data-lucide="refresh-cw"></i> Write again</button>
+        </div>
+      </div>
+
+      <div id="empty" class="efp-empty rn-grow">
+        <span class="efp-empty-icon"><i data-lucide="scroll-text"></i></span>
+        <strong>Your draft appears here</strong>
+        <span class="text-sm max-w-sm">Name a repository and two tags (or a tag and a branch). The draft groups the changes into features, fixes and the rest.</span>
+      </div>
+      <div id="loading" class="grid gap-3" aria-hidden="true" hidden>
+        <div class="skeleton h-5 w-32"></div>
+        <div class="skeleton h-4 w-11/12"></div>
+        <div class="skeleton h-4 w-3/4"></div>
+        <div class="skeleton h-5 w-24 mt-3"></div>
+        <div class="skeleton h-4 w-4/5"></div>
+      </div>
+      <div id="problem" class="rn-grow" hidden></div>
+      <article id="notes" class="rn-notes" hidden></article>
+    </section>
   </main>
-  <script src="static/app.js"></script>
+
+  <script type="module" src="static/app.js"></script>
 </body>
 </html>

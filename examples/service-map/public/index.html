@@ -4,83 +4,139 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Service map</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="nord" (or any
+       daisyUI theme) on <html>: the colours of the teams are turned from the
+       theme's primary colour, so they follow it too. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <header class="top">
-    <h1>Service map</h1>
-    <p id="summary" class="muted">Loading the services...</p>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="waypoints"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Service map</h1>
+      <p id="summary" class="text-xs text-base-content/60 truncate">Reading services.json...</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
   </header>
 
-  <div class="toolbar">
-    <label class="field">
-      <span class="label">Search</span>
-      <input id="search" type="search" placeholder="Name of a service" autocomplete="off" spellcheck="false">
-    </label>
-    <label class="field">
-      <span class="label">Team</span>
-      <select id="team"><option value="">All teams</option></select>
-    </label>
-    <label class="field">
-      <span class="label">Tier</span>
-      <select id="tier">
-        <option value="0">All tiers</option>
-        <option value="1">Tier 1</option>
-        <option value="2">Tier 2</option>
-        <option value="3">Tier 3</option>
-      </select>
-    </label>
-    <div class="buttons" role="group" aria-label="View">
-      <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">&minus;</button>
-      <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
-      <button id="fit" type="button" title="Show the whole map">Fit</button>
-      <button id="relayout" type="button" title="Forget the positions you dragged and lay the map out again">Lay out again</button>
+  <main class="efp-container py-5 sm:py-7 grid gap-5">
+    <div id="problems" class="alert alert-soft alert-warning sm-problems-alert items-start" role="alert" hidden>
+      <i data-lucide="file-warning" class="size-5 mt-0.5"></i>
+      <div class="min-w-0">
+        <p class="font-semibold">Problems in services.json</p>
+        <p class="text-sm">The map shows what is sound. Fix the rest in the file and deploy again.</p>
+        <ul id="problem-list" class="sm-problems"></ul>
+      </div>
     </div>
-  </div>
-  <p id="status" class="status" role="status"></p>
 
-  <main class="layout">
-    <section class="map-area" aria-label="Dependency map">
-      <!-- Drawn by app.js: one group per service in #nodes, one per dependency in #edges. -->
-      <svg id="map" tabindex="0" role="group" aria-label="Map of the services. Drag to move it, scroll or pinch to zoom, press Tab to walk through the services.">
-        <g id="viewport">
-          <g id="edges"></g>
-          <g id="nodes"></g>
-        </g>
-      </svg>
-      <p id="empty" class="empty" hidden>
-        No service matches these filters.
-        <button id="show-all" type="button">Show all</button>
-      </p>
-      <div class="legend">
-        <ul id="teams" class="chips" aria-label="Teams"></ul>
-        <ul class="chips" aria-label="How to read the map">
-          <li><span class="key arrow"></span>A &rarr; B: A depends on B</li>
-          <li><span class="key ring needs"></span>what the chosen service needs</li>
-          <li><span class="key ring users"></span>what needs the chosen service</li>
-          <li><span class="key ring far"></span>dashed: not directly, through others</li>
-          <li><span class="key arrow cycle"></span>part of a cycle</li>
-          <li>the number in a circle is the tier</li>
-        </ul>
+    <section class="sm-stage efp-surface efp-rise" aria-label="Dependency map">
+      <div class="sm-toolbar">
+        <div class="sm-search">
+          <label class="input input-sm w-full">
+            <i data-lucide="search" class="opacity-50"></i>
+            <input id="search" type="search" class="grow" placeholder="Find a service" autocomplete="off" spellcheck="false"
+                   role="combobox" aria-expanded="false" aria-controls="results" aria-autocomplete="list" aria-label="Find a service">
+            <kbd class="kbd kbd-xs hidden sm:inline-flex">/</kbd>
+          </label>
+          <ul id="results" class="sm-results" role="listbox" aria-label="Services that match" hidden></ul>
+        </div>
+        <select id="team" class="select select-sm sm-filter" aria-label="Team"><option value="">All teams</option></select>
+        <select id="tier" class="select select-sm sm-filter" aria-label="Tier">
+          <option value="0">All tiers</option>
+          <option value="1">Tier 1</option>
+          <option value="2">Tier 2</option>
+          <option value="3">Tier 3</option>
+        </select>
+        <span id="shown" class="badge badge-soft badge-primary badge-sm" hidden></span>
+        <p id="status" class="sr-only" role="status"></p>
+        <p class="sm-hint" aria-label="Keyboard shortcuts"><kbd class="kbd kbd-xs">/</kbd> find <kbd class="kbd kbd-xs">+</kbd> <kbd class="kbd kbd-xs">-</kbd> zoom <kbd class="kbd kbd-xs">0</kbd> fit <kbd class="kbd kbd-xs">Esc</kbd> clear</p>
+      </div>
+
+      <div id="canvas" class="sm-canvas">
+        <div class="sm-mapwrap">
+          <!-- Drawn by app.js: one group per service in #nodes, one per dependency in #edges. -->
+          <svg id="map" tabindex="0" role="group" aria-label="Map of the services. Drag to move it, scroll or pinch to zoom, press Tab to walk through the services.">
+            <g id="viewport">
+              <g id="edges"></g>
+              <g id="nodes"></g>
+            </g>
+          </svg>
+
+          <div id="loading" class="sm-loading" aria-hidden="true">
+            <span class="skeleton sm-bone" style="--x: 50%; --y: 22%"></span>
+            <span class="skeleton sm-bone" style="--x: 30%; --y: 46%"></span>
+            <span class="skeleton sm-bone" style="--x: 70%; --y: 46%"></span>
+            <span class="skeleton sm-bone is-small" style="--x: 18%; --y: 72%"></span>
+            <span class="skeleton sm-bone is-small" style="--x: 42%; --y: 72%"></span>
+            <span class="skeleton sm-bone is-small" style="--x: 62%; --y: 72%"></span>
+            <span class="skeleton sm-bone is-small" style="--x: 84%; --y: 72%"></span>
+          </div>
+
+          <div id="empty" class="sm-empty efp-empty" hidden>
+            <span class="efp-empty-icon"><i data-lucide="filter-x"></i></span>
+            <strong>No service matches these filters</strong>
+            <span class="text-sm">Choose another team or tier, or show everything again.</span>
+            <button id="show-all" type="button" class="btn btn-sm btn-soft btn-primary efp-press mt-1">Show all</button>
+          </div>
+          <div id="nothing" class="sm-empty efp-empty" hidden></div>
+
+          <div class="sm-controls" role="group" aria-label="View">
+            <button id="zoom-in" type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Zoom in" title="Zoom in (+)"><i data-lucide="plus"></i></button>
+            <button id="zoom-out" type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Zoom out" title="Zoom out (-)"><i data-lucide="minus"></i></button>
+            <button id="fit" type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Show the whole map" title="Show the whole map (0)"><i data-lucide="scan"></i></button>
+            <button id="relayout" type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Lay the map out again" title="Forget the positions you dragged and lay the map out again"><i data-lucide="sparkles"></i></button>
+          </div>
+        </div>
+
+        <aside id="panel" class="sm-panel" aria-label="Details of the chosen service" aria-live="polite" inert></aside>
+      </div>
+
+      <div id="legend" class="sm-legend">
+        <button type="button" id="legend-toggle" class="sm-legend-head" aria-expanded="true" aria-controls="legend-body">
+          <i data-lucide="map"></i><span>How to read the map</span><i data-lucide="chevron-down" class="sm-chevron"></i>
+        </button>
+        <div id="legend-body" class="sm-legend-body">
+          <div class="sm-legend-clip"><div class="sm-legend-content">
+            <ul id="teams" class="sm-teams" aria-label="Teams. Choose one to show only its services."></ul>
+          <ul class="sm-keys">
+            <li><svg class="sm-key" viewBox="0 0 30 12" aria-hidden="true"><path class="k-line" d="M2 6h19"/><path class="k-head" d="M28 6l-8 -4.5v9z"/></svg>A to B: A depends on B</li>
+            <li><svg class="sm-key" viewBox="0 0 30 12" aria-hidden="true"><path class="k-line k-needs" d="M2 6h19"/><path class="k-head k-needs" d="M28 6l-8 -4.5v9z"/></svg>what the chosen service needs</li>
+            <li><svg class="sm-key" viewBox="0 0 30 12" aria-hidden="true"><path class="k-line k-users" d="M2 6h19"/><path class="k-head k-users" d="M28 6l-8 -4.5v9z"/></svg>what needs the chosen service</li>
+            <li><svg class="sm-key" viewBox="0 0 30 12" aria-hidden="true"><path class="k-line k-far" d="M2 6h26"/></svg>dashed: not directly, through others</li>
+            <li><svg class="sm-key" viewBox="0 0 30 12" aria-hidden="true"><path class="k-line k-cycle" d="M2 6h26"/></svg>part of a dependency cycle</li>
+            <li><svg class="sm-key" viewBox="0 0 30 12" aria-hidden="true"><circle class="k-node" cx="6" cy="6" r="5"/><circle class="k-node" cx="17" cy="6" r="4"/><circle class="k-node" cx="26" cy="6" r="3"/></svg>tier 1, 2, 3: the number in the circle</li>
+          </ul>
+          </div></div>
+        </div>
       </div>
     </section>
 
-    <aside id="panel" class="panel" aria-label="Details of the chosen service" aria-live="polite">
-      <p class="muted">Choose a service on the map to see what it depends on and what depends on it.</p>
-    </aside>
+    <section id="overview" class="grid gap-5 lg:grid-cols-2 items-start" aria-label="The landscape in numbers">
+      <dl id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 lg:col-span-2">
+        <div class="skeleton h-24 rounded-box"></div><div class="skeleton h-24 rounded-box"></div>
+        <div class="skeleton h-24 rounded-box"></div><div class="skeleton h-24 rounded-box"></div>
+      </dl>
+      <section id="ranking-card" class="efp-surface p-5" aria-labelledby="ranking-heading" hidden>
+        <h2 id="ranking-heading" class="font-semibold">Most depended on</h2>
+        <p class="text-xs text-base-content/60">How many services stop with it, directly or through others</p>
+        <ol id="ranking" class="sm-ranking"></ol>
+      </section>
+      <section id="cycles" class="efp-surface p-5" aria-labelledby="cycles-heading" hidden>
+        <h2 id="cycles-heading" class="font-semibold">Dependency cycles</h2>
+        <p class="text-xs text-base-content/60">Services in a cycle need each other: none of them can start, be deployed or recover on its own.</p>
+        <ul id="cycle-list" class="sm-cycles"></ul>
+      </section>
+    </section>
   </main>
-
-  <section id="cycles" class="block" hidden>
-    <h2>Dependency cycles</h2>
-    <p class="muted">Services in a cycle need each other: none of them can start, be deployed or recover on its own.</p>
-    <ul id="cycle-list" class="plain"></ul>
-  </section>
-
-  <section id="problems" class="block" hidden>
-    <h2>Problems in services.json</h2>
-    <ul id="problem-list"></ul>
-  </section>
 
   <script type="module" src="app.js"></script>
 </body>

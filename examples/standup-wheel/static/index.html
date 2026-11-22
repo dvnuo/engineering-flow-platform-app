@@ -4,95 +4,177 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Stand-up wheel</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="cupcake" (or any
+       daisyUI theme) on <html>: the slices of the wheel take its colours. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <header>
-      <h1>Stand-up wheel</h1>
-      <p id="who" class="muted">Loading...</p>
-    </header>
+<body class="efp-page">
+  <div class="efp-aurora" aria-hidden="true"></div>
 
-    <div class="board">
-      <section class="wheel-side" aria-labelledby="wheel-title">
-        <h2 id="wheel-title" class="visually-hidden">The wheel</h2>
-        <div class="wheel">
-          <!-- The wheel is built in wheel.js and app.js; the pointer at the top does not turn. -->
-          <svg id="wheel" viewBox="-110 -116 220 232" role="img" aria-labelledby="wheel-text">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="ferris-wheel"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Stand-up wheel</h1>
+      <p id="who" class="text-xs text-base-content/60 truncate">Loading...</p>
+    </div>
+    <div class="ml-auto flex items-center gap-1">
+      <button type="button" id="refresh" class="btn btn-ghost btn-sm efp-press" title="See what the others spun">
+        <i data-lucide="refresh-cw"></i><span class="hidden sm:inline">Refresh</span>
+      </button>
+      <span id="me" class="mx-1"></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
+
+  <main class="efp-container py-6 sm:py-8 grid gap-6">
+    <div id="status" role="status" hidden></div>
+
+    <div class="grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-6 items-start">
+      <!-- The wheel, what it decided, and the buttons that move it. -->
+      <section class="efp-surface sw-stage efp-rise" aria-labelledby="wheel-title">
+        <div class="flex items-center justify-between gap-3">
+          <h2 id="wheel-title" class="font-semibold flex items-center gap-2">
+            <span id="round-badge" class="badge badge-soft badge-primary efp-number">Round</span>
+            <span class="text-base-content/70 font-normal text-sm" id="round-line"></span>
+          </h2>
+          <p id="space-hint" class="text-xs text-base-content/60 hidden sm:block"><kbd class="kbd kbd-xs">Space</kbd> spins</p>
+        </div>
+
+        <div class="sw-wheel" id="wheel-box">
+          <!-- The wheel is built in wheel.js and app.js; the pointer at the top does not turn with it. -->
+          <svg id="wheel" viewBox="-120 -126 240 248" role="img" aria-labelledby="wheel-text">
+            <circle class="sw-shadow" r="108" cy="5"></circle>
             <g id="disc"></g>
-            <circle class="hub" r="13"></circle>
-            <path class="pointer" d="M-9 -114L9 -114L0 -96Z"></path>
+            <circle class="sw-rim" r="105.5"></circle>
+            <g id="bulbs"></g>
+            <circle class="sw-hub-ring" r="19"></circle>
+            <circle class="sw-hub" r="14"></circle>
+            <g id="pointer"><path class="sw-pointer" d="M-10 -121Q0 -125 10 -121L2.5 -99Q0 -96 -2.5 -99Z"></path></g>
           </svg>
+          <div id="wheel-empty" class="sw-wheel-empty" hidden>
+            <span class="efp-empty-icon"><i data-lucide="users-round"></i></span>
+            <strong id="wheel-empty-title">Nobody is on the wheel</strong>
+            <span id="wheel-empty-text" class="text-sm max-w-xs"></span>
+          </div>
         </div>
-        <p id="wheel-text" class="visually-hidden"></p>
-        <p id="next" class="next" role="status" aria-live="polite"></p>
-        <div class="actions">
-          <button type="button" class="primary" id="spin" disabled>Spin</button>
-          <button type="button" id="new-round" hidden>Start a new round</button>
-          <button type="button" id="refresh">Refresh</button>
+        <p id="wheel-text" class="sr-only"></p>
+
+        <!-- Who speaks next: announced to a screen reader as well. -->
+        <div id="next" class="sw-next" role="status" aria-live="polite"></div>
+
+        <div class="flex flex-wrap justify-center gap-3">
+          <button type="button" id="spin" class="btn btn-primary btn-lg efp-press efp-shine min-w-44" disabled>
+            <i data-lucide="disc-3"></i> Spin
+          </button>
+          <button type="button" id="new-round" class="btn btn-lg btn-soft efp-press" hidden>
+            <i data-lucide="rotate-ccw"></i> Start a new round
+          </button>
         </div>
-        <p id="status" class="muted" role="status"></p>
       </section>
 
-      <section class="round-side" aria-labelledby="round-title">
-        <h2 id="round-title">This round</h2>
-        <h3>Has spoken</h3>
-        <ol id="spoken" class="people"></ol>
-        <p id="spoken-empty" class="muted">Nobody yet.</p>
-        <h3>Still to speak</h3>
-        <ul id="waiting" class="people chips"></ul>
-        <p id="waiting-empty" class="muted" hidden></p>
-        <div id="away-block" hidden>
-          <h3>Away today</h3>
-          <ul id="away" class="people chips"></ul>
-        </div>
-      </section>
+      <div class="grid gap-6 min-w-0">
+        <!-- The round: who spoke, who is still to speak, who is away. -->
+        <section class="efp-surface p-5 sm:p-6 grid gap-5 efp-rise" style="--i: 1" aria-labelledby="round-title">
+          <div>
+            <div class="flex items-baseline justify-between gap-3">
+              <h2 id="round-title" class="font-semibold">This round</h2>
+              <span id="progress-text" class="text-sm text-base-content/60 efp-number"></span>
+            </div>
+            <div class="sw-progress mt-2" aria-hidden="true"><span id="progress-bar"></span></div>
+          </div>
+
+          <div>
+            <h3 class="sw-label">Has spoken</h3>
+            <ol id="spoken" class="sw-spoken">
+              <li class="skeleton h-11 rounded-field"></li>
+              <li class="skeleton h-11 rounded-field"></li>
+            </ol>
+            <p id="spoken-empty" class="text-sm text-base-content/60" hidden>Nobody yet. The first spin picks who starts.</p>
+          </div>
+
+          <div>
+            <h3 class="sw-label">Still to speak</h3>
+            <ul id="waiting" class="sw-chips">
+              <li class="skeleton h-9 w-24 rounded-full"></li>
+              <li class="skeleton h-9 w-20 rounded-full"></li>
+              <li class="skeleton h-9 w-28 rounded-full"></li>
+            </ul>
+            <p id="waiting-empty" class="text-sm text-base-content/60" hidden></p>
+          </div>
+
+          <div id="away-block" hidden>
+            <h3 class="sw-label">Away today</h3>
+            <ul id="away" class="sw-chips is-away"></ul>
+          </div>
+        </section>
+
+        <section class="efp-surface p-5 sm:p-6 efp-rise" style="--i: 2" aria-labelledby="history-title">
+          <h2 id="history-title" class="font-semibold mb-3">Earlier rounds</h2>
+          <ol id="history" class="sw-history"></ol>
+          <div id="history-empty" class="efp-empty !py-6" hidden>
+            <span class="efp-empty-icon"><i data-lucide="history"></i></span>
+            <strong>No round has been closed yet</strong>
+            <span class="text-sm max-w-xs">When everybody has spoken, start a new round: this one is listed here, in the order it went.</span>
+          </div>
+        </section>
+      </div>
     </div>
 
-    <section aria-labelledby="history-title">
-      <h2 id="history-title">Earlier rounds</h2>
-      <ul id="history" class="history"></ul>
-      <p id="history-empty" class="muted">No round has been closed yet.</p>
-    </section>
-
-    <section id="owner" aria-labelledby="owner-title" hidden>
-      <h2 id="owner-title">The team</h2>
-      <p id="owner-note" class="muted"></p>
-      <form id="team-form" novalidate>
-        <div class="scroll">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Portal username</th>
-                <th scope="col">Name on the wheel</th>
-                <th scope="col">Away today</th>
-                <th scope="col"><span class="visually-hidden">Remove</span></th>
-              </tr>
-            </thead>
-            <tbody id="team-rows"></tbody>
-          </table>
+    <!-- The list of names: only the owner of the app sees the form, and only the owner's save is accepted. -->
+    <section id="owner" class="efp-surface p-5 sm:p-6 grid gap-4" aria-labelledby="owner-title" hidden>
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="owner-title" class="font-semibold flex items-center gap-2"><i data-lucide="users-round" class="text-primary"></i> The team</h2>
+          <p id="owner-note" class="text-sm text-base-content/60 mt-1 max-w-3xl"></p>
         </div>
-        <div class="actions">
-          <button type="button" id="add-person">Add a person</button>
-          <button type="submit" class="primary" id="save-team">Save the list</button>
+        <span id="dirty" class="badge badge-soft badge-warning" hidden>Not saved yet</span>
+      </div>
+      <div id="starter" hidden></div>
+      <form id="team-form" class="grid gap-4" novalidate>
+        <div id="team-head" class="sw-team-head" aria-hidden="true">
+          <span></span><span>Portal username</span><span>Name on the wheel</span><span>Away today</span><span></span>
         </div>
-        <p id="team-status" class="muted" role="status"></p>
-      </form>
-    </section>
-    <p id="not-owner" class="muted" hidden>The names and "away today" are edited by the owner of this app.</p>
-
-    <dialog id="confirm" aria-labelledby="confirm-title">
-      <form method="dialog">
-        <h2 id="confirm-title">Start a new round?</h2>
-        <p id="confirm-text"></p>
-        <div class="actions">
-          <button type="submit" value="cancel" id="confirm-no">Keep this round</button>
-          <button type="submit" value="close" class="primary" id="confirm-yes">Start a new round</button>
+        <ul id="team-rows" class="sw-team"></ul>
+        <div id="team-empty" class="efp-empty !py-6" hidden>
+          <span class="efp-empty-icon"><i data-lucide="user-round-plus"></i></span>
+          <strong>The list is empty</strong>
+          <span class="text-sm">Add the people who take part in the stand-up, then save.</span>
+        </div>
+        <div id="team-status" role="status" hidden></div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" id="add-person" class="btn btn-soft efp-press"><i data-lucide="user-round-plus"></i> Add a person</button>
+          <span class="grow"></span>
+          <button type="submit" id="save-team" class="btn btn-primary efp-press"><i data-lucide="save"></i> Save the list</button>
         </div>
       </form>
-    </dialog>
+    </section>
+    <p id="not-owner" class="text-xs text-base-content/50 text-center" hidden>The names and "away today" are kept by the owner of this app.</p>
   </main>
+
+  <dialog id="confirm" class="modal modal-bottom sm:modal-middle" aria-labelledby="confirm-title">
+    <form method="dialog" class="modal-box">
+      <div class="flex gap-4">
+        <span class="sw-confirm-icon" aria-hidden="true"><i data-lucide="rotate-ccw"></i></span>
+        <div>
+          <h2 id="confirm-title" class="text-lg font-semibold">Start a new round?</h2>
+          <p id="confirm-text" class="text-sm text-base-content/70 mt-1"></p>
+        </div>
+      </div>
+      <div class="modal-action">
+        <button type="submit" value="cancel" id="confirm-no" class="btn btn-ghost">Keep this round</button>
+        <button type="submit" value="close" id="confirm-yes" class="btn btn-primary">Start a new round</button>
+      </div>
+    </form>
+    <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+  </dialog>
+
   <script type="module" src="static/app.js"></script>
 </body>
 </html>

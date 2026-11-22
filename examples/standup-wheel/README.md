@@ -17,7 +17,13 @@ the app keeps the list of names and marks who is away today.
   [setup-check](../setup-check/), and a second audience (`on_the_wheel`):
   the people on the list;
 - an SVG wheel turned with `requestAnimationFrame`, and shown at its result
-  without any turning when the visitor asks for less motion.
+  without any turning when the visitor asks for less motion;
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)) whose
+  motion tells the round: the last speaker's slice shrinks off the wheel
+  while the server decides, the wheel is pulled back and thrown, runs out
+  while its pegs flick the pointer aside, and the chosen slice steps forward
+  with confetti and the name in big letters. The lists of the round, kept by
+  name, let a person glide from "still to speak" to "has spoken".
 
 **Turn on in the Portal:** nothing. The app uses no model and no connector,
 so it costs nothing to run.
@@ -45,7 +51,11 @@ are the owner and the form appears. Local data is under `.efp-data/`.
    it and edit the list on the page after the first deployment. A person has
    the username they sign in to the Portal with, which decides who may spin,
    and the name shown on the wheel.
-3. `efp-app check`, push, register the directory as an app in the Portal and
+3. Give it another look if you like: link
+   `/_efp/lib/daisyui@5.8.2/themes.css` in `static/index.html` and set
+   `data-theme="cupcake"` (or any daisyUI theme) on `<html>`. The slices take
+   the theme's colours in turn (`.c0` to `.c5` in `static/style.css`).
+4. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy. The audience should be your group; with "anyone", guests
    can watch and see the names.
 
@@ -82,5 +92,11 @@ are the owner and the form appears. Local data is under `.efp-data/`.
   picks are deleted; if the app stops in between, the round is closed and
   the leftover picks are never read again.
 - **No polling.** Somebody who watches on their own screen presses
-  "Refresh". A page that asked every few seconds would keep the app from
+  "Refresh", and when one pick was made elsewhere since, their wheel turns
+  to it too. A page that asked every few seconds would keep the app from
   ever being idle.
+- **Every motion is started by the script.** `static/style.css` has no
+  animation of its own: the turn, the slices that leave and the landing are
+  `requestAnimationFrame` and `element.animate()` in `app.js`, which asks
+  `prefers-reduced-motion` first. Space spins, for whoever keeps the hands
+  on the keyboard.

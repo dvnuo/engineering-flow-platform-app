@@ -1,56 +1,67 @@
 import { describeInstant, parseInstant } from "../lib/time.js";
-import { copyButton, el, message, select, table } from "../ui.js";
+import { button, copyButton, el, empty, input, message, motion, row, select, table } from "../ui.js";
 
 export default {
   id: "time",
   title: "Timestamp",
+  icon: "clock",
+  keywords: "epoch unix iso 8601 date utc time zone",
   blurb: "Epoch seconds or milliseconds to ISO 8601 and back, in UTC and in your local time.",
   mount(root) {
-    const input = el("input", { type: "text", class: "mono", "aria-label": "Epoch number or ISO 8601 date", placeholder: "1767225600 or 2026-01-01T00:00:00Z", autocomplete: "off", spellcheck: "false" });
+    const moment = input({ class: "dt-wide", "aria-label": "Epoch number or ISO 8601 date", placeholder: "1767225600 or 2026-01-01T00:00:00Z" });
     const unit = select("Unit of a number", [
       ["auto", "Guess the unit"],
       ["seconds", "Seconds"],
       ["milliseconds", "Milliseconds"],
     ]);
     const verdict = message();
-    const result = el("div", { class: "block" });
+    const result = el("div");
 
     function run() {
-      result.replaceChildren();
-      if (!input.value.trim()) {
-        verdict.say("Type a moment, or press Now. Nothing ticks here: \"relative to now\" is worked out when you type.");
+      if (!moment.value.trim()) {
+        verdict.say("");
+        result.replaceChildren(empty("clock", "Type a moment", 'Epoch seconds or milliseconds, or an ISO 8601 date, or press Now. Nothing ticks here: "relative to now" is worked out when you type.'));
         return;
       }
-      const parsed = parseInstant(input.value, unit.value);
+      const parsed = parseInstant(moment.value, unit.value);
       if (!parsed.ok) {
         verdict.fail(parsed.message);
+        result.replaceChildren();
         return;
       }
-      verdict.say("Read as " + parsed.readAs + ".");
+      verdict.ok("Read as " + parsed.readAs + ".");
       const rows = describeInstant(parsed.ms, Date.now());
       rows.push({
         label: "In your browser's words",
         value: new Date(parsed.ms).toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" }),
       });
-      result.append(
-        table(
-          ["", "Value", ""],
-          rows.map((row) => [row.label, row.value, copyButton(() => row.value)]),
-          "values",
+      result.replaceChildren(
+        el(
+          "div",
+          { class: "dt-pane" },
+          table(
+            ["", "Value", ""],
+            rows.map((line) => [line.label, el("span", { class: "dt-code", text: line.value }), copyButton(() => line.value)]),
+            "dt-values",
+          ),
         ),
       );
     }
 
-    const now = el("button", { type: "button", text: "Now" });
-    now.addEventListener("click", () => {
-      input.value = String(Math.floor(Date.now() / 1000));
-      unit.value = "auto";
-      run();
+    const now = button("Now", {
+      icon: "timer-reset",
+      kind: "soft",
+      onClick: () => {
+        moment.value = String(Math.floor(Date.now() / 1000));
+        unit.value = "auto";
+        run();
+        motion("flash", result.firstChild);
+      },
     });
-    input.addEventListener("input", run);
+    moment.addEventListener("input", run);
     unit.addEventListener("change", run);
 
-    root.append(el("div", { class: "row" }, input, unit, now), verdict.node, result);
+    root.append(row(moment, unit, now), verdict.node, result);
     run();
   },
 };

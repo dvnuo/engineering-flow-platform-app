@@ -313,8 +313,9 @@ exist. The host decides who may see it.
 ### 6.1 Request handling
 
 1. `/_efp/health` -> `200 ok`. `/_efp/callback`, `/_efp/logout` and
-   `/_efp/icon/{slug}` are handled by the manager. Every other path under
-   `/_efp/` is `404`. `/` is the app center (6.5).
+   `/_efp/icon/{slug}` are handled by the manager. `/_efp/lib/...` are the
+   shared browser libraries (6.6). Every other path under `/_efp/` is `404`.
+   `/` is the app center (6.5).
 2. `/{slug}` redirects to `/{slug}/`.
 3. For `/{slug}/...` the gateway decides, in this order:
    - unknown slug -> `404` page;
@@ -434,6 +435,35 @@ Apps run on this same origin, so the script of an app a member has opened can
 load the app center as that member. The page therefore holds nothing but
 what the member may open anyway: names, descriptions, owners and addresses.
 
+### 6.6 The shared browser libraries
+
+`GET /_efp/lib/<name>@<version>/<file>` answers a file of the repository's
+`lib/` directory, which the image holds at `{EFP_HOST_RESOURCE_DIR}/lib`:
+daisyUI, Tailwind CSS (the browser build), the EFP kit, Motion,
+AutoAnimate, SortableJS, canvas-confetti, ECharts, lucide and two
+typefaces. `lib/MANIFEST.json` lists every third-party file with its
+version, licence and SHA-256; `scripts/vendor_libs.py` writes them, and
+`docs/UI_KIT.md` says what each one is for.
+
+- The same files for every app and every visitor: no session is asked for
+  and nothing reaches the manager. `GET` and `HEAD` only.
+- A path never changes its content: a new version is a new directory, and an
+  old one stays while a published app may link it. The answer carries
+  `Cache-Control: public, max-age=31536000, immutable`, so a browser keeps a
+  file for a year and every app on the host shares that one copy.
+- `Content-Type` by extension (`css`, `js`, `json`, `svg`, `png`, `woff2`;
+  anything else `text/plain`), `X-Content-Type-Options: nosniff`, gzip for
+  text.
+- A file that is not there, a directory and a path that would leave `lib/`
+  are `404`.
+
+This is the one root-absolute address a page of an app may use
+(`<link href="/_efp/lib/daisyui@5.8.2/daisyui.css">`): every gateway
+answers it, whatever the app's slug. `efp-app check` accepts it when the
+file exists and warns about a version that does not. `efp-app dev` answers
+it the same way, from the SDK's copy of `lib/` (its wheel) or from the
+checkout it runs in.
+
 ## 7. Isolation and storage
 
 Both modes run each app as its own OS user with no extra privileges.
@@ -532,11 +562,14 @@ is `PORT`. The host and `efp-app dev` use the same command lines.
   `python -m flask --app {entry} run --port {PORT}` (gunicorn needs a POSIX
   system). With `--prefix` it wraps the app so that Flask's own server
   applies `SCRIPT_NAME` the way gunicorn does.
-- `efp-app dev --prefix NAME` puts a stand-in for the gateway in front of
-  the app: the prefix is removed or kept as in the table, the forwarded
-  headers of 6.2 are added, and a request outside `/NAME/` is answered 404.
-  It signs nobody in and sets no `EFP_APP_ID`, so identity and storage stay
-  those of a developer's machine.
+- `efp-app dev` puts a stand-in for the gateway in front of the app, which
+  listens on a free port behind it. The stand-in answers `/_efp/lib/` (6.6)
+  and passes every other request on with its path and cookies unchanged.
+  With `--prefix NAME` it also does what the gateway does for `/NAME/`: the
+  prefix is removed or kept as in the table, the forwarded headers of 6.2
+  are added, the app's cookies are confined to `/NAME/`, and a request
+  outside `/NAME/` is answered 404. It signs nobody in and sets no
+  `EFP_APP_ID`, so identity and storage stay those of a developer's machine.
 - An app is healthy when `GET {health_path}` on its port (with the prefix when
   the type keeps it) answers with a status below 500.
 

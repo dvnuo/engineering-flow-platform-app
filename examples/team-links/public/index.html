@@ -4,17 +4,64 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Team links</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="nord" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <main>
-    <h1>Team links</h1>
-    <p class="muted">Where things are. Press <kbd>/</kbd> to search.</p>
-    <input id="filter" type="search" placeholder="Filter by name, note or tag" autocomplete="off" aria-label="Filter the links">
-    <p id="status" class="muted" role="status">Loading...</p>
-    <div id="groups"></div>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="bookmark"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Team links</h1>
+      <p class="text-xs text-base-content/60 truncate">Every link the team keeps asking for</p>
+    </div>
+    <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm ml-auto"></button>
+  </header>
+
+  <main class="tl-main">
+    <section class="text-center">
+      <h2 class="text-3xl sm:text-4xl font-bold tracking-tight efp-rise">Where things are<span class="efp-gradient-text">.</span></h2>
+      <p class="mt-2 text-base-content/60 efp-rise" style="--i: 1">Dashboards, boards and runbooks: type a few letters, or pick a tag.</p>
+      <label class="input input-lg w-full tl-search efp-rise" style="--i: 2">
+        <i data-lucide="search" class="opacity-50"></i>
+        <input id="filter" type="search" class="grow" placeholder="Search by name, note or tag" autocomplete="off" spellcheck="false" aria-label="Filter the links" aria-describedby="status">
+        <kbd class="kbd kbd-sm hidden sm:inline-flex" aria-hidden="true">/</kbd>
+      </label>
+      <div id="tags" class="tl-chips efp-rise" style="--i: 3" aria-label="Tags"></div>
+      <p class="mt-4 text-sm text-base-content/60 efp-rise" style="--i: 3">
+        <span id="status" role="status" aria-live="polite">Loading the links...</span>
+        <span id="enter-hint" class="ml-1" hidden><kbd class="kbd kbd-xs">Enter</kbd> opens the first one.</span>
+      </p>
+    </section>
+
+    <div id="problem" class="mt-10" hidden></div>
+
+    <div id="groups" class="tl-groups">
+      <div class="grid gap-3" aria-hidden="true">
+        <div class="skeleton h-5 w-40"></div>
+        <div class="tl-list"><div class="skeleton h-28 rounded-box"></div><div class="skeleton h-28 rounded-box"></div><div class="skeleton h-28 rounded-box"></div></div>
+      </div>
+      <div class="grid gap-3" aria-hidden="true">
+        <div class="skeleton h-5 w-32"></div>
+        <div class="tl-list"><div class="skeleton h-28 rounded-box"></div><div class="skeleton h-28 rounded-box"></div></div>
+      </div>
+    </div>
+
+    <div id="nothing" class="efp-surface efp-empty mt-10" hidden>
+      <span class="efp-empty-icon"><i data-lucide="search-x"></i></span>
+      <strong id="nothing-title">Nothing matches</strong>
+      <span class="text-sm">Try fewer words, or another tag.</span>
+      <button type="button" id="clear" class="btn btn-sm btn-soft btn-primary mt-2 efp-press"><i data-lucide="x"></i> Clear the search</button>
+    </div>
   </main>
-  <script src="app.js"></script>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>

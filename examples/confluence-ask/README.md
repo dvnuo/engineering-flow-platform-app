@@ -10,7 +10,13 @@ to the pages.
 - searching Confluence through a connector (`connectors.get`);
 - a streamed model call (`llm.stream` with `st.write_stream`) that may only
   use what was found;
-- skipping the model call when nothing was found.
+- skipping the model call when nothing was found;
+- the look of the EFP kit through Streamlit's own theme
+  (`.streamlit/config.toml`, see
+  [docs/UI_KIT.md](../../docs/UI_KIT.md#streamlit-and-gradio)): the kit's
+  blue, greys and rounded corners, light or dark as the visitor's system is.
+  Streamlit draws the page, so the kit's style sheets and its motion do not
+  apply here.
 
 **Turn on in the Portal:** the Confluence connector (read-only is enough) and
 the language model, both on the app's page.
@@ -31,7 +37,11 @@ Confluence and the model.
 2. Set `SPACES` at the top of `app.py` to the spaces the app should answer
    from, and tune `MAX_PAGES` and `MAX_CHARS_PER_PAGE`: more text means
    better answers and a higher cost per question.
-3. `efp-app check`, push, register the directory as an app in the Portal,
+3. Change the look in `.streamlit/config.toml`: the colours of
+   `[theme.light]` and `[theme.dark]`, or `base = "dark"` in `[theme]` for
+   one look only. The kit's `data-theme` belongs to the HTML examples; a
+   Streamlit page takes its theme from this file.
+4. `efp-app check`, push, register the directory as an app in the Portal,
    turn on Confluence and the model and press Deploy.
 
 ## Things to notice

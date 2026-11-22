@@ -12,7 +12,11 @@ or my setup?" in a minute.
 - `connectors.available()` and a plain `connectors.get()`;
 - a page that only the owner may use;
 - one FastAPI exception handler for every SDK error, instead of a
-  `try` / `except` in each route.
+  `try` / `except` in each route;
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)): three
+  checks at the top that say at a glance what is ready, budget bars that
+  glide to their new length after a test call (the call is paid for, and
+  the page shows it), and a connector's answer with its status in colour.
 
 **Turn on in the Portal:** whatever you want to check. The page shows what is
 off.
@@ -33,6 +37,10 @@ it shows comes from the Portal. Locally you are the owner; start it with
 1. Copy this directory into your own repository.
 2. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy. The audience can stay "only me".
+3. For another look, set `data-theme="corporate"` (or any daisyUI theme) on
+   `<html>` in `static/index.html` and link
+   `/_efp/lib/daisyui@5.8.2/themes.css`
+   ([docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours)).
 
 ## Things to notice
 

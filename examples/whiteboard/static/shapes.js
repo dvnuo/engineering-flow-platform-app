@@ -13,7 +13,11 @@
 export const BOARD = { width: 1600, height: 1000 };
 export const TOOLS = ["pen", "eraser", "line", "rectangle", "ellipse", "arrow", "text"];
 export const WIDTHS = [3, 6, 12, 24];
-export const COLORS = ["#1c2024", "#b3261e", "#d97706", "#2e7d4f", "#2f5fd0", "#6f42c1", "#5f6b7a"];
+// The inks that do not come from the theme: red, orange, green, blue. Middle
+// tones, each with a contrast of at least 3.5 to 1 against white paper and
+// against the dark theme's paper (#1a1e26) alike, so a picture stays
+// readable whichever paper it was drawn on (see app.js for the others).
+export const COLORS = ["#ef4444", "#ea580c", "#059669", "#0284c7"];
 
 // A position on the screen as a point of the board. "frame" is where the
 // board is on the screen (getBoundingClientRect).

@@ -16,7 +16,14 @@ deleted by its author.
   and checksums, the dimensions, the size, a count per member;
 - a route that sends stored bytes with their content type and a cache header;
 - an action for "the author, or the owner of the app", decided on the server;
-- pointer events, so one piece of code serves mouse, touch and pen.
+- pointer events, so one piece of code serves mouse, touch and pen;
+- a studio built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)),
+  with the gallery as a rail beside the board, in light and dark: paper in
+  the theme's colour, inks chosen to read on light and on dark paper, and
+  motion that says what happened: the pill behind the tool in use slides
+  to the next tool, a ring under the pointer shows how wide the line will
+  be, a saved picture flies from the board into the gallery, a wiped board
+  is swept away, and the gallery's cards rise in.
 
 **Turn on in the Portal:** nothing. The app uses no model and no connector,
 so it costs nothing to run.
@@ -41,10 +48,16 @@ Portal, so locally that needs the app's token in `.env` (and no
 
 1. Copy this directory into your own repository.
 2. Set the limits at the top of `main.py` (`MAX_BYTES`, `MAX_SIDE`,
-   `MAX_PER_MEMBER`) and the size of the board, its colours and widths in
+   `MAX_PER_MEMBER`) and the size of the board, its fixed inks and widths in
    `static/shapes.js` (and the `width` and `height` of the canvas in
-   `static/index.html`).
-3. `efp-app check`, push, register the directory as an app in the Portal and
+   `static/index.html`). The inks that come from the theme are `INKS` at the
+   top of `static/app.js`; the paper is `--wb-paper` in `static/style.css`.
+3. Give the page another look with a daisyUI theme: link
+   `/_efp/lib/daisyui@5.8.2/themes.css` in `static/index.html` and set
+   `data-theme="lofi"` (or any theme) on `<html>`. The palette, the paper
+   and the inks named after the theme follow it
+   ([docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours)).
+4. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy.
 
 ## Things to notice
@@ -76,7 +89,18 @@ Portal, so locally that needs the app's token in `.env` (and no
   (`app.info(cached=True).owner`). The page hides the Delete button for
   everybody else, but that is a courtesy, not the check.
 - **The eraser removes, it does not paint white.** The board stays
-  transparent and the white paper is added when the picture is made, so undo
-  is simply "paint the list of strokes again without the last one".
+  transparent and the paper is added when the picture is made, so undo is
+  simply "paint the list of strokes again without the last one".
+- **Paper and inks, chosen on purpose.** The paper is the theme's, light or
+  dark, and a saved picture is the board as it was seen. So every ink has to
+  read on both papers. "Ink" is the theme's text colour, and a stroke keeps
+  the word, not the colour: drawn again in the other theme it flips from
+  near black to near white. Primary and Secondary are kept by name the same
+  way. Red, orange, green and blue are fixed middle tones with a contrast of
+  at least 3.5 to 1 on white and on the dark paper alike, so they mean the
+  same to everyone who opens the picture. The theme's accent is left out: in
+  the light theme it is too pale for white paper. A saved picture that is
+  continued on the board brings its own paper, and "Ink" then takes
+  whichever of the theme's two colours stands out from it.
 - **No timers.** The gallery is loaded when the page opens, after a save or a
   delete, and on "Refresh".

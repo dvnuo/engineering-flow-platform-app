@@ -10,7 +10,9 @@ import { position } from "./game.js";
 
 export const EFFECT_MS = 700; // how long "+25" stays on the board
 
-// A canvas does not read CSS variables, so the two themes are spelled out here.
+// A canvas does not read CSS variables. The page passes the colours of its
+// theme (options.palette, made with kit.color); these two are what is drawn
+// without one, in light and in dark.
 const PALETTES = {
   light: {
     board: "#f6f7fa",
@@ -233,19 +235,42 @@ function drawBug(ctx, state, bug, view, colors, options) {
   }
 }
 
-// "+25", "crack", "-30": text that rises and fades, and a ring around a
-// squash. In calm mode it neither rises nor fades; it is there, then gone.
+// Specks of a squashed bug that fly apart and shrink. Their directions come
+// from the effect's own seed, so a frame drawn twice looks the same.
+function drawSplat(ctx, effect, age, x, y, unit, color) {
+  ctx.fillStyle = color;
+  const specks = 9;
+  for (let index = 0; index < specks; index += 1) {
+    const angle = effect.seed + (index * Math.PI * 2) / specks;
+    const reach = unit * (0.5 + (0.9 + (index % 3) * 0.35) * (1 - (1 - age) * (1 - age)) * 1.6);
+    dot(ctx, x + Math.cos(angle) * reach, y + Math.sin(angle) * reach, Math.max(0.5, unit * (0.22 - (index % 2) * 0.07) * (1 - age * age)));
+  }
+}
+
+// "+25", "crack", "-30": text that rises and fades, a ring and specks round a
+// squash, and big words ("Go!", "x3 combo") that grow and fade where they
+// are. In calm mode nothing rises, grows or flies; the text is there, then gone.
 function drawEffects(ctx, state, effects, view, colors) {
   const size = Math.round(Math.max(13, view.unit * 0.7));
-  ctx.font = "700 " + size + "px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   for (const effect of effects) {
-    const age = Math.min(1, Math.max(0, (state.time - effect.at) / EFFECT_MS));
+    const life = effect.life || EFFECT_MS;
+    const age = Math.min(1, Math.max(0, (state.time - effect.at) / life));
     const x = effect.x * view.width;
     const y = effect.y * view.height;
     const color = colors[effect.tone] || colors.plain;
     ctx.save();
+    if (effect.big) {
+      const grow = state.calm ? 1 : 0.8 + 0.35 * (1 - (1 - age) * (1 - age) * (1 - age));
+      ctx.globalAlpha = state.calm ? 1 : Math.min(1, (1 - age) * 2.2);
+      ctx.font = "800 " + Math.round(size * 2.3 * grow) + "px system-ui, sans-serif";
+      ctx.fillStyle = color;
+      ctx.fillText(effect.text, x, y);
+      ctx.restore();
+      continue;
+    }
+    ctx.font = "700 " + size + "px system-ui, sans-serif";
     if (!state.calm) {
       ctx.globalAlpha = 1 - age * age;
       if (effect.ring) {
@@ -254,6 +279,9 @@ function drawEffects(ctx, state, effects, view, colors) {
         const radius = view.unit * (0.7 + age * 1.3);
         oval(ctx, x, y, radius, radius);
         ctx.stroke();
+      }
+      if (effect.splat) {
+        drawSplat(ctx, effect, age, x, y, view.unit, colors[effect.splat] || color);
       }
     }
     ctx.fillStyle = color;
@@ -264,8 +292,9 @@ function drawEffects(ctx, state, effects, view, colors) {
 }
 
 // One frame: the board, the bugs, the effects. `state` is null for an empty board.
+// options: dark, letters, and palette (the theme's colours, by the names of PALETTES).
 export function drawScene(ctx, view, state, effects, options) {
-  const colors = PALETTES[options.dark ? "dark" : "light"];
+  const colors = options.palette || PALETTES[options.dark ? "dark" : "light"];
   ctx.setTransform(view.ratio, 0, 0, view.ratio, 0, 0);
   ctx.globalAlpha = 1;
   ctx.fillStyle = colors.board;
@@ -288,8 +317,8 @@ export function drawScene(ctx, view, state, effects, options) {
 }
 
 // One bug of a kind in the middle of a small square canvas, for the legend.
-export function drawSample(ctx, kind, size, ratio, dark) {
-  const colors = PALETTES[dark ? "dark" : "light"];
+export function drawSample(ctx, kind, size, ratio, dark, palette) {
+  const colors = palette || PALETTES[dark ? "dark" : "light"];
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, size, size);
   ctx.globalAlpha = 1;

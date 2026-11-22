@@ -16,8 +16,16 @@ timeline for you and exports a post-mortem skeleton as Markdown.
 - masking secrets before the notes leave the app (`mask_secrets`);
 - timelines kept per member in `efp_app.storage`, one object each, saved
   with a version so that a stale save is refused;
-- a timeline drawn as SVG by the page, from functions that are tested
-  without a browser (`static/timeline.js`).
+- the rules of the page (what a time is, the order, the post-mortem, the
+  layout of the downloadable picture) as functions that are tested without
+  a browser (`static/timeline.js`);
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)): the
+  notes in a small editor with line numbers and a meter of the limit; the
+  events dropping onto a time axis one after the other, each dot landing in
+  the colour of its kind, while the line of the axis draws itself down;
+  cards that open into a form where they stand; a card whose new time puts
+  it elsewhere gliding to its place (FLIP), so the eye follows it; a
+  removed card folding away, with an Undo.
 
 **Turn on in the Portal:** the language model, on the app's page. Without it
 a timeline can still be built by hand, saved and exported.
@@ -30,7 +38,7 @@ efp-app dev examples/incident-timeline
 ```
 
 Open http://127.0.0.1:8000/. Without a token in `.env` the page loads and
-says that the app is not set up yet; "Start an empty timeline" works anyway.
+says that the app is not set up yet; "Start by hand" works anyway.
 To save one, say who you are: add `EFP_DEV_VISITOR=alice` to `.env` (once
 `.env` holds the token you are the owner without that line). With the token,
 calls are real: they run on your model provider and count against the app's
@@ -40,9 +48,13 @@ budget. Local timelines are files under `.efp-data/`.
 
 1. Copy this directory into your own repository.
 2. Change `KINDS` and `SYSTEM_PROMPT` in `main.py` to the way your team talks
-   about incidents (and `KINDS` in `static/timeline.js` and the colours in
-   `static/style.css` with them), and the sections of `postmortem()` in
-   `static/timeline.js` to your post-mortem template.
+   about incidents (and `KINDS` in `static/timeline.js` and the colour and
+   icon of each kind in `LOOKS` at the top of `static/app.js` with them),
+   and the sections of `postmortem()` in `static/timeline.js` to your
+   post-mortem template. For another look altogether, set
+   `data-theme="business"` (or any daisyUI theme) on `<html>`
+   ([docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours)): the page and the
+   colours of the kinds follow.
 3. `efp-app check`, push, register the directory as an app in the Portal,
    turn the model on and press Deploy.
 
@@ -83,9 +95,10 @@ budget. Local timelines are files under `.efp-data/`.
 - **The notes are not kept.** Only the title and the events are saved. The
   pasted text is sent to the model and forgotten.
 - **Text from elsewhere stays text.** The notes are data for the model (the
-  system prompt says so), events reach the page as SVG text nodes and input
-  values, and the Markdown export escapes them, so a line in a chat cannot
-  become a link or an image in your post-mortem.
+  system prompt says so), events reach the page as text nodes and input
+  values (and the picture as SVG text nodes), and the Markdown export
+  escapes them, so a line in a chat cannot become a link or an image in
+  your post-mortem.
 - **Times are taken as written.** No time zone is converted, and times
   without a date sort as one day: for an incident that ran over midnight,
   add the date to its events.

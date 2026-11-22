@@ -361,7 +361,7 @@ def test_sprint_burndown_shows_the_active_sprint_from_three_calls(deployed, jira
     visitor = signed()
     fake, _ = open_dashboard(monkeypatch, headers={"X-Efp-Visitor": visitor["X-EFP-Visitor"]}, project=" abc ")
 
-    assert fake.shown[0] == ("config", {"page_title": "Sprint burndown", "layout": "wide"})  # set_page_config comes first
+    assert fake.shown[0] == ("config", {"page_title": "Sprint burndown", "page_icon": ":material/trending_down:", "layout": "wide"})  # set_page_config comes first
     assert calls(portal) == [
         (BOARDS_PATH, {"projectKeyOrId": "ABC"}),
         (SPRINTS_PATH, {"state": "active,closed", "startAt": 0}),

@@ -18,7 +18,13 @@ language model switched on, "Ask" answers questions about the data in words.
   (`app.info().llm.enabled`);
 - a streamed model call (`llm.stream`) that gets the column summary and at
   most 20 sample rows, never the whole file;
-- logic in plain functions (`tabular.py`) next to a thin page (`app.py`).
+- logic in plain functions (`tabular.py`) next to a thin page (`app.py`);
+- the look of the EFP kit through Streamlit's own theme
+  (`.streamlit/config.toml`, see
+  [docs/UI_KIT.md](../../docs/UI_KIT.md#streamlit-and-gradio)): the kit's
+  blue, greys, rounded corners and chart colours, light or dark as the
+  visitor's system is. Streamlit draws the page, so the kit's style sheets
+  and its motion do not apply here.
 
 **Turn on in the Portal:** nothing. The language model is optional: turn it
 on, on the app's page, to get the "Ask" tab.
@@ -43,7 +49,11 @@ counts against the app's budget.
    `.streamlit/config.toml` with `MAX_FILE_BYTES`) to what your files need,
    and replace `sample.csv` with a file of your own team. Add the encodings
    your spreadsheets write to `ENCODINGS`.
-3. `efp-app check`, push, register the directory as an app in the Portal and
+3. Change the look in `.streamlit/config.toml`: the colours of
+   `[theme.light]` and `[theme.dark]`, or `base = "dark"` in `[theme]` for
+   one look only. The kit's `data-theme` belongs to the HTML examples; a
+   Streamlit page takes its theme from this file.
+4. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy. Turn the model on if visitors should be able to ask.
 
 ## Things to notice

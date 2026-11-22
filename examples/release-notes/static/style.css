@@ -1,69 +1,174 @@
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
+/*
+ * Release notes' own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them). The markup uses Tailwind classes for spacing and
+ * type; this file holds the form, the panel of the draft and the draft
+ * itself.
+ *
+ * Make it yours: each heading of the draft takes a colour of the theme
+ * (.rn-heading[data-kind]); app.js picks its icon in HEADINGS.
+ */
+
+[hidden] {
+  display: none !important;
 }
 
-body {
-  margin: 0;
-}
-
-main {
-  max-width: 48rem;
-  margin: 0 auto;
-  padding: 2rem 1rem 4rem;
-}
-
-h1 {
-  margin-bottom: 0.25rem;
-}
-
-section {
-  margin-top: 2rem;
-}
-
-label {
-  display: block;
-  margin-top: 0.75rem;
-  font-weight: 600;
-}
-
-input[type="text"],
-input[type="search"],
-input[type="number"],
-select,
-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 0.5rem;
-  font: inherit;
-}
-
-button {
-  margin-top: 0.75rem;
-  padding: 0.4rem 1rem;
-  font: inherit;
-  cursor: pointer;
-}
-
-pre {
-  min-height: 1.5rem;
-  margin-top: 1rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: inherit;
-}
-
-.muted {
-  opacity: 0.7;
-}
-
-.problem {
-  color: light-dark(#b3261e, #f2b8b5);
-}
-
-.row {
+.rn-form {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 1rem;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.rn-result {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+  min-height: 24rem;
+  padding: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .rn-form,
+  .rn-result {
+    padding: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .rn-form {
+    position: sticky;
+    top: 5rem;
+  }
+}
+
+.rn-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 1.5rem;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 62%, transparent);
+}
+
+.rn-range {
+  display: grid;
+  gap: 0.35rem;
+}
+
+/* From, then to: the arrow between the two fields says which way the range goes. */
+.rn-arrow {
+  display: grid;
+  place-items: center;
+  color: color-mix(in oklab, var(--color-primary) 70%, var(--color-base-content));
+  opacity: 0.6;
+}
+
+.rn-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  min-height: 2rem;
+}
+
+.rn-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+}
+
+.rn-grow {
+  flex: 1;
+  align-content: center;
+}
+
+/* ---- The draft --------------------------------------------------------------------- */
+
+.rn-notes {
+  display: grid;
+  gap: 0.6rem;
+  line-height: 1.6;
+}
+
+.rn-heading {
+  --rn-tone: var(--color-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  font-weight: 650;
+  font-size: 1.05rem;
+}
+
+.rn-heading:first-child {
+  margin-top: 0;
+}
+
+.rn-heading[data-kind="bug"] {
+  --rn-tone: var(--color-success);
+}
+
+.rn-heading[data-kind="package"] {
+  --rn-tone: var(--color-secondary);
+}
+
+.rn-heading-icon {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 0.65rem;
+  color: color-mix(in oklab, var(--rn-tone) 78%, var(--color-base-content));
+  background: color-mix(in oklab, var(--rn-tone) 14%, transparent);
+}
+
+.rn-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0 0 0 2.5rem;
+  list-style: none;
+}
+
+.rn-list > li {
+  position: relative;
+  overflow-wrap: anywhere;
+}
+
+.rn-list > li::before {
+  content: "";
+  position: absolute;
+  left: -1rem;
+  top: 0.68em;
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-base-content) 30%, transparent);
+}
+
+.rn-code {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+}
+
+/* A pull request number: a small chip that links to it when the address is known. */
+.rn-ref {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  color: color-mix(in oklab, var(--color-primary) 80%, var(--color-base-content));
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+  text-decoration: none;
+  transition: background var(--efp-fast) ease;
+}
+
+a.rn-ref:hover {
+  background: color-mix(in oklab, var(--color-primary) 20%, transparent);
 }

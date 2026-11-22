@@ -1,206 +1,278 @@
+/*
+ * Whiteboard's own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them). The markup and app.js use Tailwind classes for
+ * spacing and type; this file holds the studio: the tool palette, the paper,
+ * the brush under the pointer and the gallery beside it.
+ *
+ * Make it yours: the paper is --wb-paper (the theme's base colour, so it is
+ * light or dark with the theme); the inks are in app.js and shapes.js.
+ */
+
 :root {
-  color-scheme: light dark;
-  --page: light-dark(#f4f5f7, #121417);
-  --surface: light-dark(#ffffff, #1b1e23);
-  --line: light-dark(#d5dae1, #353b45);
-  --text: light-dark(#1c2024, #e7e9ec);
-  --muted: light-dark(#5b6675, #9aa5b4);
-  --accent: light-dark(#2f5fd0, #8fb2ff);
-  --on-accent: light-dark(#ffffff, #0e1830);
-  --problem: light-dark(#b3261e, #f2b8b5);
-  --focus: light-dark(#1a4fd6, #a9c4ff);
-  --radius: 0.5rem;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--page);
-  color: var(--text);
+  --wb-paper: var(--color-base-100);
 }
 
 [hidden] {
   display: none !important;
 }
 
-main {
-  max-width: 68rem;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 4rem;
+.wb-main {
+  width: 100%;
+  max-width: 100rem;
+  margin-inline: auto;
+  padding: 1.25rem 1rem 3rem;
 }
 
-h1,
-h2 {
-  margin: 0;
-  line-height: 1.25;
+/* The board on the left, the gallery as a rail on the right; one below the
+ * other on a narrow screen. */
+.wb-studio {
+  display: grid;
+  gap: 1.5rem;
+  align-items: start;
 }
 
-h1 {
-  font-size: 1.6rem;
+@media (min-width: 1024px) {
+  .wb-studio {
+    grid-template-columns: minmax(0, 1fr) 21rem;
+  }
+
+  .wb-gallery-column {
+    position: sticky;
+    top: 4.75rem;
+    max-height: calc(100dvh - 6rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
 }
 
-h2 {
-  font-size: 1.1rem;
+.wb-board-column {
+  --wb-ink: var(--color-base-content); /* the colour in use; app.js keeps it up to date */
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
 }
 
-p {
-  margin: 0.25rem 0 0;
-}
-
-section {
-  margin-top: 1.5rem;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.problem {
-  color: var(--problem);
-}
-
-.status {
-  min-height: 1.5rem;
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-
-button {
-  padding: 0.35rem 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-
-button:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-button[aria-pressed="true"] {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  font-weight: 600;
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-
-button.danger {
-  color: var(--problem);
-}
-
-button.primary.danger {
-  border-color: var(--problem);
-  background: var(--problem);
-  color: var(--surface);
-}
-
-input[type="text"] {
+.wb-board-column > * {
+  width: 100%;
+  /* The paper keeps its 16:10 and fits the screen: never taller than what
+   * is left under the bar, the palette and the row to save. */
+  max-width: calc((100dvh - 15.5rem) * 1.6);
   min-width: 0;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
 }
 
-/* --- The board --- */
+/* ---- The palette --------------------------------------------------------------------------- */
 
-.toolbar {
+.wb-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
-  padding: 0.5rem;
-  border: 1px solid var(--line);
-  border-bottom: 0;
-  border-radius: var(--radius) var(--radius) 0 0;
-  background: var(--surface);
+  justify-content: center;
+  gap: 0.35rem 0.5rem;
+  padding: 0.4rem;
+  border-radius: 1.1rem;
+  background: color-mix(in oklab, var(--color-base-100) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid var(--efp-line);
+  box-shadow: var(--efp-shadow-md);
 }
 
-.group {
+.wb-sep {
+  width: 1px;
+  height: 1.6rem;
+  background: var(--efp-line-strong);
+}
+
+/* On a phone the palette wraps into rows; a line at the end of a row would be noise. */
+@media (max-width: 640px) {
+  .wb-sep {
+    display: none;
+  }
+}
+
+/* The tools: a segmented row; a pill slides behind the one in use. */
+.wb-tools {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.wb-tools button {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+  cursor: pointer;
+  transition: color var(--efp-fast) ease, background var(--efp-fast) ease, transform var(--efp-fast) var(--efp-spring);
+}
+
+.wb-tools button:hover {
+  color: var(--color-base-content);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+}
+
+.wb-tools button:active {
+  transform: scale(0.92);
+}
+
+.wb-tools button[aria-pressed="true"] {
+  color: var(--color-primary-content);
+  background: transparent;
+}
+
+.wb-tools button:focus-visible,
+.wb-swatch:focus-within,
+.wb-width:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wb-tools .lucide {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.wb-tool-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 60%, var(--color-secondary)));
+  box-shadow: var(--efp-glow);
+}
+
+/* The key of each tool, small in a corner: it shows while the palette is
+ * pointed at or has the focus, for those who have a keyboard. */
+.wb-key {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  font-size: 0.56rem;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--efp-medium) ease;
+}
+
+.wb-toolbar:hover .wb-key,
+.wb-toolbar:focus-within .wb-key {
+  opacity: 0.55;
+}
+
+@media (hover: none) {
+  .wb-key {
+    display: none;
+  }
+}
+
+.wb-colors,
+.wb-widths,
+.wb-history {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem;
 }
 
-.toolbar button {
-  padding: 0.25rem 0.65rem;
-  font-size: 0.92rem;
+/* A colour: a dot that grows a ring when chosen. */
+.wb-swatch {
+  position: relative;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  background: var(--swatch);
+  /* The hairline keeps an ink that is as dark (or as light) as the palette visible. */
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-base-content) 30%, transparent);
+  cursor: pointer;
+  transition: transform var(--efp-medium) var(--efp-spring), box-shadow var(--efp-fast) ease;
 }
 
-.swatch,
-.width {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  padding: 0 !important;
-  border-radius: 50%;
+.wb-swatch:hover {
+  transform: scale(1.14);
 }
 
-.swatch[aria-pressed="true"] {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
+.wb-swatch[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-base-content) 30%, transparent), 0 0 0 2px var(--color-base-100),
+    0 0 0 3.5px color-mix(in oklab, var(--color-base-content) 75%, transparent);
 }
 
-.width span {
-  display: block;
-  border-radius: 50%;
-  background: var(--text);
+/* A little room between the theme's inks and the fixed ones. */
+.wb-swatch.is-theme + .wb-swatch:not(.is-theme) {
+  margin-left: 0.35rem;
 }
 
-#custom-color {
-  width: 1.75rem;
-  height: 1.75rem;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: none;
+/* "Another colour": a colour wheel (the one place with fixed colours: it stands
+ * for all of them) over the browser's own picker. */
+.wb-custom {
+  background: conic-gradient(from 90deg, #ef4444, #f59e0b, #22c55e, #06b6d4, #6366f1, #d946ef, #ef4444);
+}
+
+.wb-custom input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
   cursor: pointer;
 }
 
-.paper {
+/* The widths: dots as large as the line they draw, in the colour in use. */
+.wb-width {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.65rem;
+  cursor: pointer;
+  transition: background var(--efp-fast) ease;
+}
+
+.wb-width:hover {
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+}
+
+.wb-width[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--color-primary) 14%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--color-primary) 55%, transparent);
+}
+
+.wb-width > span {
+  display: block;
+  border-radius: 999px;
+  background: var(--wb-ink);
+  /* A hairline keeps a dot visible when the ink is as dark (or as light) as the palette. */
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-base-content) 22%, transparent);
+  transition: background var(--efp-medium) ease, transform var(--efp-medium) var(--efp-spring);
+}
+
+.wb-width:hover > span {
+  transform: scale(1.15);
+}
+
+.wb-danger:hover:not(:disabled) {
+  color: var(--color-error);
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+}
+
+/* ---- The paper ----------------------------------------------------------------------------- */
+
+.wb-paper {
   position: relative;
-  border: 1px solid var(--line);
-  border-radius: 0 0 var(--radius) var(--radius);
-  /* The paper is white in the dark as well: the colours of a drawing are
-     what they are, and the saved picture has a white sheet. */
-  background: #ffffff;
   overflow: hidden;
+  border-radius: 1.1rem;
+  background-color: var(--wb-paper);
+  /* A faint dot grid to draw along; it is the paper's, not the picture's. */
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--color-base-content) 11%, transparent) 1px, transparent 1.4px);
+  background-size: 24px 24px;
+  border: 1px solid var(--efp-line-strong);
+  box-shadow: var(--efp-shadow-lg);
 }
 
 #board {
@@ -214,135 +286,281 @@ input[type="text"] {
   cursor: crosshair;
 }
 
+/* With a mouse or a pen, the brush below shows where and how wide the line goes. */
+@media (hover: hover) {
+  #board[data-tool="pen"],
+  #board[data-tool="eraser"] {
+    cursor: none;
+  }
+}
+
 #board[data-tool="text"] {
   cursor: text;
 }
 
-.text-entry {
+.wb-brush {
   position: absolute;
-  min-width: 8rem;
-  padding: 0 !important;
-  border: 1px dashed #5b6675 !important;
-  border-radius: 0 !important;
-  background: rgb(255 255 255 / 0.85) !important;
-  line-height: 1.15;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  border-radius: 999px;
+  border: 1.5px solid var(--wb-ink);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--wb-paper) 80%, transparent);
+  pointer-events: none;
 }
 
-.save-row {
+.wb-brush[data-tool="eraser"] {
+  border-style: dashed;
+  border-color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+}
+
+.wb-text-entry {
+  position: absolute;
+  z-index: 3;
+  min-width: 8rem;
+  padding: 0 0.2rem;
+  border: 1.5px dashed color-mix(in oklab, var(--color-primary) 70%, transparent);
+  border-radius: 0.35rem;
+  background: color-mix(in oklab, var(--wb-paper) 88%, transparent);
+  line-height: 1.15;
+  outline: none;
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-primary) 12%, transparent);
+}
+
+/* An empty board says what it is for; the first line takes it away. */
+.wb-invite {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.4rem;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--efp-medium) ease, transform var(--efp-medium) var(--efp-ease-out);
+  transform: scale(0.97);
+}
+
+.wb-paper.is-empty:not(.is-wiping) .wb-invite {
+  opacity: 1;
+  transform: none;
+}
+
+.wb-invite strong {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+}
+
+.wb-invite-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 1rem;
+  font-size: 1.35rem;
+  color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+}
+
+.wb-keys {
+  display: block;
+  margin-top: 0.35rem;
+}
+
+@media (hover: none), (max-width: 640px) {
+  .wb-keys {
+    display: none;
+  }
+}
+
+/* Wiping the board: the old drawing, swept away from left to right. */
+.wb-wipe {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.wb-squeegee {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  width: 3px;
+  background: linear-gradient(180deg, transparent, var(--color-primary) 20%, var(--color-secondary) 80%, transparent);
+  box-shadow: 0 0 18px 4px color-mix(in oklab, var(--color-primary) 45%, transparent);
+  pointer-events: none;
+}
+
+.wb-save {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.75rem;
 }
 
-.save-row input {
+.wb-save .input {
   flex: 1 1 14rem;
 }
 
-/* --- The gallery --- */
-
-.section-head {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.section-head button {
-  margin-left: auto;
-}
-
-.gallery {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
-  gap: 0.9rem;
-  margin: 0.75rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.card {
-  padding: 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.thumb {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border-radius: calc(var(--radius) - 0.15rem);
-  background: #ffffff;
-  overflow: hidden;
-}
-
-.thumb img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.card-title {
-  margin-top: 0.4rem;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.card .muted {
-  font-size: 0.85rem;
-}
-
-.empty {
-  margin-top: 0.75rem;
-  padding: 1.5rem 1rem;
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  color: var(--muted);
+.wb-hint {
   text-align: center;
 }
 
-/* --- Dialogs --- */
-
-dialog {
-  width: min(26rem, calc(100vw - 2rem));
-  padding: 1.25rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
+@media (hover: none) {
+  .wb-hint .kbd {
+    display: none;
+  }
 }
 
-dialog::backdrop {
-  background: rgb(0 0 0 / 0.5);
+/* ---- The gallery ------------------------------------------------------------------------------- */
+
+.wb-gallery-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
-dialog.viewer {
-  width: min(60rem, calc(100vw - 2rem));
+.wb-gallery {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(9.25rem, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0 0.15rem 0.5rem;
 }
 
-.viewer img {
+.wb-skeleton {
+  aspect-ratio: 16 / 13;
+  border-radius: var(--radius-box);
+}
+
+.wb-card {
+  display: grid;
+  align-content: start;
+  overflow: hidden;
+  background: var(--color-base-100);
+  border: 1px solid var(--efp-line);
+  border-radius: var(--radius-box);
+  box-shadow: var(--efp-shadow-sm);
+}
+
+.wb-card.is-leaving {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.wb-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--color-base-200);
+  border-bottom: 1px solid var(--efp-line);
+  cursor: zoom-in;
+}
+
+.wb-thumb:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* A picture fades in when it has arrived, and leans in a little on hover. */
+.wb-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--efp-slow) ease, transform var(--efp-slow) var(--efp-ease-out);
+}
+
+.wb-thumb img.is-loaded {
+  opacity: 1;
+}
+
+.wb-card:hover .wb-thumb img {
+  transform: scale(1.04);
+}
+
+.wb-card-body {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.55rem 0.7rem 0.65rem;
+}
+
+.wb-card-title,
+.wb-facts {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-card-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.wb-empty {
+  padding: 2rem 1.25rem;
+}
+
+/* The picture that flies from the board into the gallery after a save. */
+.wb-ghost {
+  position: fixed;
+  z-index: 50;
+  transform-origin: top left;
+  border-radius: 1rem;
+  box-shadow: var(--efp-shadow-lg);
+  pointer-events: none;
+}
+
+/* ---- Dialogs ------------------------------------------------------------------------------------ */
+
+.wb-viewer {
+  width: min(64rem, 94vw);
+  max-width: none;
+}
+
+.wb-viewer-frame {
+  overflow: hidden;
+  border-radius: 0.9rem;
+  border: 1px solid var(--efp-line-strong);
+  background: var(--color-base-200);
+}
+
+.wb-viewer-frame img {
   display: block;
   width: 100%;
   height: auto;
-  margin-top: 0.75rem;
-  border: 1px solid var(--line);
-  background: #ffffff;
 }
 
-.dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1rem;
+.wb-confirm-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border-radius: 1rem;
+  font-size: 1.3rem;
+  color: var(--color-error);
+  background: color-mix(in oklab, var(--color-error) 14%, transparent);
 }
 
-.dialog-actions .danger:not(.primary) {
-  margin-right: auto;
-}
+/* ---- Motion -------------------------------------------------------------------------------------- */
 
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
+@media (prefers-reduced-motion: no-preference) {
+  .wb-tool-pill.is-ready {
+    transition: transform 420ms var(--efp-spring), width 300ms var(--efp-ease-out), height 300ms var(--efp-ease-out);
   }
 }

@@ -22,7 +22,12 @@ want to turn a server you already have into an app.
   fixed list, a timeout, no redirect to another host, a small read limit,
   nothing passed on to the page;
 - a thread pool that ends with the request, and results in storage, one
-  object per environment.
+  object per environment;
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)) that
+  shows one request as many: while "Check now" runs, every row shows that
+  it is being asked; then the rows settle in the order their environments
+  answered, fastest first, each with its latency counted up, its uptime
+  ring gliding and its line redrawn. A row that went down shakes.
 
 **Turn on in the Portal:** nothing. The app uses no model and no connector,
 so it costs nothing to run. The environments must be reachable from the app
@@ -55,7 +60,11 @@ copy `.env.example` to `.env` in this directory and add the line
    say otherwise). With `"contains"`, the first 2 KiB of the answer must
    also hold that text, for a health page that answers 200 with
    `"status":"DOWN"`.
-3. `efp-app check`, push, register the directory as an app in the Portal and
+3. Give it another look if you like: link
+   `/_efp/lib/daisyui@5.8.2/themes.css` in `static/index.html` and set
+   `data-theme="business"` (or any daisyUI theme) on `<html>`. Up and down
+   are the theme's success and error colours.
+4. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy.
 
 To run a server of your own this way, keep the five duties at the top of
@@ -90,7 +99,13 @@ manifest and let the gateway take the prefix off for you.
   cause one round of requests, and that two rounds never overwrite each
   other's results in storage.
 - **No timers in the page.** The page checks when asked. An open tab that
-  polled would knock on every environment all day.
+  polled would knock on every environment all day. Nothing on the page
+  pretends to be live either: no mark pulses, because a result is only as
+  new as its "Checked ... ago".
+- **The order is the answer's, the rhythm is the page's.** The server asks
+  all environments at once and sends one answer; the page lets the rows
+  settle by their latency, a fraction of a second apart, so that what was
+  fast is seen to be fast.
 - **Guests see results, members see addresses.** With the audience "anyone",
   a visitor who is not signed in gets the names and states, not the URLs of
   your test network, and cannot start a check.

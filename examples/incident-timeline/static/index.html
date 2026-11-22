@@ -4,72 +4,183 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Incident timeline</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="business" (or any
+       daisyUI theme) on <html>; the colours of the kinds of events follow. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <header>
-      <h1>Incident timeline</h1>
-      <p class="muted">
-        Paste the chat, the log lines or your notes of an incident. The model
-        picks out the events; you correct them, keep the timeline and take a
-        post-mortem skeleton with you.
-      </p>
-    </header>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="siren"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Incident timeline</h1>
+      <p class="text-xs text-base-content/60 truncate">From the notes of an incident to a timeline you can keep</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span id="model" class="it-model" hidden></span>
+      <span id="me"></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
 
-    <p id="notice" class="notice" role="status" hidden></p>
-
-    <section aria-labelledby="notes-heading">
-      <h2 id="notes-heading">1. The notes</h2>
-      <form id="notes-form">
-        <label for="notes">Chat export, log lines or notes</label>
-        <textarea id="notes" rows="10" spellcheck="false"
-          placeholder="09:02 monitoring: checkout 5xx above 5%&#10;09:05 bob: looking at it, last deploy was 08:55&#10;09:20 bob: rolled back, errors are gone"></textarea>
-        <p class="hint muted">
-          Passwords, tokens and keys are masked before the notes go to the
-          model. Still, leave out what a model should not read.
-          <span id="notes-count"></span>
-        </p>
-        <div class="bar">
-          <button type="submit" id="extract-button" class="primary">Extract the timeline</button>
-          <button type="button" id="blank-button">Start an empty timeline</button>
+  <main class="efp-container it-layout">
+    <!-- 1. The notes: a small editor with line numbers, a counter and the limit. -->
+    <section id="notes-card" class="efp-surface efp-rise" aria-labelledby="notes-heading">
+      <form id="notes-form" class="grid gap-3 p-4 sm:p-5">
+        <div class="flex items-center gap-3">
+          <span class="it-icon" aria-hidden="true"><i data-lucide="clipboard-paste"></i></span>
+          <div class="min-w-0">
+            <h2 id="notes-heading" class="font-semibold leading-tight">The notes</h2>
+            <p class="text-xs text-base-content/60">A chat export, log lines or your own notes</p>
+          </div>
         </div>
+        <div id="notice" hidden></div>
+        <div id="editor" class="it-editor">
+          <div class="it-editor-bar">
+            <i data-lucide="file-text" class="opacity-60"></i>
+            <span class="font-medium">notes</span>
+            <span id="lines" class="text-base-content/50 efp-number">1 line</span>
+            <button type="button" id="clear-button" class="btn btn-ghost btn-xs ml-auto" title="Clear the notes" hidden>
+              <i data-lucide="eraser"></i> Clear
+            </button>
+          </div>
+          <div class="it-editor-body">
+            <pre id="gutter" class="it-gutter" aria-hidden="true">1</pre>
+            <textarea id="notes" class="it-notes" wrap="off" spellcheck="false" autocomplete="off"
+              aria-label="The notes of the incident" aria-describedby="notes-count notes-hint"
+              placeholder="09:02 monitoring: checkout 5xx above 5%&#10;09:05 bob: looking at it, last deploy was 08:55&#10;09:20 bob: rolled back, errors are gone"></textarea>
+          </div>
+          <div class="it-editor-foot">
+            <span id="meter" class="it-meter" aria-hidden="true"><span></span></span>
+            <span id="notes-count" class="efp-number">0 / 16,000</span>
+          </div>
+        </div>
+        <p id="notes-over" class="it-over" hidden></p>
+        <p id="notes-hint" class="flex gap-2 text-xs text-base-content/60 leading-relaxed">
+          <i data-lucide="shield-check" class="mt-0.5 text-success"></i>
+          <span>Passwords, tokens and keys are masked before the notes go to the model. Still, leave out what a model should not read.</span>
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="submit" id="extract-button" class="btn btn-primary efp-press efp-shine">
+            <i data-lucide="sparkles"></i> Extract the timeline
+          </button>
+          <span class="text-xs text-base-content/50 hidden sm:inline" aria-hidden="true"><kbd class="kbd kbd-xs">Ctrl</kbd> <kbd class="kbd kbd-xs">Enter</kbd></span>
+        </div>
+        <div id="extract-status" role="status" aria-live="polite"></div>
       </form>
-      <p id="extract-status" class="status" role="status"></p>
     </section>
 
-    <section id="timeline-section" aria-labelledby="timeline-heading" hidden>
-      <h2 id="timeline-heading">2. The timeline</h2>
-      <label for="title">Title</label>
-      <input type="text" id="title" maxlength="120" autocomplete="off" placeholder="Checkout outage of 12 November">
+    <!-- 2. The timeline: one card per event on a time axis. -->
+    <section id="board" class="efp-surface it-board efp-rise" style="--i: 1" aria-labelledby="board-heading">
+      <h2 id="board-heading" class="sr-only">The timeline</h2>
 
-      <ul id="legend" class="legend" aria-label="Kinds of events"></ul>
-      <div id="drawing" class="drawing"></div>
-      <p id="empty" class="empty muted" hidden>No events to draw yet. Add one below.</p>
-
-      <h3 id="events-heading">Correct the events</h3>
-      <ol id="events" class="events" aria-labelledby="events-heading"></ol>
-      <div class="bar">
-        <button type="button" id="add-button">Add an event</button>
-        <button type="button" id="undo-button" hidden>Undo the removal</button>
+      <div id="board-empty" class="efp-empty it-board-empty">
+        <span class="efp-empty-icon"><i data-lucide="git-commit-vertical"></i></span>
+        <strong>Your timeline appears here</strong>
+        <span class="text-sm max-w-sm">Paste the notes of an incident and press Extract: the model picks out when, who and what happened. Or start by hand and add the events yourself.</span>
+        <button type="button" class="btn btn-sm btn-soft btn-primary mt-2 efp-press" data-blank><i data-lucide="plus"></i> Start by hand</button>
       </div>
 
-      <div class="bar actions">
-        <button type="button" id="save-button" class="primary">Save</button>
-        <button type="button" id="export-button">Download the post-mortem (.md)</button>
-        <button type="button" id="copy-button">Copy as Markdown</button>
+      <div id="board-reading" class="it-reading" hidden>
+        <div class="it-board-head">
+          <div class="skeleton h-8 w-2/3 rounded-lg"></div>
+          <div class="flex gap-2"><div class="skeleton h-6 w-24 rounded-full"></div><div class="skeleton h-6 w-28 rounded-full"></div><div class="skeleton h-6 w-20 rounded-full"></div></div>
+        </div>
+        <p class="it-reading-line" role="status">
+          <span class="loading loading-dots loading-sm text-primary"></span>
+          <span>The model is reading the notes. This can take half a minute.</span>
+          <span id="reading-time" class="efp-number text-base-content/50 ml-auto">0 s</span>
+        </p>
+        <ol class="it-axis is-reading" aria-hidden="true">
+          <li class="it-event"><div class="it-when"><div class="skeleton h-4 w-11 ml-auto rounded"></div></div><span class="it-dot"></span><div class="skeleton h-20 rounded-2xl"></div></li>
+          <li class="it-event"><div class="it-when"><div class="skeleton h-4 w-11 ml-auto rounded"></div></div><span class="it-dot"></span><div class="skeleton h-16 rounded-2xl"></div></li>
+          <li class="it-event"><div class="it-when"><div class="skeleton h-4 w-11 ml-auto rounded"></div></div><span class="it-dot"></span><div class="skeleton h-20 rounded-2xl"></div></li>
+          <li class="it-event"><div class="it-when"><div class="skeleton h-4 w-11 ml-auto rounded"></div></div><span class="it-dot"></span><div class="skeleton h-16 rounded-2xl"></div></li>
+        </ol>
       </div>
-      <p id="timeline-status" class="status" role="status"></p>
+
+      <div id="board-open" hidden>
+        <div class="it-board-head">
+          <label class="sr-only" for="title">Title</label>
+          <input type="text" id="title" class="it-title" maxlength="120" autocomplete="off" placeholder="Name this incident">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="basis-full sm:basis-auto"><span id="save-state" class="badge badge-soft gap-1.5"></span></span>
+            <span class="grow"></span>
+            <button type="button" class="btn btn-sm btn-ghost btn-square efp-press" data-blank aria-label="Start a new timeline by hand" title="Start a new timeline by hand">
+              <i data-lucide="file-plus-2"></i>
+            </button>
+            <button type="button" id="export-button" class="btn btn-sm btn-ghost efp-press" popovertarget="export-menu" style="anchor-name: --it-export" aria-label="Export">
+              <i data-lucide="download"></i><span class="hidden sm:inline">Export</span><i data-lucide="chevron-down" class="opacity-50"></i>
+            </button>
+            <button type="button" id="save-button" class="btn btn-sm btn-primary efp-press" title="Save (Ctrl+S)">
+              <i data-lucide="save"></i> Save
+            </button>
+          </div>
+          <ul id="facts" class="it-facts" aria-label="About this timeline">
+            <li><i data-lucide="list"></i> <span id="fact-events" class="efp-number">0</span> <span id="fact-events-word">events</span></li>
+            <li id="fact-span-item" title="From the first to the last event"><i data-lucide="timer"></i> <span id="fact-span" class="efp-number"></span></li>
+            <li title="People, teams and systems that acted or reported"><i data-lucide="users"></i> <span id="fact-people" class="efp-number">0</span> involved</li>
+          </ul>
+          <ul id="legend" class="it-legend" aria-label="Kinds of events"></ul>
+        </div>
+        <div id="axis-empty" class="efp-empty pb-2" hidden>
+          <span class="efp-empty-icon"><i data-lucide="list-plus"></i></span>
+          <strong>No events yet</strong>
+          <span class="text-sm max-w-sm">Add the first one: when it happened, who acted and what they did. Or paste notes on the left and let the model find them.</span>
+        </div>
+        <ol id="axis" class="it-axis" aria-label="Events in the order of time"></ol>
+      </div>
     </section>
 
-    <section aria-labelledby="saved-heading">
-      <h2 id="saved-heading">Your saved timelines</h2>
-      <p id="saved-status" class="muted" role="status">Loading...</p>
-      <ul id="saved" class="saved"></ul>
-      <button type="button" id="refresh-button" hidden>Refresh the list</button>
+    <!-- 3. What the member kept: theirs alone. -->
+    <section id="saved-card" class="efp-surface p-4 sm:p-5 efp-rise" style="--i: 2" aria-labelledby="saved-heading">
+      <div class="flex items-center gap-3">
+        <span class="it-icon" aria-hidden="true"><i data-lucide="archive"></i></span>
+        <div class="min-w-0 grow">
+          <h2 id="saved-heading" class="font-semibold leading-tight">Your timelines</h2>
+          <p id="saved-status" class="text-xs text-base-content/60" role="status">Loading...</p>
+        </div>
+        <button type="button" id="refresh-button" class="btn btn-ghost btn-sm btn-square efp-press" aria-label="Refresh the list" title="Refresh the list" hidden>
+          <i data-lucide="refresh-cw"></i>
+        </button>
+      </div>
+      <ul id="saved" class="it-saved-list">
+        <li class="skeleton h-12 rounded-xl"></li>
+        <li class="skeleton h-12 rounded-xl"></li>
+      </ul>
+      <div id="saved-empty" class="efp-empty it-saved-empty" hidden></div>
     </section>
   </main>
+
+  <ul id="export-menu" popover class="dropdown dropdown-end menu w-72 rounded-box bg-base-100 shadow-lg border border-base-content/10 p-2" style="position-anchor: --it-export">
+    <li><button type="button" data-export="markdown"><i data-lucide="file-down"></i> Download the post-mortem (.md)</button></li>
+    <li><button type="button" data-export="copy"><i data-lucide="clipboard-copy"></i> Copy it as Markdown</button></li>
+    <li><button type="button" data-export="picture"><i data-lucide="image"></i> Download a picture (.svg)</button></li>
+  </ul>
+
+  <dialog id="confirm" class="modal modal-bottom sm:modal-middle" aria-labelledby="confirm-title">
+    <form method="dialog" class="modal-box">
+      <div class="flex gap-4">
+        <span id="confirm-icon" class="it-confirm-icon" aria-hidden="true"></span>
+        <div>
+          <h2 id="confirm-title" class="text-lg font-semibold"></h2>
+          <p id="confirm-text" class="text-sm text-base-content/70 mt-1"></p>
+        </div>
+      </div>
+      <div class="modal-action">
+        <button type="button" id="confirm-cancel" class="btn btn-ghost">Cancel</button>
+        <button type="submit" id="confirm-ok" class="btn btn-primary" value="ok">OK</button>
+      </div>
+    </form>
+    <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+  </dialog>
+
   <script type="module" src="static/app.js"></script>
 </body>
 </html>

@@ -1,441 +1,823 @@
-/* Light and dark from one set of variables: light-dark() picks by the visitor's setting. */
-:root {
-  color-scheme: light dark;
-  --page: light-dark(#f5f6f8, #14161a);
-  --panel: light-dark(#ffffff, #1d2026);
-  --text: light-dark(#1c2026, #e7e9ee);
-  --muted: light-dark(#5d6673, #9ba4b3);
-  --line: light-dark(#d5d9e0, #343943);
-  --accent: light-dark(#2456c9, #8db0ff);
-  --on-accent: light-dark(#ffffff, #0f1320);
-  --bad: light-dark(#b3261e, #f2b8b5);
-  --added: light-dark(#dcf5e3, #173a25);
-  --removed: light-dark(#fde2df, #4a1f1c);
-  --mark-even: light-dark(#ffe58a, #6b5200);
-  --mark-odd: light-dark(#ffc59a, #7a3a0c);
-  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--page);
-  color: var(--text);
-}
-
-.top,
-.layout {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: 0 1rem;
-}
-
-.top {
-  padding-top: 1.5rem;
-}
-
-h1 {
-  margin: 0;
-  font-size: 1.6rem;
-}
-
-h2 {
-  margin: 0;
-  font-size: 1.3rem;
-}
-
-h3 {
-  margin: 1.25rem 0 0.4rem;
-  font-size: 1rem;
-}
-
-.privacy {
-  margin: 0.5rem 0 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--line);
-  border-left: 0.25rem solid var(--accent);
-  border-radius: 0.4rem;
-  background: var(--panel);
-  font-size: 0.95rem;
-}
-
-.layout {
-  display: grid;
-  grid-template-columns: 11rem minmax(0, 1fr);
-  gap: 1.5rem;
-  align-items: start;
-  padding-top: 1.25rem;
-  padding-bottom: 4rem;
-}
-
-nav {
-  position: sticky;
-  top: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-nav a {
-  padding: 0.4rem 0.7rem;
-  border-radius: 0.4rem;
-  color: inherit;
-  text-decoration: none;
-}
-
-nav a:hover {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
-nav a[aria-current="page"] {
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.tool {
-  padding: 1.25rem;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  background: var(--panel);
-}
-
-.tool > * + * {
-  margin-top: 0.75rem;
-}
-
-.tool > .muted:first-of-type {
-  margin-top: 0.25rem;
-}
-
-p {
-  margin: 0;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-textarea,
-input[type="text"],
-input[type="number"],
-select,
-button {
-  font: inherit;
-  color: inherit;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--page);
-}
-
-textarea,
-input[type="text"] {
-  display: block;
-  width: 100%;
-  padding: 0.5rem 0.6rem;
-}
-
-textarea,
-.mono,
-.output,
-.pointer,
-table.values td {
-  font-family: var(--mono);
-  font-size: 0.9rem;
-}
-
-textarea {
-  resize: vertical;
-  tab-size: 2;
-}
-
-textarea[readonly] {
-  background: color-mix(in srgb, var(--page) 60%, var(--panel));
-}
-
-input[type="number"] {
-  width: 5rem;
-  padding: 0.4rem 0.5rem;
-}
-
-select {
-  padding: 0.4rem 0.5rem;
-}
-
-button {
-  padding: 0.4rem 0.9rem;
-  background: var(--panel);
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: var(--accent);
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-
-button.chip {
-  padding: 0.2rem 0.6rem;
-  border-radius: 1rem;
-}
-
-button.copy {
-  min-width: 5.5rem; /* "Copied" must not make the row jump */
-}
-
-td button.copy {
-  padding: 0.15rem 0.6rem;
-  font-family: system-ui, sans-serif;
-}
-
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
-  align-items: center;
-}
-
-.row > input[type="text"] {
-  flex: 1 1 16rem;
-  width: auto;
-}
-
-.pair {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 0.75rem;
-}
-
-.field {
-  display: block;
-}
-
-.label {
-  display: block;
-  margin-bottom: 0.2rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.row > .field,
-.row > .label {
-  margin-bottom: 0;
-}
-
-.check {
-  display: inline-flex;
-  gap: 0.35rem;
-  align-items: center;
-}
-
-.choice {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1rem;
-  margin: 0.75rem 0 0;
-  padding: 0;
-  border: 0;
-}
-
-.choice legend {
-  padding: 0;
-}
-
-.status {
-  min-height: 1.5rem; /* the line keeps its place while it is empty */
-  overflow-wrap: anywhere;
-}
-
-.problem {
-  color: var(--bad);
-}
-
-.pointer,
-.output {
-  margin: 0.75rem 0 0;
-  padding: 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--page);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.pointer {
-  border-color: var(--bad);
-  white-space: pre;
-  overflow-x: auto;
-}
-
-.notes {
-  margin: 0.5rem 0 0;
-  padding-left: 1.25rem;
-  color: var(--muted);
-}
-
-.notes:empty,
-.block:empty {
-  display: none;
-}
-
-.notice {
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--bad);
-  border-left-width: 0.25rem;
-  border-radius: 0.4rem;
-}
-
-.headline {
-  font-size: 1.15rem;
-  font-weight: 600;
-}
-
-.headline:empty {
-  display: none;
-}
-
-.scroll {
-  overflow-x: auto;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-th,
-td {
-  padding: 0.35rem 0.6rem 0.35rem 0;
-  border-bottom: 1px solid var(--line);
-  text-align: left;
-  vertical-align: top;
-}
-
-th {
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-table.values td {
-  overflow-wrap: anywhere;
-}
-
-table.values td:first-child {
-  font-family: inherit;
-  font-size: inherit;
-  white-space: nowrap;
-}
-
-.runs {
-  margin: 0;
-  padding-left: 1.5rem;
-}
-
-mark {
-  border-radius: 0.2rem;
-  color: inherit;
-}
-
-mark.even {
-  background: var(--mark-even);
-}
-
-mark.odd {
-  background: var(--mark-odd);
-}
-
-/* A match of no characters still has a place: a thin bar marks it. */
-mark.empty {
-  display: inline-block;
-  width: 0.15rem;
-  height: 1em;
-  vertical-align: text-bottom;
-}
-
-.diff {
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  overflow-x: auto;
-  font-family: var(--mono);
-  font-size: 0.9rem;
-}
-
-.line {
-  display: grid;
-  grid-template-columns: 3rem 3rem minmax(0, 1fr);
-}
-
-.line .number {
-  padding-right: 0.5rem;
-  color: var(--muted);
-  text-align: right;
-  user-select: none;
-}
-
-.line .text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* Colour is backed by the + and - at the start of each line. */
-.line.add {
-  background: var(--added);
-}
-
-.line.del {
-  background: var(--removed);
-}
-
-.line.hunk {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--muted);
-}
-
-.offscreen {
-  position: fixed;
-  left: -100rem;
-  top: 0;
-}
+/*
+ * Dev toolbox's own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them): the list of tools with its gliding highlight, the
+ * command palette, and the parts every tool is made of (panes for code,
+ * messages, tables, the diff and the regex highlights). Code is in the kit's
+ * mono typeface (--font-mono, JetBrains Mono); every colour is the theme's.
+ */
 
 [hidden] {
   display: none !important;
 }
 
-/* Narrow screens: the tools become a row that scrolls sideways above the tool. */
-@media (max-width: 46rem) {
-  .layout {
+.dt-code,
+.dt-editor,
+.dt-out {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+/* ---- The shell -------------------------------------------------------------------------------- */
+
+.dt-layout {
+  display: grid;
+  grid-template-columns: 15.5rem minmax(0, 1fr);
+  align-items: start;
+  gap: 2rem;
+  padding-block: 1.75rem 4rem;
+}
+
+.dt-side {
+  position: sticky;
+  top: 5rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.dt-filter {
+  width: 100%;
+}
+
+.dt-list-wrap {
+  position: relative;
+}
+
+.dt-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The highlight behind the open tool; app.js moves it, the transition makes it glide. */
+.dt-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 0.75rem;
+  background: color-mix(in oklab, var(--color-primary) 11%, var(--color-base-100));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-primary) 22%, transparent), var(--efp-shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dt-indicator.is-ready {
+  transition: transform 460ms var(--efp-spring), width 460ms var(--efp-spring), height 460ms var(--efp-spring), opacity 200ms ease;
+}
+
+.dt-link {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+  color: color-mix(in oklab, var(--color-base-content) 78%, transparent);
+  transition: color var(--efp-fast) ease, background var(--efp-fast) ease;
+}
+
+.dt-link:hover {
+  color: var(--color-base-content);
+  background: color-mix(in oklab, var(--color-base-content) 5%, transparent);
+}
+
+.dt-link[aria-current="page"] {
+  color: var(--color-base-content);
+  font-weight: 600;
+}
+
+.dt-link[aria-current="page"]:hover {
+  background: transparent;
+}
+
+.dt-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.dt-link-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 0.6rem;
+  color: color-mix(in oklab, var(--color-primary) 80%, var(--color-base-content));
+  background: color-mix(in oklab, var(--color-primary) 9%, transparent);
+  transition: transform var(--efp-medium) var(--efp-spring), background var(--efp-fast) ease, color var(--efp-fast) ease;
+}
+
+.dt-link:hover .dt-link-icon {
+  transform: scale(1.08) rotate(-4deg);
+}
+
+.dt-link[aria-current="page"] .dt-link-icon {
+  color: var(--color-primary-content);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+}
+
+.dt-link-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.dt-link-key {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+}
+
+.dt-no-tool {
+  font-size: 0.8rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.dt-privacy {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-box);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: color-mix(in oklab, var(--color-base-content) 72%, transparent);
+  background: color-mix(in oklab, var(--color-success) 8%, var(--color-base-100));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-success) 22%, transparent);
+}
+
+.dt-privacy > svg {
+  margin-top: 0.1rem;
+  color: var(--color-success);
+}
+
+.dt-privacy strong {
+  color: var(--color-base-content);
+}
+
+.dt-keys {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+}
+
+.dt-keys > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dt-keys dd {
+  margin: 0;
+}
+
+.dt-loading {
+  display: grid;
+  gap: 1.25rem;
+}
+
+/* ---- One tool --------------------------------------------------------------------------------- */
+
+.dt-tool {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.dt-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.dt-tool-head h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  outline: none;
+}
+
+.dt-tool-head p {
+  max-width: 48rem;
+  font-size: 0.9rem;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
+.dt-tool-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 1rem;
+  color: var(--color-primary-content);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  box-shadow: var(--efp-glow), inset 0 1px 0 color-mix(in oklab, white 35%, transparent);
+}
+
+.dt-tool-body,
+.dt-stack {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.dt-split {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+@media (min-width: 80rem) {
+  .dt-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.dt-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.dt-subhead {
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+/* A pane: a card for code, with a bar on top for its name and its buttons. */
+.dt-pane {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--color-base-100);
+  border: 1px solid var(--efp-line);
+  border-radius: var(--radius-box);
+  box-shadow: var(--efp-shadow-sm);
+  transition: border-color var(--efp-fast) ease, box-shadow var(--efp-medium) ease;
+}
+
+.dt-pane:focus-within {
+  border-color: color-mix(in oklab, var(--color-primary) 55%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-primary) 12%, transparent);
+}
+
+.dt-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.6rem;
+  padding: 0.3rem 0.4rem 0.3rem 0.9rem;
+  border-bottom: 1px solid var(--efp-line);
+  background: color-mix(in oklab, var(--color-base-200) 55%, var(--color-base-100));
+}
+
+.dt-pane-title {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+}
+
+.dt-pane-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.dt-editor {
+  display: block;
+  width: 100%;
+  min-height: 6rem;
+  padding: 0.8rem 0.95rem;
+  border: 0;
+  outline: none;
+  resize: vertical;
+  font-size: 0.84rem;
+  line-height: 1.6;
+  color: var(--color-base-content);
+  background: transparent;
+  tab-size: 2;
+}
+
+.dt-editor[readonly] {
+  background: color-mix(in oklab, var(--color-base-200) 35%, transparent);
+}
+
+.dt-editor::placeholder {
+  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+}
+
+.dt-out {
+  margin: 0;
+  padding: 0.8rem 0.95rem;
+  max-height: 30rem;
+  overflow: auto;
+  font-size: 0.84rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  outline: none;
+}
+
+.dt-out:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+.dt-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dt-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+
+.dt-hint,
+.dt-note,
+.dt-faint {
+  font-size: 0.8rem;
+  color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+}
+
+/* daisyUI draws the focus of a field in the text colour; the toolbox uses its accent, as the panes do. */
+.input:focus,
+.input:focus-within,
+.select:focus,
+.textarea:focus,
+.file-input:focus-within {
+  outline-color: var(--color-primary);
+}
+
+/* A checkbox keeps square corners, so it is not taken for a radio button. */
+.dt-check .checkbox {
+  border-radius: 0.3rem;
+}
+
+.dt-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.dt-select {
+  width: auto;
+}
+
+.dt-wide {
+  flex: 1 1 18rem;
+  width: auto;
+}
+
+.dt-number {
+  width: 6.5rem;
+}
+
+.dt-pad {
+  padding: 0.9rem;
+}
+
+.dt-message {
+  min-height: 1.5rem; /* keeps its place while empty, so what is under it does not jump */
+}
+
+.dt-alert {
+  align-items: flex-start;
+}
+
+.dt-pointer {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  overflow-x: auto;
+  border-radius: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: color-mix(in oklab, var(--color-base-100) 70%, transparent);
+}
+
+.dt-notes {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.dt-notes:empty {
+  display: none;
+}
+
+.dt-empty {
+  padding: 2rem 1.5rem;
+  border: 1px dashed var(--efp-line-strong);
+  border-radius: var(--radius-box);
+  background: color-mix(in oklab, var(--color-base-100) 55%, transparent);
+}
+
+.dt-notice {
+  align-items: flex-start;
+}
+
+/* A copy button: both labels in one cell (the button keeps its width), and a tick that draws itself. */
+.dt-copy {
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.dt-copy-mark {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+}
+
+.dt-copy-words {
+  display: grid;
+}
+
+.dt-copy-words > span {
+  grid-area: 1 / 1;
+  transition: opacity var(--efp-fast) ease, transform var(--efp-medium) var(--efp-spring);
+}
+
+.dt-copy-words > span:last-child {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.dt-copy.is-done {
+  color: var(--color-success);
+}
+
+.dt-copy.is-done .dt-copy-words > span:first-child {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.dt-copy.is-done .dt-copy-words > span:last-child {
+  opacity: 1;
+  transform: none;
+}
+
+.dt-offscreen {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+}
+
+/* ---- Tables, the diff, the regex highlights, cron --------------------------------------------- */
+
+.dt-table {
+  overflow-x: auto;
+}
+
+.dt-values th {
+  font-weight: 600;
+  white-space: nowrap;
+  color: color-mix(in oklab, var(--color-base-content) 62%, transparent);
+}
+
+.dt-values td {
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.dt-values tr {
+  transition: background var(--efp-medium) ease;
+}
+
+.dt-values tr.is-match {
+  background: color-mix(in oklab, var(--color-success) 12%, transparent);
+}
+
+.dt-digest {
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.dt-pattern {
+  gap: 0.15rem;
+  font-size: 0.95rem;
+}
+
+.dt-pattern input {
+  font-family: var(--font-mono);
+}
+
+.dt-slash {
+  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+}
+
+.dt-flags {
+  min-width: 1ch;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.dt-marked mark {
+  padding: 1px 0;
+  border-radius: 3px;
+  color: inherit;
+}
+
+.dt-marked mark.even {
+  background: color-mix(in oklab, var(--color-primary) 24%, transparent);
+  box-shadow: inset 0 -2px 0 color-mix(in oklab, var(--color-primary) 60%, transparent);
+}
+
+.dt-marked mark.odd {
+  background: color-mix(in oklab, var(--color-secondary) 24%, transparent);
+  box-shadow: inset 0 -2px 0 color-mix(in oklab, var(--color-secondary) 60%, transparent);
+}
+
+.dt-marked mark.empty {
+  border-left: 2px solid var(--color-primary);
+}
+
+.dt-diff {
+  max-height: 34rem;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.dt-diff .line {
+  display: grid;
+  grid-template-columns: 3.25rem 3.25rem minmax(0, 1fr);
+}
+
+.dt-diff .number {
+  padding-right: 0.6rem;
+  text-align: right;
+  user-select: none;
+  color: color-mix(in oklab, var(--color-base-content) 38%, transparent);
+}
+
+.dt-diff .text {
+  padding-right: 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.dt-diff .add {
+  background: color-mix(in oklab, var(--color-success) 13%, transparent);
+}
+
+.dt-diff .del {
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+}
+
+.dt-diff .add .text {
+  color: color-mix(in oklab, var(--color-success) 55%, var(--color-base-content));
+}
+
+.dt-diff .del .text {
+  color: color-mix(in oklab, var(--color-error) 55%, var(--color-base-content));
+}
+
+.dt-diff .hunk {
+  padding-block: 0.2rem;
+  color: color-mix(in oklab, var(--color-info) 70%, var(--color-base-content));
+  background: color-mix(in oklab, var(--color-info) 9%, transparent);
+}
+
+.dt-cron {
+  font-family: var(--font-mono);
+  width: 100%;
+  letter-spacing: 0.02em;
+}
+
+.dt-chip {
+  font-family: var(--font-mono);
+  border: 1px solid var(--efp-line-strong);
+}
+
+.dt-headline {
+  font-size: 1.2rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.dt-headline:empty {
+  display: none;
+}
+
+/* The next runs as a short timeline: a dot per run on a line. */
+.dt-runs {
+  display: grid;
+  margin: 0;
+  padding: 0.75rem 1rem 0.75rem 1.9rem;
+  list-style: none;
+}
+
+.dt-runs li {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+  padding: 0.35rem 0;
+}
+
+.dt-runs li::before {
+  content: "";
+  position: absolute;
+  left: -1.15rem;
+  top: 0.75rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 18%, transparent);
+}
+
+.dt-runs li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(-1.15rem + 0.25rem);
+  top: 1.3rem;
+  bottom: -0.75rem;
+  width: 1.5px;
+  background: color-mix(in oklab, var(--color-primary) 25%, transparent);
+}
+
+.dt-runs .dt-code {
+  font-size: 0.85rem;
+  font-weight: 550;
+}
+
+/* ---- The palette (Ctrl+K) --------------------------------------------------------------------- */
+
+.dt-palette {
+  max-width: 36rem;
+  padding: 0;
+  overflow: hidden;
+}
+
+.dt-palette-search {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.95rem 1.1rem;
+  border-bottom: 1px solid var(--efp-line);
+}
+
+.dt-palette-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  font-size: 1rem;
+  background: transparent;
+  color: var(--color-base-content);
+}
+
+.dt-palette-list {
+  max-height: min(24rem, 60vh);
+  margin: 0;
+  padding: 0.4rem;
+  overflow: auto;
+  list-style: none;
+}
+
+.dt-option {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.75rem;
+  cursor: pointer;
+}
+
+.dt-option[aria-selected="true"] {
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+}
+
+.dt-option[aria-selected="true"] .dt-link-icon {
+  color: var(--color-primary-content);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+}
+
+.dt-option-title {
+  display: block;
+  font-weight: 600;
+}
+
+.dt-option-title mark {
+  border-radius: 3px;
+  color: inherit;
+  background: color-mix(in oklab, var(--color-primary) 24%, transparent);
+}
+
+.dt-option-blurb {
+  display: block;
+  overflow: hidden;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+}
+
+.dt-option-none {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.25rem 0.75rem;
+  font-size: 0.875rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.dt-palette-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  padding: 0.6rem 1.1rem;
+  border-top: 1px solid var(--efp-line);
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+  background: color-mix(in oklab, var(--color-base-200) 45%, transparent);
+}
+
+@media (hover: none) {
+  .dt-keys,
+  .dt-palette-foot,
+  .dt-link-key {
+    display: none;
+  }
+}
+
+/* ---- A narrow screen: the list becomes a strip that scrolls sideways ---------------------------- */
+
+@media (max-width: 63.99rem) {
+  .dt-layout {
     grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    padding-top: 1rem;
+  }
+
+  .dt-side {
+    position: static;
     gap: 0.75rem;
   }
 
-  nav {
-    position: static;
-    flex-direction: row;
-    overflow-x: auto;
-    padding-bottom: 0.25rem;
+  .dt-filter,
+  .dt-keys,
+  .dt-no-tool {
+    display: none;
   }
 
-  nav a {
+  .dt-list-wrap {
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .dt-list {
+    display: flex;
+    gap: 0.25rem;
+    width: max-content;
+  }
+
+  .dt-link {
+    padding: 0.35rem 0.75rem 0.35rem 0.4rem;
     white-space: nowrap;
   }
 
-  .tool {
-    padding: 1rem 0.75rem;
+  .dt-link-icon {
+    width: 1.7rem;
+    height: 1.7rem;
+  }
+
+  .dt-link-key {
+    display: none;
+  }
+
+  .dt-privacy {
+    padding: 0.55rem 0.7rem;
+    font-size: 0.72rem;
+  }
+
+  .dt-tool-head h2 {
+    font-size: 1.25rem;
+  }
+
+  /* In a table on a phone a copy button is its icon; its name stays for assistive technology. */
+  .dt-table .dt-copy-words {
+    display: none;
+  }
+
+  .dt-tool-icon {
+    width: 2.75rem;
+    height: 2.75rem;
   }
 }

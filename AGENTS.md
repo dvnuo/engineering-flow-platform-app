@@ -25,7 +25,10 @@ code.
 3. [docs/SDK_REFERENCE.md](docs/SDK_REFERENCE.md): look up every SDK name
    before you write it. Never guess a function, a parameter or an error
    class.
-4. [examples/README.md](examples/README.md): find the example closest to
+4. [docs/UI_KIT.md](docs/UI_KIT.md): how a page looks: the libraries every
+   gateway serves at `/_efp/lib/`, the EFP kit, and the rules for a good
+   page. Read it before you write the first page.
+5. [examples/README.md](examples/README.md): find the example closest to
    your task with its "which example shows what" table, and read that
    example in full: code, README, and its test. The test of an example is
    `sdk/tests/test_example_<name>.py`; seven examples (`confluence-ask`,
@@ -54,8 +57,9 @@ code.
 Each one is checked by `efp-app check`, by the verification list, or by a
 reviewer. The reason for each is in the guide.
 
-1. **No URL that the browser reads starts with `/`.** Relative URLs in
-   pages, scripts and style sheets; the framework's URL builder
+1. **No URL that the browser reads starts with `/`**, except
+   `/_efp/lib/...`, the shared libraries every gateway serves. Relative URLs
+   in pages, scripts and style sheets; the framework's URL builder
    (`url_for`, `request.url_for`) or `efp_app.app.base_path()` on the server.
 2. **Identity comes from the gateway, on the server.** Use `require_visitor`
    / `get_visitor` (`efp_app.integrations.<framework>`) or
@@ -87,7 +91,12 @@ reviewer. The reason for each is in the guide.
 10. **Validate everything a visitor sends** before it becomes a storage key,
     a connector path, a query, a file or a prompt: type, length, format,
     count, upload size.
-11. **Do not invent.** If the platform cannot do something the project needs
+11. **A page is finished, not bare.** Build it on the UI kit
+    ([docs/UI_KIT.md](docs/UI_KIT.md)) and keep its rules: every action
+    shows that it is working, nothing jumps, an empty state says what to do,
+    a failure is a sentence, light and dark, phone and desktop, no HTML built
+    from data. A converted project keeps its own look when it has one.
+12. **Do not invent.** If the platform cannot do something the project needs
     (see "Does it fit?" in the conversion guide), stop and report it. Do not
     work around a limit, fake a feature, or silently drop one.
 
@@ -97,7 +106,7 @@ reviewer. The reason for each is in the guide.
 pip install efp-app-sdk                       the SDK and the efp-app command
 efp-app init fastapi my-app                   a starter (fastapi, flask, streamlit, gradio, static)
 efp-app check --strict [directory]            the manifest, the files, root-absolute URLs; must exit 0
-efp-app dev [directory] [--port N]            run it as the host does, without a prefix
+efp-app dev [directory] [--port N]            run it as the host does, without a prefix (serves /_efp/lib/ too)
 efp-app dev [directory] --prefix my-app       run it under /my-app/ behind a local gateway; prints every request that leaves the app
 ```
 
@@ -151,6 +160,7 @@ should not ask for the owner's token. Say what the owner has to do.
 | `sdk/` | `efp-app-sdk` (`efp_app`) and the `efp-app` command; tests in `sdk/tests` |
 | `templates/` | the starters; `sdk/efp_app/_templates/` is a mirror kept by `python sdk/sync_templates.py` |
 | `examples/` | complete example apps; each has `sdk/tests/test_example_<name>.py` (the first seven are in `test_examples.py`) |
+| `lib/` | the shared browser libraries served at `/_efp/lib/` (docs/UI_KIT.md): third-party files written by `scripts/vendor_libs.py` only, never edited by hand; the EFP kit in `lib/efp-kit@<version>/`, a new directory for each changed version |
 | `integration/` | the container smoke test CI runs (needs Docker and Linux) |
 | `k8s/`, `terraform/`, `scripts/` | deployment files and their checker |
 
@@ -165,6 +175,7 @@ cd host && python -m pytest          the host
 cd sdk  && python -m pytest          the SDK, the starters and every example
 python scripts/check_manifests.py    the Kubernetes files (needs PyYAML)
 python sdk/sync_templates.py --check the starters' mirror
+python scripts/vendor_libs.py --check lib/ against its manifest
 ```
 
 The container smoke test (`integration/ci.sh`) runs in CI on every push; say
@@ -176,7 +187,8 @@ so when your change can only be verified there.
   another script is written as escapes in code and lives only in the locale
   catalogues (`host/pages/zh-*.json`).
 - No new runtime dependency for the SDK (it depends on `httpx` only) and
-  none for an example beyond its framework.
+  none for an example beyond its framework. The libraries under `lib/` are not
+  dependencies: every gateway serves them (docs/UI_KIT.md).
 - An example follows the rules in
   [examples/README.md](examples/README.md#writing-a-new-example) and comes
   with tests.
