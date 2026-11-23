@@ -227,7 +227,10 @@ apply. Give them the same colours with the framework's own theme:
 `demo.launch(theme=gr.themes.Soft(primary_hue="blue", font=[...system fonts...]))`
 ([test-case-writer](../examples/test-case-writer/)). Gradio 6 takes the theme
 in `launch()`, not in `gr.Blocks()`; name the system's fonts, because the
-theme's default font is a web font from another host.
+theme's default font is a web font from another host. Keep Gradio's
+analytics off (`gr.Blocks(analytics_enabled=False)`; the host sets
+`GRADIO_ANALYTICS_ENABLED=False`): with them on, Gradio 6.32's `launch()`
+fails on a theme whose fonts are strings.
 
 ## Changing the libraries
 

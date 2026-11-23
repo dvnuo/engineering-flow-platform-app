@@ -118,6 +118,9 @@ def test_the_page_is_built_with_blocks_and_does_not_launch_on_import(writer):
     module, fake = writer
     kinds = [kind for kind, _args, _options in fake.built]
     assert kinds[0] == "Blocks" and kinds.count("Blocks") == 1
+    # No analytics: nothing goes to Gradio's servers, and launch() does not
+    # compare the theme with Gradio's own (which fails on its string fonts).
+    assert fake.built[0][2]["analytics_enabled"] is False
     assert "launch" not in kinds  # importing the script (a test, a tool) starts no server
     assert kinds.count("load") == 1 and kinds.count("click") == 2 and kinds.count("submit") == 1
 

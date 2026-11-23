@@ -62,6 +62,12 @@ on your model provider, count against the app's budget and read your Jira.
   the theme, which Gradio 6 takes in `launch()` rather than in `gr.Blocks()`
   (hence `gradio>=6` in `requirements.txt`). It stays inside
   `if __name__ == "__main__":`, so the file can be imported by a test.
+- **`gr.Blocks(..., analytics_enabled=False)`.** Gradio otherwise reports
+  every start to its makers, and with analytics on its `launch()` compares
+  the theme with its built-in ones and fails on fonts given as strings
+  ("'str' object has no attribute 'name'", Gradio 6.32). The host and
+  `efp-app dev` set `GRADIO_ANALYTICS_ENABLED=False` too; the argument
+  keeps `python app.py` working.
 - **A generator is the stream.** `write_scenarios` yields the text so far, a
   status line and the download button; every yield replaces what the three
   outputs show. `llm.stream()` sends the request when it is called, so "the

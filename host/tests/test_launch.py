@@ -53,7 +53,12 @@ def test_streamlit_command():
 def test_gradio_command():
     command = build_command(_manifest("gradio"), python=PY, port=20003, base_path="/mindmap")
     assert command.argv == [PY, "app.py"]
-    assert command.env == {"GRADIO_SERVER_NAME": "127.0.0.1", "GRADIO_SERVER_PORT": "20003", "GRADIO_ROOT_PATH": "/mindmap"}
+    assert command.env == {
+        "GRADIO_SERVER_NAME": "127.0.0.1",
+        "GRADIO_SERVER_PORT": "20003",
+        "GRADIO_ANALYTICS_ENABLED": "False",  # no reports to Gradio, and launch() keeps working with any theme
+        "GRADIO_ROOT_PATH": "/mindmap",
+    }
 
 
 def test_command_type_runs_through_the_shell():

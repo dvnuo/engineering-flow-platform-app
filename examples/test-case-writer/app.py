@@ -331,7 +331,13 @@ THEME = gr.themes.Soft(
     font_mono=["ui-monospace", "Consolas", "monospace"],
 )
 
-with gr.Blocks(title="Test case writer") as demo:
+# analytics_enabled=False: Gradio otherwise reports every start to its makers
+# and asks them for its latest version, and an app sends nothing to another
+# host. With analytics on, Gradio 6.32's launch() also compares THEME with its
+# built-in themes and fails on the fonts above ("'str' object has no attribute
+# 'name'"). The host and `efp-app dev` turn analytics off as well; this keeps
+# `python app.py` working too.
+with gr.Blocks(title="Test case writer", analytics_enabled=False) as demo:
     gr.Markdown(
         "# Test case writer\n"
         "From a user story to test scenarios: the main path, the negative cases and the edges. "

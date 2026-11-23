@@ -710,9 +710,15 @@ def test_streamlit_command_line():
 def test_gradio_command_line():
     launch = launch_of(type="gradio", entry="app.py")
     assert launch.argv == [PY, "app.py"]
-    assert launch.env == {"GRADIO_SERVER_NAME": "127.0.0.1", "GRADIO_SERVER_PORT": "8000"}
+    # No reports to Gradio, as on the host; with them on, launch() fails on a theme whose fonts are strings.
+    assert launch.env == {"GRADIO_SERVER_NAME": "127.0.0.1", "GRADIO_SERVER_PORT": "8000", "GRADIO_ANALYTICS_ENABLED": "False"}
     on_host = launch_of(type="gradio", entry="app.py", base_path="/mindmap", port=20003)
-    assert on_host.env == {"GRADIO_SERVER_NAME": "127.0.0.1", "GRADIO_SERVER_PORT": "20003", "GRADIO_ROOT_PATH": "/mindmap"}
+    assert on_host.env == {
+        "GRADIO_SERVER_NAME": "127.0.0.1",
+        "GRADIO_SERVER_PORT": "20003",
+        "GRADIO_ANALYTICS_ENABLED": "False",
+        "GRADIO_ROOT_PATH": "/mindmap",
+    }
 
 
 def test_command_command_line():
