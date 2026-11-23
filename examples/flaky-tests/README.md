@@ -13,7 +13,14 @@ started to fail lately, and the slowest.
   costs one call, once;
 - bounded work: so many builds per request, so many rows sent and drawn;
 - what to do with a body the Portal cut at 5 MiB (`truncated`);
-- a heatmap drawn by hand as SVG that the keyboard can read.
+- a heatmap drawn by hand as SVG that the keyboard can read (the arithmetic
+  is in `static/matrix.mjs`, tested with node);
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)) whose
+  motion says something: a new answer fills the heatmap in a wave from the
+  top left, so the eye follows the builds in their order; pointing at a
+  square lights up its row and its build's column together, with the build
+  number on top; sorting and filtering move the rows that are already there
+  (`kit.animateList`) instead of drawing them anew; the totals count up.
 
 **Turn on in the Portal:** the Jenkins connector (read-only is enough), on
 the app's page.
@@ -43,7 +50,11 @@ in [setup-check](../setup-check/) first (with a build number of your own):
 2. List your jobs in `jobs.json`: a `name` for the page and the job's `path`
    as its folders and name (`team/web-app/main` for the job at
    `/job/team/job/web-app/job/main`).
-3. `efp-app check`, push, register the directory as an app in the Portal,
+3. Change the look if you like: a daisyUI theme on `<html>`
+   (`data-theme="business"`, [docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours))
+   recolours the squares too, since a pass and a failure are the theme's
+   success and error.
+4. `efp-app check`, push, register the directory as an app in the Portal,
    turn on Jenkins and press Deploy.
 
 ## Things to notice
@@ -65,7 +76,8 @@ in [setup-check](../setup-check/) first (with a build number of your own):
   A refusal of the connector (401, 403) is not kept: it may be fixed.
 - **Bounded work.** One request reads at most 30 builds, four at a time, and
   sends at most 500 rows; the page draws 100 and says how many it hides. The
-  filters work on what the page already has and cost no call.
+  filters and the order of the rows work on what the page already has and
+  cost no call.
 - **A visitor chooses, never names.** The page sends the key of a job from
   `jobs.json`; the server looks the path up. Every visitor reads Jenkins as
   your connector does, so list only jobs that everybody who may open the app
@@ -73,8 +85,9 @@ in [setup-check](../setup-check/) first (with a build number of your own):
 - **Names are data.** Class and test names come from Jenkins and reach the
   page through `textContent`.
 - **Colour is not the only sign.** A failed build carries a cross, a skipped
-  one is a small square, an absent one a dot. A row is one stop for the Tab
-  key, and the arrow keys read it build by build.
+  one is a small square, an absent one a dot. The heatmap is one stop for the
+  Tab key: left and right read a row build by build, up and down go from test
+  to test, and `/` jumps to the search.
 - The reports are those of the JUnit plugin (`suites` of `cases`). Maven
   multi-module and matrix jobs keep theirs under `childReports`: adapt
   `REPORT_TREE` and `compact_report()` for those.

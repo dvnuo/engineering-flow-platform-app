@@ -4,94 +4,218 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Planning poker</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="cupcake" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main id="lobby" hidden>
-    <header>
-      <h1>Planning poker</h1>
-      <p id="who" class="muted"></p>
-    </header>
-    <p id="lobby-status" class="status" role="status"></p>
+<body class="efp-page">
+  <div class="efp-aurora" aria-hidden="true"></div>
 
-    <form id="new-room" hidden>
-      <h2>A new room</h2>
-      <label for="new-title">The story to estimate</label>
-      <input type="text" id="new-title" maxlength="120" placeholder="ABC-123 Export the report as PDF" autocomplete="off" required>
-      <label for="new-link">A link to it (optional)</label>
-      <input type="url" id="new-link" maxlength="500" placeholder="https://" autocomplete="off">
-      <p id="deck-preview" class="muted"></p>
-      <button type="submit" class="primary">Open the room</button>
-    </form>
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="spade"></i></span>
+    <div class="min-w-0">
+      <p class="font-semibold leading-tight">Planning poker</p>
+      <p id="who" class="text-xs text-base-content/60 truncate">&nbsp;</p>
+    </div>
+    <div class="ml-auto flex items-center gap-1">
+      <span id="me" class="mr-1"></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
 
-    <section id="rooms-section" aria-labelledby="rooms-heading" hidden>
-      <div class="section-head">
-        <h2 id="rooms-heading">Rooms used lately</h2>
-        <button type="button" id="refresh">Refresh</button>
+  <!-- The lobby: a new room, and the rooms used lately. -->
+  <main id="lobby" class="efp-container py-8 sm:py-14" hidden>
+    <div id="lobby-status" role="status" class="mb-6" hidden></div>
+
+    <section class="grid lg:grid-cols-[1.05fr_1fr] gap-10 lg:gap-14 items-center">
+      <div>
+        <span class="badge badge-soft badge-primary gap-1.5 efp-rise"><span class="efp-live"></span> Live for the whole team</span>
+        <h1 class="mt-5 text-4xl sm:text-6xl font-bold tracking-tight leading-[1.04] efp-rise" style="--i: 1">
+          Estimate together,<br><span class="efp-gradient-text">reveal together.</span>
+        </h1>
+        <p class="mt-5 text-lg text-base-content/70 max-w-xl efp-rise" style="--i: 2">
+          Open a room for a story and send its link. Everybody picks a card in
+          secret; the cards turn over at once, and the room shows where the team
+          agrees and where it does not.
+        </p>
+        <div class="pp-fan mt-10 efp-rise" style="--i: 3" aria-hidden="true">
+          <span class="pp-card" style="--n: -2">1</span>
+          <span class="pp-card" style="--n: -1">3</span>
+          <span class="pp-card is-chosen" style="--n: 0">5</span>
+          <span class="pp-card" style="--n: 1">8</span>
+          <span class="pp-card pp-back" style="--n: 2"><i data-lucide="spade"></i></span>
+        </div>
       </div>
-      <ul id="rooms" class="rooms"></ul>
-      <p id="rooms-empty" class="empty" hidden>No rooms yet. Open one above and send its link to the team.</p>
+
+      <form id="new-room" class="efp-surface p-6 sm:p-8 grid gap-5 efp-rise" style="--i: 2" hidden>
+        <div>
+          <h2 class="text-xl font-semibold">A new room</h2>
+          <p class="text-sm text-base-content/60 mt-1">One story per round. Keep the title to estimate it again.</p>
+        </div>
+        <label class="grid gap-1.5">
+          <span class="text-sm font-medium">The story to estimate</span>
+          <span class="input input-lg w-full">
+            <i data-lucide="ticket" class="opacity-50"></i>
+            <input type="text" id="new-title" class="grow" maxlength="120" placeholder="ABC-123 Export the report as PDF" autocomplete="off" required>
+          </span>
+        </label>
+        <label class="grid gap-1.5">
+          <span class="text-sm font-medium">A link to it <span class="text-base-content/50 font-normal">(optional)</span></span>
+          <span class="input w-full">
+            <i data-lucide="link" class="opacity-50"></i>
+            <input type="url" id="new-link" class="grow" maxlength="500" placeholder="https://" autocomplete="off">
+          </span>
+        </label>
+        <div>
+          <p class="text-xs text-base-content/60 mb-2">The cards</p>
+          <div id="deck-preview" class="flex flex-wrap gap-1.5"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg efp-press efp-shine mt-1">
+          <i data-lucide="door-open"></i> Open the room
+        </button>
+      </form>
+
+      <div id="signed-out" class="efp-surface efp-empty efp-rise" style="--i: 2" hidden>
+        <span class="efp-empty-icon"><i data-lucide="lock-keyhole"></i></span>
+        <strong>Sign in to play</strong>
+        <span class="text-sm max-w-xs">You are not signed in. Sign in to open a room or to join one with its link.</span>
+      </div>
+    </section>
+
+    <section id="rooms-section" class="mt-16" aria-labelledby="rooms-heading" hidden>
+      <div class="flex items-end justify-between gap-4 mb-5">
+        <div>
+          <h2 id="rooms-heading" class="text-xl font-semibold">Rooms used lately</h2>
+          <p class="text-sm text-base-content/60">Open one to carry on where the team left off.</p>
+        </div>
+        <button type="button" id="refresh" class="btn btn-ghost btn-sm"><i data-lucide="refresh-cw"></i> Refresh</button>
+      </div>
+      <ul id="rooms" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <li class="skeleton h-28 rounded-box"></li>
+        <li class="skeleton h-28 rounded-box"></li>
+        <li class="skeleton h-28 rounded-box"></li>
+      </ul>
+      <div id="rooms-empty" class="efp-surface efp-empty" hidden>
+        <span class="efp-empty-icon"><i data-lucide="layers"></i></span>
+        <strong>No rooms yet</strong>
+        <span class="text-sm">Open one above and send its link to the team.</span>
+      </div>
     </section>
   </main>
 
-  <main id="room" hidden>
-    <header class="room-head">
-      <div>
-        <p class="muted"><a href="./">All rooms</a> <span id="round"></span></p>
-        <h1 id="story">Planning poker</h1>
-        <p><a id="story-link" target="_blank" rel="noopener noreferrer" hidden></a></p>
-      </div>
-      <div class="group">
-        <span id="connection" class="pill" role="status">Connecting...</span>
-        <button type="button" id="retry" hidden>Try again</button>
-        <button type="button" id="copy-link">Copy the link to this room</button>
-      </div>
-    </header>
-    <p id="room-status" class="status" role="status"></p>
-
-    <div id="table" hidden>
-      <section aria-labelledby="deck-heading">
-        <h2 id="deck-heading">Your card</h2>
-        <div id="deck" class="deck" role="group" aria-label="The cards"></div>
-        <div class="group actions">
-          <button type="button" id="reveal" class="primary" disabled>Reveal</button>
-          <button type="button" id="next">New round</button>
+  <!-- One room: the table, your hand, the result and the rounds before. -->
+  <main id="room" class="efp-container py-6 sm:py-8" hidden>
+    <div class="flex flex-wrap items-start gap-4">
+      <div class="min-w-0 grow">
+        <div class="breadcrumbs text-sm text-base-content/60 py-0">
+          <ul>
+            <li><a href="./">All rooms</a></li>
+            <li id="round">Round</li>
+          </ul>
         </div>
-        <form id="next-form" class="next-form" hidden>
-          <label for="next-title">The next story</label>
-          <input type="text" id="next-title" maxlength="120" autocomplete="off" required>
-          <label for="next-link">A link to it (optional)</label>
-          <input type="url" id="next-link" maxlength="500" placeholder="https://" autocomplete="off">
-          <p id="next-note" class="muted"></p>
-          <div class="group">
-            <button type="submit" class="primary">Start the round</button>
-            <button type="button" id="next-cancel">Cancel</button>
-          </div>
-        </form>
-      </section>
-
-      <section aria-labelledby="members-heading">
-        <h2 id="members-heading">In the room</h2>
-        <ul id="members" class="members"></ul>
-      </section>
-
-      <section id="result" aria-labelledby="result-heading" hidden>
-        <h2 id="result-heading">Result</h2>
-        <p id="verdict" class="verdict"></p>
-        <dl class="numbers">
-          <div><dt>Average</dt><dd id="average"></dd></div>
-          <div><dt>Median</dt><dd id="median"></dd></div>
-          <div><dt>Cards</dt><dd id="votes"></dd></div>
-        </dl>
-        <ul id="spread" class="spread"></ul>
-      </section>
-
-      <section id="history-section" aria-labelledby="history-heading" hidden>
-        <h2 id="history-heading">Earlier rounds</h2>
-        <ol id="history" class="history"></ol>
-      </section>
+        <h1 id="story" class="text-2xl sm:text-3xl font-bold tracking-tight mt-1 break-words">Planning poker</h1>
+        <a id="story-link" class="link link-hover link-primary text-sm inline-flex items-center gap-1 mt-1 max-w-full" target="_blank" rel="noopener noreferrer" hidden>
+          <i data-lucide="external-link" class="shrink-0"></i><span class="truncate"></span>
+        </a>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span id="connection" class="pp-connection badge badge-lg" data-state="busy" role="status">
+          <span class="pp-dot" aria-hidden="true"></span><span id="connection-text">Connecting...</span>
+        </span>
+        <button type="button" id="retry" class="btn btn-sm btn-ghost" hidden><i data-lucide="rotate-cw"></i> Try again</button>
+        <button type="button" id="copy-link" class="btn btn-sm btn-soft btn-primary efp-press"><i data-lucide="link"></i> Copy the link</button>
+      </div>
     </div>
+
+    <div id="room-status" role="status" class="mt-5" hidden></div>
+
+    <div id="table" class="mt-6 grid xl:grid-cols-[minmax(0,1fr)_23rem] gap-6 items-start" hidden>
+      <div class="grid gap-6 min-w-0">
+        <section class="pp-table" aria-labelledby="members-heading">
+          <h2 id="members-heading" class="sr-only">In the room</h2>
+          <ul id="members" class="pp-seats"></ul>
+          <div id="table-center" class="pp-center" aria-live="polite"></div>
+        </section>
+
+        <section class="efp-surface p-5 sm:p-6" aria-labelledby="deck-heading">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="deck-heading" class="font-semibold">Your card</h2>
+            <p class="text-xs text-base-content/60 hidden sm:block">
+              Type <kbd class="kbd kbd-xs">5</kbd> <kbd class="kbd kbd-xs">1</kbd><kbd class="kbd kbd-xs">3</kbd>
+              <kbd class="kbd kbd-xs">?</kbd> or <kbd class="kbd kbd-xs">c</kbd> to pick a card
+            </p>
+          </div>
+          <div id="deck" class="pp-hand" role="group" aria-label="The cards"></div>
+          <div class="flex flex-wrap justify-center gap-3 mt-2">
+            <button type="button" id="reveal" class="btn btn-primary btn-lg efp-press efp-shine min-w-56" disabled>
+              <i data-lucide="eye"></i> <span id="reveal-text">Reveal</span>
+            </button>
+            <button type="button" id="next" class="btn btn-ghost btn-lg efp-press"><i data-lucide="rotate-ccw"></i> New round</button>
+          </div>
+        </section>
+      </div>
+
+      <aside class="grid gap-6 min-w-0">
+        <section id="result" class="efp-surface p-5 grid gap-5" aria-labelledby="result-heading" hidden>
+          <div class="flex items-start gap-3">
+            <span id="verdict-icon" class="pp-verdict-icon"></span>
+            <div class="min-w-0">
+              <h2 id="result-heading" class="font-semibold">Result</h2>
+              <p id="verdict" class="text-sm text-base-content/70"></p>
+            </div>
+          </div>
+          <dl class="grid grid-cols-3 gap-2 text-center">
+            <div class="pp-stat"><dt>Average</dt><dd id="average" class="efp-number">-</dd></div>
+            <div class="pp-stat"><dt>Median</dt><dd id="median" class="efp-number">-</dd></div>
+            <div class="pp-stat"><dt>Cards</dt><dd id="votes" class="efp-number">0</dd></div>
+          </dl>
+          <ul id="spread" class="grid gap-2.5"></ul>
+        </section>
+
+        <section id="how" class="efp-surface p-5" aria-labelledby="how-heading">
+          <h2 id="how-heading" class="font-semibold mb-3">How a round goes</h2>
+          <ol class="grid gap-3 text-sm">
+            <li class="flex gap-3"><span class="pp-step">1</span><span>Everybody picks a card. The others see only <em>that</em> you picked.</span></li>
+            <li class="flex gap-3"><span class="pp-step">2</span><span>Somebody presses <strong>Reveal</strong>, and all cards turn over at once.</span></li>
+            <li class="flex gap-3"><span class="pp-step">3</span><span>No consensus? The lowest and the highest explain, then a new round.</span></li>
+          </ol>
+        </section>
+
+        <section id="history-section" class="efp-surface p-5" aria-labelledby="history-heading" hidden>
+          <h2 id="history-heading" class="font-semibold mb-3">Earlier rounds</h2>
+          <ol id="history" class="grid gap-3"></ol>
+        </section>
+      </aside>
+    </div>
+
+    <dialog id="next-dialog" class="modal modal-bottom sm:modal-middle">
+      <form id="next-form" class="modal-box grid gap-4">
+        <div>
+          <h2 class="text-lg font-semibold">A new round</h2>
+          <p id="next-note" class="text-sm text-base-content/60 mt-1"></p>
+        </div>
+        <label class="grid gap-1.5">
+          <span class="text-sm font-medium">The next story</span>
+          <span class="input w-full"><i data-lucide="ticket" class="opacity-50"></i><input type="text" id="next-title" class="grow" maxlength="120" autocomplete="off" required></span>
+        </label>
+        <label class="grid gap-1.5">
+          <span class="text-sm font-medium">A link to it <span class="text-base-content/50 font-normal">(optional)</span></span>
+          <span class="input w-full"><i data-lucide="link" class="opacity-50"></i><input type="url" id="next-link" class="grow" maxlength="500" placeholder="https://" autocomplete="off"></span>
+        </label>
+        <div class="modal-action mt-2">
+          <button type="button" id="next-cancel" class="btn btn-ghost">Cancel</button>
+          <button type="submit" class="btn btn-primary efp-press"><i data-lucide="play"></i> Start the round</button>
+        </div>
+      </form>
+      <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+    </dialog>
   </main>
 
   <script type="module" src="static/app.js"></script>

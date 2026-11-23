@@ -204,7 +204,9 @@ starters' `requirements.txt` does not list `efp-app-sdk`.
 ### FastAPI
 
 Routes are written without the prefix (`@app.get("/api/items")`). Pages use
-relative URLs: `fetch("api/items")`, `<script src="static/app.js">`.
+relative URLs: `fetch("api/items")`, `<script src="static/app.js">`. The
+one root-absolute address a page may use is `/_efp/lib/...`: the libraries
+of the UI kit, which every gateway serves ([UI_KIT.md](UI_KIT.md)).
 
 The one mistake: a leading slash in the front end, `fetch("/api/items")`.
 
@@ -240,7 +242,9 @@ variables the host sets.
 
 The one mistake: passing them yourself. `demo.launch(server_port=7860)`,
 `demo.launch(root_path="/")` or `share=True` replace what the host set. Keep
-`demo.launch()` without arguments, inside `if __name__ == "__main__":`.
+`demo.launch()` without `server_name`, `server_port`, `root_path` and
+`share`, inside `if __name__ == "__main__":`. Other arguments are fine: Gradio 6
+takes the page's theme there (`demo.launch(theme=...)`, docs/UI_KIT.md).
 
 ### Static
 

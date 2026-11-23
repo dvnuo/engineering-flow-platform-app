@@ -35,7 +35,7 @@ The manifests are in `k8s/` ([what each file is](../k8s/README.md)), the
 `terraform/`. Run the commands from the repository root.
 
 1. **Image.** `docker build -t <registry>/engineering-flow-platform-app:<tag> .`
-   (the build needs `host/`, `sdk/` and `templates/`). `--build-arg PIP_INDEX_URL=...` points the build at a
+   (the build needs `host/`, `sdk/`, `templates/` and `lib/`). `--build-arg PIP_INDEX_URL=...` points the build at a
    private index. Do not pass credentials that way: build arguments stay in
    the image history.
 2. **Volume.** Create the EFS access point (`terraform/efs_access_point.tf`),
@@ -97,7 +97,7 @@ section 3).
 | `EFP_HOST_INSTALL_CONCURRENCY` | `1` | Deployments that run at once; the others wait as `queued`. |
 | `EFP_HOST_DEPLOY_TIMEOUT_SECONDS` | `900` | One deployment, from unpack to switch. |
 | `EFP_HOST_PIP_ALLOW_SDIST` | `false` | Allow packages that have no wheel. A source distribution runs its build code at deployment time (as the app's user, inside its isolation). |
-| `EFP_HOST_RESOURCE_DIR` | `/opt/efp` (set in the image) | Where the gateway's nginx template and pages are. Leave it. |
+| `EFP_HOST_RESOURCE_DIR` | `/opt/efp` (set in the image) | Where the gateway's nginx template, its pages and the shared browser libraries (`lib/`, served at `/_efp/lib/`) are. Leave it. |
 | `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_TRUSTED_HOST`, `PIP_CERT`, ... | | Read by pip itself. Every `PIP_*` variable is passed to the one step of a deployment that asks the package index, to no other step and **never** to apps. See "Who sees the package index settings" below. |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` | | Passed to every step of a deployment and to apps. The manager's own calls to the Portal never use a proxy. Put the cluster's service domain into `NO_PROXY`, or apps will send their SDK calls to the proxy. The host adds `127.0.0.1`, `localhost` and `::1` to an app's `NO_PROXY` by itself whenever a proxy is set, because some frameworks (Gradio) ask their own port while they start. |
 

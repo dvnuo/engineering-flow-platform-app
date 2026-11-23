@@ -16,7 +16,11 @@ file. It is a draft for a tester to review, not a finished test plan.
 - a streamed model call (`llm.stream`) whose input is cut and whose output is
   capped by what was asked for;
 - what a visitor sees while it works, when the model is off, when the budget
-  is used up and when there is nothing to do.
+  is used up and when there is nothing to do;
+- the look of the EFP kit through Gradio's own theme
+  (`gr.themes.Soft(primary_hue="blue")` with the system's fonts, see
+  [docs/UI_KIT.md](../../docs/UI_KIT.md#streamlit-and-gradio)). Gradio draws
+  the page, so the kit's style sheets and its motion do not apply here.
 
 **Turn on in the Portal:** the language model and, for reading issues by key,
 the Jira connector (read-only is enough), both on the app's page. Without
@@ -40,16 +44,23 @@ on your model provider, count against the app's budget and read your Jira.
    tags, your step vocabulary, the language you write tests in. Add the Jira
    fields your stories keep their acceptance criteria in to `FIELDS` and to
    `story_of()`.
-3. `efp-app check`, push, register the directory as an app in the Portal,
+3. Change the look in `THEME` in `app.py`: another hue, or another of
+   Gradio's themes (`gr.themes.Base`, `Glass`, `Monochrome`, ...). The kit's
+   `data-theme` belongs to the HTML examples; a Gradio page takes its theme
+   from `launch(theme=...)`. Keep the fonts the system's own: a theme that
+   names a web font makes every visitor's browser fetch it from another host.
+4. `efp-app check`, push, register the directory as an app in the Portal,
    turn on the model and Jira and press Deploy.
 
 ## Things to notice
 
-- **`demo.launch()` has no arguments.** The host passes the address, the port
-  and the path prefix in `GRADIO_SERVER_NAME`, `GRADIO_SERVER_PORT` and
+- **`demo.launch()` names no address.** The host passes the address, the
+  port and the path prefix in `GRADIO_SERVER_NAME`, `GRADIO_SERVER_PORT` and
   `GRADIO_ROOT_PATH`, and `launch()` reads them. `launch(server_port=7860)`,
   `launch(root_path="/")` or `share=True` would replace what the host set,
-  and the app would not answer under `/<slug>/`. It stays inside
+  and the app would not answer under `/<slug>/`. The one argument it gets is
+  the theme, which Gradio 6 takes in `launch()` rather than in `gr.Blocks()`
+  (hence `gradio>=6` in `requirements.txt`). It stays inside
   `if __name__ == "__main__":`, so the file can be imported by a test.
 - **A generator is the stream.** `write_scenarios` yields the text so far, a
   status line and the download button; every yield replaces what the three

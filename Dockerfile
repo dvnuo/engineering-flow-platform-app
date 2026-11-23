@@ -1,6 +1,6 @@
 # The EFP app host: one container that runs every app.
 #
-# Build from the repository root (the image needs host/, sdk/ and templates/):
+# Build from the repository root (the image needs host/, sdk/, templates/ and lib/):
 #
 #     docker build -t efp-app-host .
 #
@@ -15,9 +15,11 @@ FROM ${BASE_IMAGE} AS sdk
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /src
-# setup.py of the SDK copies the starters from ../templates into the wheel.
+# setup.py of the SDK copies the starters from ../templates and the shared
+# browser libraries from ../lib into the wheel.
 COPY sdk/ /src/sdk/
 COPY templates/ /src/templates/
+COPY lib/ /src/lib/
 RUN PIP_ROOT_USER_ACTION=ignore pip install --no-cache-dir build \
     && python -m build --wheel --outdir /wheels /src/sdk \
     && ls -l /wheels/efp_app_sdk-*.whl
@@ -56,6 +58,8 @@ RUN PIP_ROOT_USER_ACTION=ignore pip install --no-cache-dir /opt/efp/src \
 
 COPY host/nginx/ /opt/efp/nginx/
 COPY host/pages/ /opt/efp/pages/
+# The shared browser libraries, served at /_efp/lib/ (docs/CONTRACTS.md, section 6.6).
+COPY lib/ /opt/efp/lib/
 COPY host/bin/ /opt/efp/bin/
 COPY host/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
 COPY --from=sdk /wheels/ /opt/efp/wheels/

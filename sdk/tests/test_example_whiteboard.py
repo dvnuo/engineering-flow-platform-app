@@ -277,7 +277,8 @@ def test_whiteboard_page_and_its_modules_work_under_a_prefix(whiteboard):
         script = client.get("/board/static/" + name)
         assert script.status_code == 200 and "javascript" in script.headers["content-type"], name
         imported = re.findall(r'^import .* from "([^"]+)";$', script.text, flags=re.MULTILINE)
-        assert all(source.startswith("./") for source in imported), name
+        # The app's own modules relatively; the shared libraries at the one address every gateway serves.
+        assert all(source.startswith(("./", "/_efp/lib/")) for source in imported), name
     calls = client.get("/board/static/api.js").text
     assert 'send("api/drawings", {})' in calls and 'send("api/drawings?" + new URLSearchParams({ title })' in calls
     assert '"api/drawings/" + authorId + "/" + id + "/image"' in calls  # where an <img> finds a picture

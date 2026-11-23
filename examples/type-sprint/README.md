@@ -16,7 +16,11 @@ member's best sprint with at least 90 percent accuracy.
 - a member's history in one object of their own (`players/<visitor id>.json`);
 - data that ships with the app (`snippets.json`), checked when the app starts;
 - charts written as SVG by hand, and typing logic in a module without a page
-  in it (`static/sprint.js`), tested under node.
+  in it (`static/sprint.js`), tested under node;
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)) whose
+  motion follows the typing: a finished line lifts away and the next one
+  rises, a wrong key nudges the line, the last ten seconds turn red, and the
+  result counts up while its bars grow, with confetti for a new best.
 
 **Turn on in the Portal:** nothing. The app uses no model and no connector,
 so it costs nothing to run.
@@ -41,7 +45,11 @@ whose sprints are not kept. Local results are files under `.efp-data/`.
    deployment, your test runner. A topic has an `id`, a `label` and its
    lines; a line is 5 to 80 printable ASCII characters. The app refuses to
    start with a file that breaks those rules and says which line it was.
-3. `efp-app check`, push, register the directory as an app in the Portal and
+3. Give it another look if you like: link
+   `/_efp/lib/daisyui@5.8.2/themes.css` in `static/index.html` and set
+   `data-theme="dracula"` (or any daisyUI theme) on `<html>`. The line, the
+   charts and the board follow its colours.
+4. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy.
 
 ## Things to notice

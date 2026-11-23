@@ -320,11 +320,13 @@ def test_mind_map_page_and_its_modules_work_under_a_prefix(mind_map):
     page = client.get("/maps/")
     assert page.status_code == 200
     assert 'href="static/style.css"' in page.text and '<script type="module" src="static/app.js">' in page.text
-    for name in ("app.js", "api.js", "tree.js", "layout.js", "render.js", "exporting.js"):
+    for name in ("app.js", "api.js", "tree.js", "layout.js", "render.js", "scene.js", "exporting.js"):
         script = client.get("/maps/static/" + name)
         assert script.status_code == 200 and "javascript" in script.headers["content-type"], name
         imported = re.findall(r'^import .* from "([^"]+)";$', script.text, flags=re.MULTILINE)
-        assert all(source.startswith("./") for source in imported), name  # modules find each other below the prefix
+        # The app's own modules relatively (they find each other below the prefix); the shared
+        # libraries at the one address every gateway serves.
+        assert all(source.startswith(("./", "/_efp/lib/")) for source in imported), name
     calls = client.get("/maps/static/api.js").text
     assert 'api("GET", "api/maps")' in calls and 'api("PUT", "api/maps/" + mapId' in calls
     assert re.search(r'api\("[A-Z]+", "/', calls) is None  # no request starts at the top of the host

@@ -6,7 +6,10 @@
 - pages, scripts and style sheets: root-absolute URLs such as
   ``src="/static/app.js"``. An app is served under ``/{slug}/``, so a URL
   that starts with ``/`` points outside the app and breaks once deployed,
-  although it works on a developer's machine.
+  although it works on a developer's machine. The one exception is
+  ``/_efp/lib/``, the shared browser libraries every gateway serves
+  (docs/CONTRACTS.md, section 6.6): such a URL must name a file that is
+  there, in a version that is there.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from . import manifest as _manifest
+from ._devgateway import LIB_PREFIX, library_directory, library_file, library_versions
 from .manifest import ERROR, WARNING, Problem
 
 SCAN_SUFFIXES = frozenset(
@@ -47,6 +51,8 @@ MAX_FINDINGS_PER_FILE = 20
 _ATTRIBUTE = re.compile(r"""\b(src|href|action|formaction|poster)\s*=\s*(["'])(/(?!/)[^"']*)\2""", re.IGNORECASE)
 _CALL = re.compile(r"""\b(fetch|EventSource|axios(?:\.[A-Za-z]+)?)\s*\(\s*(["'`])(/(?!/)[^"'`]*)\2""")
 _CSS_URL = re.compile(r"""\burl\(\s*(["']?)(/(?!/)[^"')\s]*)\1\s*\)""", re.IGNORECASE)
+# A module of the shared libraries imported by a script: import ... from "/_efp/lib/...", import("/_efp/lib/...").
+_LIB_IMPORT = re.compile(r"""\b(?:from|import)\s*\(?\s*(["'])(/_efp/lib/[^"']*)\1""")
 
 _FRAMEWORK_PACKAGE = {"fastapi": "fastapi", "flask": "flask", "streamlit": "streamlit", "gradio": "gradio"}
 _REQUIREMENT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*")
@@ -213,15 +219,40 @@ def _scan_files(directory: Path) -> Iterator[Path]:
                 yield Path(current) / name
 
 
+def _missing_library(url: str) -> Optional[str]:
+    """``None`` when ``url`` names a file of the shared libraries that is there, else what is wrong with it."""
+    lib_dir = library_directory()
+    if lib_dir is None:
+        return None  # an SDK without the libraries cannot tell
+    path = url.partition("#")[0].partition("?")[0]
+    relative = path[len(LIB_PREFIX) :]
+    if library_file(lib_dir, relative) is not None:
+        return None
+    there = library_versions(lib_dir, relative)
+    hint = " (there is %s)" % ", ".join(there) if there else "; docs/UI_KIT.md lists the libraries and their files"
+    return "no such file in the shared libraries: %s%s" % (_short(path), hint)
+
+
 def _findings(line: str, app_type: Optional[str], shown: str = "") -> Iterator[Tuple[int, str]]:
+    # /_efp/lib/ is the one root-absolute address an app may use: the gateway answers it for every app.
+    for pattern, group in ((_ATTRIBUTE, 3), (_CALL, 3), (_CSS_URL, 2), (_LIB_IMPORT, 2)):
+        for match in pattern.finditer(line):
+            url = match.group(group)
+            problem = _missing_library(url) if url.startswith(LIB_PREFIX) else None
+            if problem:
+                yield match.start(), problem
     for match in _ATTRIBUTE.finditer(line):
         attribute, url = match.group(1), match.group(3)
+        if url.startswith(LIB_PREFIX):
+            continue
         advice = 'use a relative URL: %s="%s"' % (attribute, _short(_relative(url), 40))
         if app_type == "flask":
             advice += " or {{ url_for(...) }}"
         yield match.start(), 'root-absolute URL %s="%s": %s' % (attribute, _short(url), advice)
     for match in _CALL.finditer(line):
         call, url = match.group(1), match.group(3)
+        if url.startswith(LIB_PREFIX):
+            continue
         yield match.start(), 'root-absolute URL %s("%s"): use a relative URL: %s("%s")' % (
             call,
             _short(url),
@@ -230,6 +261,8 @@ def _findings(line: str, app_type: Optional[str], shown: str = "") -> Iterator[T
         )
     for match in _CSS_URL.finditer(line):
         url = match.group(2)
+        if url.startswith(LIB_PREFIX):
+            continue
         if shown.lower().endswith(".css"):
             # Resolved against the sheet's own address, so the hint starts from where the sheet lies.
             advice = "use a path relative to the style sheet: url(%s)" % _short(_from_sheet(url, shown), 40)

@@ -1,89 +1,436 @@
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
+/*
+ * Jira digest's own look, on top of daisyUI, Tailwind and the EFP kit (the
+ * template loads them). This file holds what is particular to the app: the
+ * search form, the digest card, the list of issues and the bar of their
+ * statuses. A status takes a colour of the theme (--jd-tone, set by app.js
+ * from the status's name): done is success, in progress info, blocked error.
+ */
+
+[hidden] {
+  display: none !important;
 }
 
-body {
+/* ---- The search ----------------------------------------------------------------------------- */
+
+.jd-form {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.8fr) minmax(12rem, 1fr) minmax(10rem, 1fr);
+  align-items: end;
+  gap: 1rem 1.25rem;
+  padding: 1.1rem 1.25rem;
+}
+
+.jd-field {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.jd-field .input {
+  width: 100%;
+}
+
+.jd-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
+.jd-project input {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.jd-days-field {
+  align-self: stretch;
+  align-content: space-between;
+  padding-bottom: 0.7rem;
+}
+
+.jd-days {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+}
+
+.jd-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.jd-intro {
+  grid-column: 1 / -1;
+  margin: -0.25rem 0 0;
+}
+
+@media (max-width: 760px) {
+  .jd-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.jd-loading {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+/* ---- The digest ------------------------------------------------------------------------------ */
+
+.jd-digest {
+  position: relative;
+  padding: 1.2rem 1.35rem 1.3rem;
+  overflow: hidden;
+}
+
+/* A line of the theme's gradient along the top; it moves while the model writes. */
+.jd-digest::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary), var(--color-accent), var(--color-primary));
+  background-size: 300% 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .jd-digest.is-writing::before {
+    animation: jd-flow 1.6s linear infinite;
+  }
+
+  .jd-digest.is-writing .jd-digest-icon svg {
+    animation: jd-twinkle 1.4s var(--efp-ease-in-out) infinite;
+  }
+}
+
+.jd-digest-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.jd-digest-icon {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 0.75rem;
+  color: var(--color-secondary-content);
+  background: linear-gradient(135deg, var(--color-secondary), var(--color-primary));
+  box-shadow: 0 8px 20px -8px color-mix(in oklab, var(--color-secondary) 60%, transparent);
+}
+
+.jd-digest-body {
+  display: grid;
+  gap: 0.6rem;
+  max-width: 52rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.jd-digest-body p,
+.jd-digest-body ul {
   margin: 0;
 }
 
-main {
-  max-width: 48rem;
-  margin: 0 auto;
-  padding: 2rem 1rem 4rem;
-}
-
-h1 {
-  margin-bottom: 0.25rem;
-}
-
-section {
-  margin-top: 2rem;
-}
-
-label {
-  display: block;
-  margin-top: 0.75rem;
-  font-weight: 600;
-}
-
-input[type="text"],
-input[type="search"],
-input[type="number"],
-select,
-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 0.5rem;
-  font: inherit;
-}
-
-button {
-  margin-top: 0.75rem;
-  padding: 0.4rem 1rem;
-  font: inherit;
-  cursor: pointer;
-}
-
-pre {
-  min-height: 1.5rem;
-  margin-top: 1rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: inherit;
-}
-
-.muted {
-  opacity: 0.7;
-}
-
-.problem {
-  color: light-dark(#b3261e, #f2b8b5);
-}
-
-table {
-  width: 100%;
-  margin-top: 1rem;
-  border-collapse: collapse;
-}
-
-th,
-td {
-  padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-  text-align: left;
-  vertical-align: top;
-}
-
-.row {
+.jd-digest-body ul {
   display: grid;
-  grid-template-columns: 2fr 1fr 2fr;
-  gap: 0 1rem;
+  gap: 0.35rem;
+  padding: 0;
+  list-style: none;
 }
 
-@media (max-width: 36rem) {
-  .row {
-    grid-template-columns: 1fr;
+.jd-digest-body li {
+  position: relative;
+  padding-left: 1.1rem;
+}
+
+.jd-digest-body li::before {
+  content: "";
+  position: absolute;
+  left: 0.15rem;
+  top: 0.62em;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--color-secondary);
+}
+
+/* ---- The issues ---------------------------------------------------------------------------- */
+
+.jd-results {
+  overflow: hidden;
+}
+
+.jd-results-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  padding: 1.1rem 1.25rem 0.5rem;
+}
+
+.jd-results-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+/* The statuses of the list, as one bar: each part is as wide as its count. */
+.jd-mix {
+  display: flex;
+  gap: 3px;
+  width: min(100%, 22rem);
+  height: 0.6rem;
+}
+
+.jd-mix-part {
+  min-width: 0.6rem;
+  border-radius: 999px;
+  background: var(--jd-tone);
+  transform-origin: left;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .jd-mix-part {
+    animation: jd-grow 700ms var(--efp-ease-out) backwards;
+    animation-delay: calc(var(--i, 0) * 90ms + 150ms);
+  }
+}
+
+.jd-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  margin: 0;
+  padding: 0 1.25rem 0.85rem;
+  list-style: none;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+
+.jd-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.jd-head,
+.jd-issue {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 10rem 11rem 6.5rem;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 1.25rem;
+}
+
+.jd-head {
+  padding-block: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
+  background: color-mix(in oklab, var(--color-base-200) 60%, transparent);
+  border-top: 1px solid var(--efp-line);
+}
+
+.jd-issues {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  transition: opacity 300ms ease, filter 300ms ease;
+}
+
+.jd-issues.is-stale {
+  opacity: 0.5;
+  filter: saturate(0.5);
+}
+
+.jd-issue {
+  border-top: 1px solid var(--efp-line);
+  transition: background-color 160ms ease;
+}
+
+.jd-issue:hover {
+  background: color-mix(in oklab, var(--color-primary) 4%, transparent);
+}
+
+.jd-issue-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.jd-type {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  border-radius: 0.55rem;
+  color: color-mix(in oklab, var(--color-primary) 80%, var(--color-base-content));
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+}
+
+.jd-key-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.jd-key {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+a.jd-key:hover {
+  color: var(--color-primary);
+}
+
+.jd-priority {
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.1rem;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+}
+
+.jd-priority-error {
+  color: color-mix(in oklab, var(--color-error) 85%, var(--color-base-content));
+  background: color-mix(in oklab, var(--color-error) 13%, transparent);
+}
+
+.jd-priority-warning {
+  color: color-mix(in oklab, var(--color-warning) 60%, var(--color-base-content));
+  background: color-mix(in oklab, var(--color-warning) 18%, transparent);
+}
+
+.jd-priority-ghost {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--efp-line-strong);
+}
+
+.jd-summary {
+  margin: 0.1rem 0 0;
+  overflow: hidden;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.jd-status {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 0.4rem;
+  max-width: 100%;
+  padding: 0.15rem 0.6rem 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 550;
+  white-space: nowrap;
+  color: color-mix(in oklab, var(--jd-tone) 75%, var(--color-base-content));
+  background: color-mix(in oklab, var(--jd-tone) 12%, transparent);
+}
+
+.jd-status span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jd-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--jd-tone);
+}
+
+.jd-assignee {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+
+.jd-nobody {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+  border: 1px dashed color-mix(in oklab, var(--color-base-content) 30%, transparent);
+}
+
+.jd-updated {
+  justify-self: end;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+@media (max-width: 760px) {
+  .jd-head {
+    display: none;
+  }
+
+  .jd-issue {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem 0.75rem;
+  }
+
+  .jd-issue-main {
+    grid-column: 1 / -1;
+  }
+
+  .jd-status {
+    grid-column: 1 / -1;
+    margin-left: 2.45rem;
+  }
+
+  .jd-assignee {
+    margin-left: 2.45rem;
+  }
+}
+
+@keyframes jd-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes jd-flow {
+  to {
+    background-position: 300% 0;
+  }
+}
+
+@keyframes jd-twinkle {
+  50% {
+    transform: scale(0.82) rotate(12deg);
+    opacity: 0.7;
   }
 }

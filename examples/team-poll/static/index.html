@@ -4,22 +4,59 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Team poll</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="cupcake" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <h1>Team poll</h1>
-    <p id="who" class="muted"></p>
-    <form id="poll">
-      <h2 id="question">Loading...</h2>
-      <div id="options"></div>
-      <button type="submit" id="vote" disabled>Vote</button>
-      <button type="button" id="withdraw" hidden>Withdraw my vote</button>
-      <button type="button" id="refresh">Refresh</button>
-      <p id="status" class="muted" role="status"></p>
-    </form>
+<body class="efp-page">
+  <div class="efp-aurora" aria-hidden="true"></div>
+
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="vote"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Team poll</h1>
+      <p id="who" class="text-xs text-base-content/60 truncate">&nbsp;</p>
+    </div>
+    <div class="ml-auto flex items-center gap-1">
+      <button type="button" id="refresh" class="btn btn-ghost btn-sm efp-press" title="Load the result again" aria-label="Load the result again">
+        <i data-lucide="refresh-cw"></i><span class="hidden sm:inline">Refresh</span>
+      </button>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
+
+  <main class="tp-main">
+    <section class="efp-surface tp-card efp-rise" aria-labelledby="question">
+      <p class="tp-eyebrow"><i data-lucide="users"></i> One vote per member</p>
+      <h2 id="question" class="text-2xl sm:text-3xl font-bold tracking-tight leading-tight">
+        <span class="skeleton h-8 w-4/5 block" aria-hidden="true"></span>
+      </h2>
+      <p class="mt-2 text-base-content/60">
+        <span id="total" class="tp-total efp-number">0</span> <span id="total-label">votes so far</span>
+      </p>
+
+      <div id="problem" class="mt-6" hidden></div>
+
+      <ul id="options" class="tp-options" aria-label="The options">
+        <li class="skeleton h-15 rounded-box" aria-hidden="true"></li>
+        <li class="skeleton h-15 rounded-box" aria-hidden="true"></li>
+        <li class="skeleton h-15 rounded-box" aria-hidden="true"></li>
+      </ul>
+
+      <div class="tp-foot">
+        <p id="note" class="text-sm text-base-content/70" role="status" aria-live="polite"></p>
+        <button type="button" id="withdraw" class="btn btn-sm btn-ghost efp-press" hidden><i data-lucide="undo-2"></i> Take my vote back</button>
+      </div>
+    </section>
   </main>
-  <script src="static/app.js"></script>
+
+  <script type="module" src="static/app.js"></script>
 </body>
 </html>

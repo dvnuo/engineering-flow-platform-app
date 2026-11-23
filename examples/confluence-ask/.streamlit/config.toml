@@ -1,0 +1,30 @@
+# The look of the EFP kit (docs/UI_KIT.md) in Streamlit's own theme: its blue,
+# its greys and its rounded corners, in light and in dark. Nothing sets
+# "base", so the page follows the visitor's system and the settings menu can
+# switch. The colours are the kit's, written as hex because Streamlit does
+# not read oklch(). An older Streamlit that does not know [theme.light] and
+# [theme.dark] keeps [theme].
+#
+# Leave server.baseUrlPath and the CORS and XSRF settings out of this file:
+# the host passes them on the command line.
+[theme]
+primaryColor = "#2f5fe0"
+font = "sans serif"
+baseRadius = "0.625rem"
+showWidgetBorder = true
+
+[theme.light]
+primaryColor = "#2f5fe0"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f3f5f9"
+textColor = "#1c212e"
+borderColor = "#e1e5ec"
+linkColor = "#2a60e9"
+
+[theme.dark]
+primaryColor = "#699aff"
+backgroundColor = "#161a22"
+secondaryBackgroundColor = "#222834"
+textColor = "#e4e8f0"
+borderColor = "#2f3644"
+linkColor = "#699aff"

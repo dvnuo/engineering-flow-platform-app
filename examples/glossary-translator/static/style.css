@@ -1,256 +1,730 @@
+/*
+ * Glossary translator's own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them). The markup and app.js use Tailwind classes for
+ * spacing and type; this file holds what is particular to the app: the two
+ * panes, the marks of the glossary terms, the caret of the streamed answer,
+ * the list of the glossary.
+ *
+ * Make it yours: the marks take --gt-mark (the theme's primary colour) and
+ * --gt-missed (its warning colour); everything else is drawn in the theme's
+ * colours, so data-theme="..." on <html> changes the whole page.
+ */
+
+[hidden] {
+  display: none !important;
+}
+
 :root {
-  color-scheme: light dark;
-  --text: light-dark(#1f2328, #e6edf3);
-  --muted: light-dark(#59636e, #9198a1);
-  --page: light-dark(#ffffff, #0d1117);
-  --panel: light-dark(#f6f8fa, #161b22);
-  --line: light-dark(#d1d9e0, #3d444d);
-  --accent: light-dark(#0969da, #4493f8);
-  --on-accent: light-dark(#ffffff, #0d1117);
-  --problem: light-dark(#b3261e, #f2b8b5);
-  --warning: light-dark(#fff8c5, #3a2f00);
-  --good: light-dark(#1a7f37, #3fb950);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
+  --gt-mark: var(--color-primary);
+  --gt-missed: var(--color-warning);
 }
 
-body {
-  margin: 0;
-  background: var(--page);
-  color: var(--text);
+.gt-main {
+  display: grid;
+  gap: 1.25rem;
+  padding-block: 1.25rem 4rem;
 }
 
-main {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 2rem 1rem 4rem;
+@media (min-width: 64rem) {
+  .gt-main {
+    gap: 1.5rem;
+    padding-block: 2rem 4rem;
+  }
 }
 
-h1 {
-  margin: 0 0 0.25rem;
+.gt-model {
+  display: none;
 }
 
-h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.25rem;
+@media (min-width: 40rem) {
+  .gt-model:not([hidden]) {
+    display: inline-flex;
+  }
 }
 
-h3 {
-  margin: 1.5rem 0 0.25rem;
-  font-size: 1rem;
+.gt-icon {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 0.75rem;
+  font-size: 1.05rem;
+  color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 11%, transparent);
 }
 
-section {
-  margin-top: 2rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
+/* ---- The translator ------------------------------------------------------------------------ */
+
+.gt-translator {
+  overflow: clip;
 }
 
-label {
-  display: block;
-  margin-top: 0.75rem;
-  font-weight: 600;
+/* The pickers sit over their panes; the swap button sits on the line between them. */
+.gt-langbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--efp-line);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--color-primary) 5%, var(--color-base-100)), var(--color-base-100));
 }
 
-label.inline {
-  margin: 0;
+.gt-lang {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
 }
 
-input[type="text"],
-input[type="search"],
-select,
-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: 0.375rem;
-  background: var(--page);
-  color: var(--text);
-  font: inherit;
+.gt-lang-label {
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
 }
 
-textarea {
-  resize: vertical;
-}
-
-input[type="search"] {
-  flex: 1 1 12rem;
+.gt-select {
+  min-width: 0;
   width: auto;
+  max-width: 100%;
+  font-weight: 620;
 }
 
-button {
-  padding: 0.45rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0.375rem;
-  background: var(--panel);
-  color: var(--text);
+#target-wrap {
+  justify-content: flex-start;
+}
+
+@media (min-width: 48rem) {
+  #target-wrap {
+    padding-left: 0.75rem;
+  }
+}
+
+.gt-swap {
+  border: 1px solid var(--efp-line-strong);
+  background: var(--color-base-100);
+  box-shadow: var(--efp-shadow-sm);
+}
+
+.gt-swap:hover {
+  color: var(--color-primary);
+  border-color: color-mix(in oklab, var(--color-primary) 45%, transparent);
+}
+
+.gt-panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 48rem) {
+  .gt-panes {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .gt-target {
+    border-left: 1px solid var(--efp-line);
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .gt-target {
+    border-top: 1px solid var(--efp-line);
+  }
+}
+
+.gt-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gt-target {
+  background: color-mix(in oklab, var(--color-base-content) 2%, var(--color-base-100));
+}
+
+/* The text area and its mirror lie on top of each other and share every
+ * measure that decides where a line breaks: font, size, line height,
+ * padding, wrapping. The text area is transparent, so the marks drawn in the
+ * mirror show through behind the letters. */
+.gt-editor {
+  display: grid;
+  flex: 1;
+  min-height: 13rem;
+}
+
+.gt-mirror,
+.gt-text {
+  grid-area: 1 / 1;
+  margin: 0;
+  padding: 1rem 1.1rem;
+  border: 0;
   font: inherit;
-  cursor: pointer;
+  font-size: 1.02rem;
+  line-height: 1.65;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 4;
+  scrollbar-gutter: stable;
 }
 
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
+@media (min-width: 64rem) {
+  .gt-editor {
+    min-height: 16rem;
+  }
+}
+
+.gt-mirror {
+  overflow: hidden;
+  color: transparent;
+  pointer-events: none;
+}
+
+.gt-text {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: 100%;
+  resize: none;
+  overflow: auto;
+  outline: none;
+  color: inherit;
+  background: transparent;
+  field-sizing: content;
+}
+
+.gt-text::placeholder {
+  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+}
+
+.gt-pane:has(.gt-text:focus-visible) {
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--color-primary) 55%, transparent);
+}
+
+/* A mark: a soft field of colour and a line under it. Neither changes where the text breaks. */
+.gt-mark {
+  color: inherit;
+  border-radius: 0.3rem;
+  background: color-mix(in oklab, var(--gt-mark) 15%, transparent);
+  box-shadow: inset 0 -2px 0 color-mix(in oklab, var(--gt-mark) 55%, transparent);
+  transition: background var(--efp-fast) ease, box-shadow var(--efp-fast) ease;
+}
+
+.gt-mirror .gt-mark {
+  color: transparent;
+}
+
+.gt-mark.is-missed {
+  background: color-mix(in oklab, var(--gt-missed) 20%, transparent);
+  box-shadow: inset 0 -2px 0 var(--gt-missed);
+}
+
+.gt-mark.is-lit {
+  background: color-mix(in oklab, var(--gt-mark) 32%, transparent);
+  box-shadow: inset 0 -2px 0 var(--gt-mark), 0 0 0 2px color-mix(in oklab, var(--gt-mark) 25%, transparent);
+}
+
+.gt-pane-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  min-height: 2.6rem;
+  padding: 0.35rem 0.75rem 0.45rem 1.1rem;
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.gt-found-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
   font-weight: 600;
+  color: color-mix(in oklab, var(--gt-mark) 80%, var(--color-base-content));
+  background: color-mix(in oklab, var(--gt-mark) 11%, transparent);
 }
 
-button.quiet {
-  padding: 0.3rem 0.6rem;
+/* How much of the limit the text uses: a hairline along the bottom of the pane. */
+.gt-meter {
+  --share: 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
   background: transparent;
 }
 
-button:disabled {
-  opacity: 0.55;
-  cursor: default;
+.gt-meter > span {
+  display: block;
+  height: 100%;
+  width: calc(var(--share) * 100%);
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+  transition: width var(--efp-medium) var(--efp-ease-out), background var(--efp-medium) ease;
 }
 
-a {
-  color: var(--accent);
+.gt-meter[data-level="near"] > span {
+  background: var(--color-warning);
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.gt-meter[data-level="over"] > span {
+  background: var(--color-error);
 }
 
-.muted {
-  color: var(--muted);
+/* The translation: text that arrives piece by piece, with a caret at its end. */
+.gt-output {
+  flex: 1;
+  min-height: 13rem;
+  padding: 1rem 1.1rem;
+  font-size: 1.02rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  outline: none;
 }
 
-.problem {
-  color: var(--problem);
+@media (min-width: 64rem) {
+  .gt-output {
+    min-height: 16rem;
+  }
 }
 
-.status {
-  min-height: 1.5rem;
-  margin: 0.75rem 0 0;
+.gt-output:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--color-primary) 55%, transparent);
 }
 
-.notice {
-  margin: 1rem 0 0;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0.375rem;
-  background: var(--warning);
+.gt-output-empty {
+  position: absolute;
+  inset: 0 0 2.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 2rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: color-mix(in oklab, var(--color-base-content) 42%, transparent);
+  pointer-events: none;
 }
 
-.bar {
+.gt-output-empty svg {
+  width: 1.3rem;
+  height: 1.3rem;
+  opacity: 0.6;
+}
+
+.gt-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.15em;
+  margin-left: 1px;
+  vertical-align: -0.2em;
+  border-radius: 1px;
+  background: var(--color-primary);
+}
+
+.gt-status {
+  flex: 1 1 14rem;
+  line-height: 1.4;
+}
+
+.gt-target.is-streaming {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--color-primary) 4%, var(--color-base-100)), color-mix(in oklab, var(--color-base-content) 2%, var(--color-base-100)));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .gt-caret {
+    animation: gt-blink 1s steps(1) infinite;
+  }
+
+  .gt-piece {
+    animation: gt-arrive 420ms var(--efp-ease-out) both;
+  }
+}
+
+@keyframes gt-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes gt-arrive {
+  from {
+    opacity: 0.1;
+  }
+}
+
+.gt-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
   align-items: center;
-  margin-top: 0.75rem;
-}
-
-/* --- Translating --------------------------------------------------------- */
-
-.pair {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 0.75rem;
-  align-items: end;
-}
-
-@media (max-width: 34rem) {
-  .pair {
-    grid-template-columns: 1fr;
-  }
-
-  .pair button {
-    justify-self: start;
-  }
-}
-
-pre {
-  min-height: 3rem;
-  margin: 0.25rem 0 0;
+  gap: 0.6rem;
   padding: 0.75rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0.375rem;
-  background: var(--panel);
-  font: inherit;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  border-top: 1px solid var(--efp-line);
 }
 
-.terms {
+/* The terms that went along with the text, as chips: pending, used, missing. */
+.gt-terms {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem 1.1rem;
+  border-top: 1px solid var(--efp-line);
+  background: color-mix(in oklab, var(--color-base-content) 2%, var(--color-base-100));
+}
+
+.gt-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin: 0.5rem 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.terms li {
-  padding: 0.2rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: 1rem;
-  background: var(--panel);
-  font-size: 0.9rem;
+.gt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.7rem 0.25rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  border: 1px solid var(--efp-line-strong);
+  background: var(--color-base-100);
+  cursor: default;
+  outline: none;
+  transition: border-color var(--efp-fast) ease, box-shadow var(--efp-fast) ease, background var(--efp-medium) ease;
 }
 
-/* Used or not is written out as well: colour alone tells nothing to
-   somebody who cannot tell the two apart. */
-.terms .used {
-  border-color: var(--good);
+.gt-chip:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
-.terms .missed {
-  border-color: var(--problem);
-  border-style: dashed;
+.gt-chip-state {
+  display: grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  color: var(--color-base-100);
+  background: color-mix(in oklab, var(--color-base-content) 22%, transparent);
 }
 
-.terms .mark {
-  margin-left: 0.4rem;
-  color: var(--muted);
-  font-size: 0.8rem;
+.gt-chip.is-used {
+  border-color: color-mix(in oklab, var(--color-success) 40%, transparent);
+  background: color-mix(in oklab, var(--color-success) 7%, var(--color-base-100));
 }
 
-/* --- The glossary -------------------------------------------------------- */
-
-.table-wrap {
-  max-height: 28rem;
-  margin-top: 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 0.375rem;
-  overflow: auto;
+.gt-chip.is-used .gt-chip-state {
+  color: var(--color-success-content);
+  background: var(--color-success);
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
+.gt-chip.is-missed {
+  border-color: color-mix(in oklab, var(--color-warning) 60%, transparent);
+  background: color-mix(in oklab, var(--color-warning) 10%, var(--color-base-100));
 }
 
-th,
-td {
-  padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid var(--line);
-  text-align: left;
-  vertical-align: top;
+.gt-chip.is-missed .gt-chip-state {
+  color: var(--color-warning-content);
+  background: var(--color-warning);
 }
 
-th {
-  position: sticky;
-  top: 0;
-  background: var(--panel);
-  font-size: 0.875rem;
-  white-space: nowrap;
-}
-
-td input[type="text"] {
-  min-width: 8rem;
-  padding: 0.3rem 0.4rem;
-}
-
-tr.marked td {
-  background: var(--warning);
+.gt-chip.is-lit {
+  border-color: var(--gt-mark);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--gt-mark) 18%, transparent);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  button {
-    transition: opacity 120ms;
+  .gt-chip.is-pending .gt-chip-state {
+    animation: gt-wait 1.2s var(--efp-ease-in-out) infinite;
   }
+}
+
+@keyframes gt-wait {
+  50% {
+    background: color-mix(in oklab, var(--color-primary) 45%, transparent);
+  }
+}
+
+/* ---- The glossary ------------------------------------------------------------------------------ */
+
+.gt-glossary {
+  overflow: clip;
+}
+
+.gt-glossary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.75rem;
+  padding: 1rem 1rem 0.5rem;
+}
+
+.gt-glossary-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem 0.9rem;
+  border-bottom: 1px solid var(--efp-line);
+}
+
+@media (min-width: 40rem) {
+  .gt-glossary-head,
+  .gt-glossary-tools {
+    padding-inline: 1.25rem;
+  }
+}
+
+.gt-filter {
+  width: 100%;
+}
+
+@media (min-width: 40rem) {
+  .gt-filter {
+    width: 18rem;
+  }
+}
+
+/* One entry: four cells and its tools on a wide screen; a small card on a phone. */
+.gt-entry {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.25fr) 4rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1.25rem;
+  border-bottom: 1px solid var(--efp-line);
+  transition: background var(--efp-fast) ease;
+}
+
+.gt-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gt-rows > .gt-entry:hover {
+  background: color-mix(in oklab, var(--color-base-content) 3%, transparent);
+}
+
+.gt-entry-head {
+  padding-block: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 2.5%, var(--color-base-100));
+}
+
+.gt-cell {
+  position: relative;
+  min-width: 0;
+}
+
+/* The name of the column, for screen readers; a phone shows the language's code instead. */
+.gt-cell-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.gt-term {
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+}
+
+.gt-cell:first-child .gt-term {
+  font-weight: 600;
+}
+
+.gt-note .gt-term {
+  font-size: 0.82rem;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
+.gt-term.is-empty {
+  color: color-mix(in oklab, var(--color-base-content) 30%, transparent);
+}
+
+.gt-row-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.1rem;
+  opacity: 0;
+  transition: opacity var(--efp-fast) ease;
+}
+
+.gt-entry:hover .gt-row-tools,
+.gt-entry:focus-within .gt-row-tools {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .gt-row-tools {
+    opacity: 1;
+  }
+}
+
+.gt-skeleton {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.5rem;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--efp-line);
+}
+
+/* A row being edited: the same place in the list, opened into a form. */
+.gt-entry.is-editing {
+  display: block;
+  padding: 0;
+  background: color-mix(in oklab, var(--color-primary) 4%, var(--color-base-100));
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.gt-edit {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem 0.75rem;
+  padding: 0.85rem 1.25rem 0.9rem;
+}
+
+.gt-field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.gt-field > span {
+  font-size: 0.7rem;
+  font-weight: 650;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.gt-edit .gt-note,
+.gt-edit-actions {
+  grid-column: 1 / -1;
+}
+
+.gt-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.gt-edit .input:focus,
+.gt-edit .input:focus-within {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 18%, transparent);
+}
+
+@media (max-width: 47.99rem) {
+  .gt-entry-head,
+  .gt-skeleton {
+    display: none;
+  }
+
+  /* A small card: the English term as its title, the two Chinese terms side by side, the note under them. */
+  .gt-entry {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 0.25rem 0.75rem;
+    padding: 0.7rem 1rem;
+  }
+
+  .gt-cell:first-child {
+    grid-column: 1 / 3;
+  }
+
+  .gt-cell[data-field]:not(:first-child):not(.gt-note) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+  }
+
+  .gt-cell[data-field]:not(:first-child):not(.gt-note)::before {
+    content: attr(data-field);
+    padding: 0 0.3rem;
+    border-radius: 0.3rem;
+    font-size: 0.62rem;
+    font-weight: 650;
+    color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+    background: color-mix(in oklab, var(--color-base-content) 7%, transparent);
+  }
+
+  .gt-note {
+    grid-column: 1 / 3;
+  }
+
+  .gt-note:has(.is-empty) {
+    display: none;
+  }
+
+  .gt-row-tools {
+    grid-column: 3;
+    grid-row: 1;
+    opacity: 1;
+  }
+
+  .gt-lang-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .gt-langbar {
+    padding-inline: 0.5rem;
+  }
+
+  .gt-lang,
+  .gt-select {
+    width: 100%;
+  }
+
+  /* daisyUI draws a select as a "base-select" where the browser has it, and
+   * there a long name runs under the arrow; a plain select cuts it short. */
+  .gt-select {
+    appearance: none;
+    padding-inline: 0.5rem 1.75rem;
+    text-overflow: ellipsis;
+  }
+
+  .gt-editor,
+  .gt-output {
+    min-height: 9rem;
+  }
+
+  .gt-edit {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 1rem;
+  }
+}
+
+#glossary-empty {
+  padding-block: 2.5rem;
+}
+
+.gt-confirm-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border-radius: 1rem;
+  font-size: 1.3rem;
+  color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
 }

@@ -9,7 +9,12 @@ notes, grouped into features, fixes and the rest.
 - reading GitHub through a connector (`connectors.get`);
 - a model call (`llm.complete`) whose answer is kept in `efp_app.storage`, so
   the same range is paid for once;
-- turning text a visitor types into part of a connector path safely.
+- turning text a visitor types into part of a connector path safely;
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)): the
+  repository's newest two tags offered as one click, a skeleton while
+  GitHub and the model work, and a draft that rises in line by line, drawn
+  from its Markdown (headings with icons, pull request numbers as links)
+  without any HTML from the model; a kept draft says "nothing spent".
 
 **Turn on in the Portal:** the GitHub connector (read-only is enough) and the
 language model, both on the app's page.
@@ -30,7 +35,11 @@ drafts are files under `.efp-data/`.
 
 1. Copy this directory into your own repository.
 2. Change `SYSTEM_PROMPT` in `main.py` to your house style: your headings,
-   your language, how you name contributors.
+   your language, how you name contributors. When you rename the headings,
+   give them icons in `HEADINGS` at the top of `static/app.js`. For another
+   look, set `data-theme="emerald"` (or any daisyUI theme) on `<html>` and
+   link `/_efp/lib/daisyui@5.8.2/themes.css`
+   ([docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours)).
 3. `efp-app check`, push, register the directory as an app in the Portal,
    turn on GitHub and the model and press Deploy.
 
@@ -53,3 +62,7 @@ drafts are files under `.efp-data/`.
   the model and says so when a range is too large to compare.
 - GitHub Enterprise works the same way: the connector's address is then your
   server's API address.
+- **The model's Markdown is drawn, not parsed.** `draw` in `static/app.js`
+  knows the few shapes release notes use and builds each one with `kit.h`;
+  whatever else the model writes stays text. Copy gives the Markdown as it
+  came.

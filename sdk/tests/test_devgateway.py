@@ -1,4 +1,4 @@
-"""``efp-app dev --prefix NAME``: the local stand-in for the gateway (docs/CONTRACTS.md, sections 6.1 and 6.2).
+"""``efp-app dev``: the local stand-in for the gateway (docs/CONTRACTS.md, sections 6.1, 6.2 and 6.6).
 
 Each test starts a tiny app on a loopback port inside the test and talks to
 it through the gateway over plain sockets, so nothing but the standard
@@ -128,15 +128,15 @@ class App:
 
 
 @contextlib.asynccontextmanager
-async def served(answer=say_ok, listening=True, **options):
-    """An app with the gateway of ``/demo`` in front of it."""
+async def served(answer=say_ok, listening=True, slug="demo", **options):
+    """An app with the gateway of ``/demo`` (or of ``/{slug}``, ``""``: at the top) in front of it."""
     app = App(answer)
     if listening:
         await app.listen()
     else:
         app.app_port = _devgateway.free_port()
     options.setdefault("strip_prefix", True)
-    gateway = _devgateway.Gateway("demo", app.app_port, say=app.lines.append, **options)
+    gateway = _devgateway.Gateway(slug, app.app_port, say=app.lines.append, **options)
     server = await gateway.start(0)
     app.port = server.sockets[0].getsockname()[1]
     try:
@@ -866,18 +866,115 @@ def test_the_app_is_not_started_when_the_port_is_taken(tmp_path, capsys, prefixe
     assert "efp-app dev: could not listen on 127.0.0.1:%d" % port in err
 
 
-def test_without_a_prefix_nothing_changes(tmp_path, capsys, monkeypatch):
-    calls = []
-    monkeypatch.setattr(cli.subprocess, "call", lambda argv, cwd=None, env=None: calls.append((list(argv), dict(env))) or 0)
-    monkeypatch.setattr(cli.subprocess, "Popen", lambda *a, **k: pytest.fail("no gateway without --prefix"))
-    monkeypatch.setattr(cli.importlib.util, "find_spec", lambda name: object())
-    code, out, _err = run_cli(capsys, "dev", str(good_app(tmp_path / "app")), "--port", "8123")
-    assert code == 0
-    argv, env = calls[0]
-    assert argv == [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8123", "--no-server-header"]
-    assert env["PORT"] == "8123"
-    assert "EFP_APP_BASE_PATH" not in env and "EFP_APP_SLUG" not in env and "EFP_APP_PUBLIC_URL" not in env
-    assert "address    http://127.0.0.1:8123/\n" in out and "gateway" not in out
+def test_without_a_prefix_the_app_is_behind_the_gateway_at_the_top(tmp_path, capsys, prefixed):
+    port = socket_free_port()
+    code, out, _err = run_cli(capsys, "dev", str(good_app(tmp_path / "app")), "--port", str(port))
+    assert code == 7  # the exit code of the (fake) app
+    process = prefixed[0]
+    assert process.argv == [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(APP_PORT), "--no-server-header"]
+    assert process.env["PORT"] == str(APP_PORT)
+    assert "EFP_APP_BASE_PATH" not in process.env and "EFP_APP_SLUG" not in process.env
+    # The address is the gateway's, so that app.public_url() names the port that answers /_efp/lib/.
+    assert process.env["EFP_APP_PUBLIC_URL"] == "http://127.0.0.1:%d/" % port
+    assert "address    http://127.0.0.1:%d/\n" % port in out
+    assert "gateway    127.0.0.1:%d -> the app on 127.0.0.1:%d, paths unchanged" % (port, APP_PORT) in out
+
+
+def test_without_a_prefix_every_path_and_cookie_reaches_the_app_unchanged():
+    async def say_cookie(request, reader, writer):
+        writer.write(http_answer(headers=["Set-Cookie: theme=dark; Path=/settings; Domain=example.com"]))
+
+    async def scenario():
+        async with served(say_cookie, slug="") as app:
+            deep = await ask(app.port, "GET", "/settings/x?y=1", FETCH)
+            top = await ask(app.port, "GET", "/", NAVIGATION)
+            return app, deep, top
+
+    app, deep, top = run(scenario())
+    assert [request.target for request in app.requests] == ["/settings/x?y=1", "/"]
+    assert deep.get("set-cookie") == "theme=dark; Path=/settings; Domain=example.com"
+    assert app.requests[0].get("x-forwarded-prefix") is None
+    assert app.requests[0].get("x-forwarded-proto") == "http"
+    assert top.status == 200 and app.lines == []
+
+
+# --- Section 6.6: the shared browser libraries ----------------------------------------------------
+
+
+@pytest.fixture
+def libraries(tmp_path):
+    """A lib/ directory with one library in it, and a file next to it that must stay out of reach."""
+    lib = tmp_path / "lib"
+    (lib / "kit@1.0.0").mkdir(parents=True)
+    (lib / "kit@1.0.0" / "kit.css").write_bytes(b"body{}")
+    (lib / "kit@1.0.0" / "LICENSE").write_bytes(b"MIT")
+    (lib / "MANIFEST.json").write_bytes(b"{}")
+    (tmp_path / "secret.txt").write_bytes(b"no")
+    return lib
+
+
+@pytest.mark.parametrize("slug", ["demo", ""])
+def test_the_shared_libraries_are_answered_by_the_gateway(libraries, slug):
+    async def scenario():
+        async with served(slug=slug, lib_dir=libraries) as app:
+            css = await ask(app.port, "GET", "/_efp/lib/kit@1.0.0/kit.css", FETCH)
+            head = await ask(app.port, "HEAD", "/_efp/lib/kit@1.0.0/kit.css?v=2", FETCH)
+            notice = await ask(app.port, "GET", "/_efp/lib/kit@1.0.0/LICENSE", FETCH)
+            return app, css, head, notice
+
+    app, css, head, notice = run(scenario())
+    assert (css.status, css.body) == (200, b"body{}")
+    assert css.get("content-type") == "text/css; charset=utf-8"
+    assert css.get("x-content-type-options") == "nosniff"
+    assert (head.status, head.get("content-length"), head.body) == (200, "6", b"")
+    assert notice.get("content-type") == "text/plain; charset=utf-8"
+    assert app.requests == [] and app.lines == []  # the app never sees them
+
+
+def test_what_is_not_a_library_file_is_a_404_that_names_the_versions_there_are(libraries):
+    targets = [
+        "/_efp/lib/kit@1.0.1/kit.css",
+        "/_efp/lib/kit@1.0.0/../../secret.txt",
+        "/_efp/lib/kit@1.0.0/%2e%2e/%2e%2e/secret.txt",
+        "/_efp/lib/.hidden",
+        "/_efp/lib/kit@1.0.0",
+        "/_efp/lib/",
+    ]
+
+    async def scenario():
+        async with served(lib_dir=libraries) as app:
+            return app, [await ask(app.port, "GET", target, FETCH) for target in targets]
+
+    app, answers = run(scenario())
+    assert [answer.status for answer in answers] == [404] * len(targets)
+    assert {answer.json()["error"]["code"] for answer in answers} == {"not_found"}
+    assert all(b"no" != answer.body for answer in answers)
+    assert app.lines[0] == "not in the shared libraries: GET /_efp/lib/kit@1.0.1/kit.css  (there is kit@1.0.0)"
+    assert app.requests == []
+
+
+def test_the_shared_libraries_are_read_only(libraries):
+    async def scenario():
+        async with served(lib_dir=libraries) as app:
+            return app, await ask(app.port, "POST", "/_efp/lib/kit@1.0.0/kit.css", FETCH, b"x")
+
+    app, answer = run(scenario())
+    assert answer.status == 405 and app.requests == []
+
+
+def test_an_sdk_without_the_libraries_says_so(tmp_path):
+    async def scenario():
+        async with served(lib_dir=tmp_path / "nowhere") as app:
+            return app, await ask(app.port, "GET", "/_efp/lib/kit@1.0.0/kit.css", NAVIGATION)
+
+    app, answer = run(scenario())
+    assert answer.status == 404 and b"not one of the shared libraries" in answer.body
+    assert app.lines == ["not in the shared libraries: GET /_efp/lib/kit@1.0.0/kit.css  (this installation of the SDK has no shared libraries)"]
+
+
+def test_a_checkout_finds_the_libraries_of_the_repository():
+    found = _devgateway.library_directory()
+    assert found is not None and found.name == "lib" and (found / "MANIFEST.json").is_file()
 
 
 def socket_free_port():

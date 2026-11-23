@@ -413,6 +413,27 @@ def test_check_finds_root_absolute_urls(tmp_path, capsys):
     assert "page.jinja2:2" not in out
 
 
+def test_check_takes_the_shared_libraries_and_finds_a_wrong_version(tmp_path, capsys):
+    page = (
+        '<link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">\n'
+        '<script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>\n'
+        '<link rel="stylesheet" href="/_efp/lib/daisyui@5.8.1/daisyui.css">\n'
+    )
+    script = (
+        'import { toast } from "/_efp/lib/efp-kit@1.0.0/efp-kit.js";\n'
+        'const kit = await import("/_efp/lib/efp-kit@0.9.0/efp-kit.js");\n'
+        'fetch("/_efp/lib/nothing@1.0.0/x.js");\n'
+    )
+    app = write_app(good_app(tmp_path / "app"), None, {"static/index.html": page, "static/app.js": script})
+    code, out, _err = run_cli(capsys, "check", str(app))
+    assert code == 0
+    assert "index.html:1" not in out and "index.html:2" not in out and "app.js:1" not in out
+    assert "warning static/index.html:3: no such file in the shared libraries: /_efp/lib/daisyui@5.8.1/daisyui.css (there is daisyui@5.8.2)" in out
+    assert "warning static/app.js:2: no such file in the shared libraries: /_efp/lib/efp-kit@0.9.0/efp-kit.js (there is efp-kit@1.0.0)" in out
+    assert "warning static/app.js:3: no such file in the shared libraries: /_efp/lib/nothing@1.0.0/x.js; docs/UI_KIT.md" in out
+    assert "root-absolute" not in out
+
+
 def test_check_strict_fails_on_warnings(tmp_path, capsys):
     app = write_app(good_app(tmp_path / "app"), None, {"static/app.js": 'fetch("/api/items");\n'})
     assert run_cli(capsys, "check", str(app))[0] == 0
@@ -761,16 +782,21 @@ def test_the_child_environment():
     assert base["PORT"] == "1"
 
 
+# Where `efp-app dev` puts the app, behind its gateway, in these tests.
+APP_PORT = 54321
+
+
 @pytest.fixture
 def launched(monkeypatch):
-    """Record what `efp-app dev` would start instead of starting it."""
+    """Record what `efp-app dev` would start instead of starting it; the app's port is APP_PORT."""
     calls = []
 
-    def fake_call(argv, cwd=None, env=None):
-        calls.append({"argv": list(argv), "cwd": cwd, "env": dict(env)})
+    def fake_run(gateway, port, argv, directory, env):
+        calls.append({"argv": list(argv), "cwd": directory, "env": dict(env), "port": port, "gateway": gateway})
         return 0
 
-    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+    monkeypatch.setattr(cli, "_run_behind_gateway", fake_run)
+    monkeypatch.setattr(cli._devgateway, "free_port", lambda: APP_PORT)
     monkeypatch.setattr(cli.importlib.util, "find_spec", lambda name: object())
     return calls
 
@@ -781,9 +807,10 @@ def test_dev_starts_the_app_with_the_token_from_dot_env(tmp_path, capsys, launch
     code, out, err = run_cli(capsys, "dev", str(app), "--port", "8123")
     assert code == 0 and err == ""
     call = launched[0]
-    assert call["argv"] == [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8123", "--no-server-header"]
+    assert call["argv"] == [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(APP_PORT), "--no-server-header"]
     assert Path(call["cwd"]) == app.resolve()
-    assert call["env"]["PORT"] == "8123"
+    assert call["port"] == 8123 and call["gateway"].base == ""  # the gateway listens there, in front of the app at "/"
+    assert call["env"]["PORT"] == str(APP_PORT)
     assert call["env"]["EFP_APP_TOKEN"] == TOKEN
     assert call["env"]["EFP_PORTAL_URL"] == "https://efp.example.com"
     assert call["env"]["PYTHONUNBUFFERED"] == "1"
@@ -801,15 +828,16 @@ def test_dev_prefers_the_environment_and_defaults_the_port(tmp_path, capsys, lau
     monkeypatch.chdir(app)
     assert run_cli(capsys, "dev")[0] == 0
     assert launched[0]["env"]["EFP_APP_TOKEN"] == TOKEN
-    assert launched[0]["env"]["PORT"] == "9100"
+    assert launched[0]["port"] == 9100
     monkeypatch.setenv("PORT", "9200")
     assert run_cli(capsys, "dev")[0] == 0
-    assert launched[1]["env"]["PORT"] == "9200"
+    assert launched[1]["port"] == 9200
     (app / ".env").unlink()
     monkeypatch.delenv("PORT")
     assert run_cli(capsys, "dev")[0] == 0
-    assert launched[2]["env"]["PORT"] == "8000"
-    assert "--port" in launched[2]["argv"] and "8000" in launched[2]["argv"]
+    assert launched[2]["port"] == 8000
+    # The app itself listens behind the gateway.
+    assert launched[2]["env"]["PORT"] == str(APP_PORT) and str(APP_PORT) in launched[2]["argv"]
 
 
 def test_dev_warns_when_the_token_is_missing_but_still_starts(tmp_path, capsys, launched):
@@ -844,7 +872,7 @@ def test_dev_passes_gradio_its_settings(tmp_path, capsys, launched, monkeypatch)
     call = launched[0]
     assert call["argv"] == [sys.executable, "app.py"]
     assert call["env"]["GRADIO_SERVER_NAME"] == "127.0.0.1"
-    assert call["env"]["GRADIO_SERVER_PORT"] == "7000"
+    assert call["env"]["GRADIO_SERVER_PORT"] == str(APP_PORT) and call["port"] == 7000
     assert "GRADIO_ROOT_PATH" not in call["env"]
 
 
@@ -854,7 +882,7 @@ def test_dev_starts_flask_the_right_way_for_the_platform(tmp_path, capsys, launc
     assert run_cli(capsys, "dev", str(app))[0] == 0
     argv = launched[0]["argv"]
     if sys.platform == "win32":
-        assert argv == [sys.executable, "-m", "flask", "--app", "app:app", "run", "--port", "8000"]
+        assert argv == [sys.executable, "-m", "flask", "--app", "app:app", "run", "--port", str(APP_PORT)]
     else:
         assert argv[:4] == [sys.executable, "-m", "gunicorn", "app:app"]
     assert "SCRIPT_NAME" not in launched[0]["env"]
@@ -864,14 +892,17 @@ def test_dev_previews_a_static_app_without_asking_for_a_token(tmp_path, capsys, 
     app = write_app(tmp_path / "app", {"name": "x", "type": "static", "entry": "public", "owners": ["alice"]}, {"public/index.html": "hi"})
     code, out, _err = run_cli(capsys, "dev", str(app))
     assert code == 0
-    assert launched[0]["argv"] == [sys.executable, "-m", "http.server", "8000", "--bind", "127.0.0.1", "--directory", "public"]
+    assert launched[0]["argv"] == [sys.executable, "-m", "http.server", str(APP_PORT), "--bind", "127.0.0.1", "--directory", "public"]
+    assert launched[0]["gateway"].local_file_server
     assert "token" not in out and "local preview" in out
 
 
 def test_dev_dry_run_shows_the_command_and_starts_nothing(tmp_path, capsys, launched):
     code, out, _err = run_cli(capsys, "dev", str(good_app(tmp_path / "app")), "--dry-run")
     assert code == 0 and launched == []
-    assert "-m uvicorn main:app --host 127.0.0.1 --port 8000 --no-server-header" in out
+    assert "-m uvicorn main:app --host 127.0.0.1 --port %d --no-server-header" % APP_PORT in out
+    assert "gateway    127.0.0.1:8000 -> the app on 127.0.0.1:%d, paths unchanged" % APP_PORT in out
+    assert "libraries  /_efp/lib/ answered from " in out
 
 
 def test_dev_needs_a_usable_manifest(tmp_path, capsys, launched):

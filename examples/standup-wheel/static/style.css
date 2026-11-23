@@ -1,332 +1,436 @@
-:root {
-  color-scheme: light dark;
-  --ink: light-dark(#1f2633, #e9ecf2);
-  --muted: light-dark(#5b6676, #a3adbd);
-  --page: light-dark(#ffffff, #0f1216);
-  --surface: light-dark(#f6f7fa, #151920);
-  --line: light-dark(#d3d9e3, #2c3440);
-  --accent: light-dark(#2f5fc4, #8fb0f5);
-  --on-accent: light-dark(#ffffff, #0f1216);
-  --bad: light-dark(#b3261e, #f2b8b5);
-  /* The slices: light fills under dark names, and the other way round at night. */
-  --slice-0: light-dark(#cfe0ff, #2c4a86);
-  --slice-1: light-dark(#ffe2b8, #7a5216);
-  --slice-2: light-dark(#cdeed8, #235c3c);
-  --slice-3: light-dark(#f6d0e4, #7a3058);
-  --slice-4: light-dark(#ddd6fb, #4a3f8f);
-  --slice-5: light-dark(#c9eef2, #1f5e66);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
-  color: var(--ink);
-  background: var(--page);
+/*
+ * The stand-up wheel's own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them). Most of the page is Tailwind classes in the
+ * markup; this file holds the wheel, the lists and the team form.
+ *
+ * Nothing here moves by itself: every motion of this page is started by
+ * app.js, which asks first whether the visitor wants less of it. The colours
+ * are the theme's (--color-primary, ...), so a daisyUI theme repaints the
+ * slices too.
+ */
+
+[hidden] {
+  display: none !important;
 }
 
-body {
-  margin: 0;
-}
+/* ---- The stage: the wheel and what it decided ----------------------------------------- */
 
-main {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 4rem;
-}
-
-h1 {
-  margin: 0;
-  font-size: 1.75rem;
-}
-
-h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.2rem;
-}
-
-h3 {
-  margin: 1.25rem 0 0.25rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
-header p {
-  margin: 0.15rem 0 0;
-}
-
-section {
-  margin-top: 2rem;
-}
-
-button {
-  padding: 0.45rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--surface);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-
-input[type="text"] {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 8rem;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: 0.3rem;
-  background: var(--page);
-  color: inherit;
-  font: inherit;
-}
-
-:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-
-/* The wheel on the left, the round on the right; one below the other on a narrow screen. */
-
-.board {
+.sw-stage {
   display: grid;
-  grid-template-columns: minmax(0, 26rem) minmax(0, 1fr);
-  gap: 2.5rem;
-  align-items: start;
+  gap: 1.25rem;
+  padding: 1.25rem;
 }
 
-.board section {
-  margin-top: 1.5rem;
-}
-
-@media (max-width: 46rem) {
-  .board {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
+@media (min-width: 640px) {
+  .sw-stage {
+    padding: 1.5rem 1.75rem 1.75rem;
   }
 }
 
-.wheel svg {
+.sw-wheel {
+  position: relative;
+  width: min(100%, 30rem);
+  margin-inline: auto;
+}
+
+.sw-wheel svg {
   display: block;
   width: 100%;
-  max-width: 26rem;
   height: auto;
-  margin: 0 auto;
+  overflow: visible;
 }
 
-.wheel .slice path {
-  stroke: var(--page);
-  stroke-width: 1.2;
+/* The slices take the theme's colours in turn (wheel.js says which one each
+ * gets): a soft fill under the name, the full colour once it is chosen. */
+.sw-wheel .c0 { --slice: var(--color-primary); --slice-ink: var(--color-primary-content); }
+.sw-wheel .c1 { --slice: var(--color-secondary); --slice-ink: var(--color-secondary-content); }
+.sw-wheel .c2 { --slice: var(--color-accent); --slice-ink: var(--color-accent-content); }
+.sw-wheel .c3 { --slice: var(--color-warning); --slice-ink: var(--color-warning-content); }
+.sw-wheel .c4 { --slice: var(--color-success); --slice-ink: var(--color-success-content); }
+.sw-wheel .c5 { --slice: var(--color-info); --slice-ink: var(--color-info-content); }
+
+.sw-wheel .slice path {
+  fill: color-mix(in oklab, var(--slice) 30%, var(--color-base-100));
+  stroke: var(--color-base-100);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
 }
 
-.wheel .c0 path {
-  fill: var(--slice-0);
+/* --labels is set by app.js while the wheel turns: at speed the names blur into it. */
+.sw-wheel .slice text {
+  fill: var(--color-base-content);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  pointer-events: none;
+  opacity: var(--labels, 1);
 }
 
-.wheel .c1 path {
-  fill: var(--slice-1);
+.sw-wheel.is-loading svg {
+  opacity: 0.5;
 }
 
-.wheel .c2 path {
-  fill: var(--slice-2);
-}
-
-.wheel .c3 path {
-  fill: var(--slice-3);
-}
-
-.wheel .c4 path {
-  fill: var(--slice-4);
-}
-
-.wheel .c5 path {
-  fill: var(--slice-5);
-}
-
-.wheel .slice text {
-  fill: var(--ink);
-  font-weight: 600;
-}
-
-/* After the wheel has stopped the chosen slice stands out: the others fade and it gets an outline. */
-.wheel .landed .slice:not(.chosen) {
-  opacity: 0.35;
-}
-
-.wheel .chosen path {
-  stroke: var(--ink);
-  stroke-width: 2.5;
-}
-
-.wheel .over .slice {
-  opacity: 0.35;
-}
-
-.wheel .blank {
-  fill: var(--surface);
-  stroke: var(--line);
-  stroke-width: 1.5;
-  stroke-dasharray: 5 5;
-}
-
-.wheel .hub {
-  fill: var(--page);
-  stroke: var(--ink);
+.sw-wheel .slice.chosen path {
+  fill: var(--slice);
+  stroke: var(--color-base-100);
   stroke-width: 2;
 }
 
-.wheel .pointer {
-  fill: var(--ink);
-  stroke: var(--page);
+.sw-wheel .slice.chosen text {
+  fill: var(--slice-ink);
+  font-weight: 750;
+}
+
+/* After a landing the other slices step back; a finished round greys out. */
+.sw-wheel .landed .slice:not(.chosen),
+.sw-wheel .over .slice {
+  opacity: 0.4;
+}
+
+.sw-wheel .over .slice path {
+  fill: color-mix(in oklab, var(--color-base-content) 8%, var(--color-base-100));
+}
+
+.sw-wheel .blank {
+  fill: color-mix(in oklab, var(--color-base-200) 70%, var(--color-base-100));
+  stroke: var(--efp-line-strong);
   stroke-width: 1.5;
+  stroke-dasharray: 5 6;
 }
 
-.next {
-  min-height: 2.2rem;
-  margin: 0.75rem 0 0;
-  font-size: 1.4rem;
-  font-weight: 700;
-  line-height: 1.3;
+/* The pegs between slices: what the pointer clicks against as they pass. */
+.sw-wheel .peg {
+  fill: var(--color-base-100);
+  stroke: color-mix(in oklab, var(--color-base-content) 35%, transparent);
+  stroke-width: 0.8;
+}
+
+.sw-rim {
+  fill: none;
+  stroke: color-mix(in oklab, var(--color-primary) 55%, var(--color-secondary));
+  stroke-width: 11;
+}
+
+.sw-shadow {
+  fill: color-mix(in oklab, var(--color-neutral) 22%, transparent);
+  filter: blur(6px);
+}
+
+/* The lights round the rim: lit ones are set by app.js while the wheel turns. */
+.sw-bulb {
+  fill: color-mix(in oklab, var(--color-base-100) 70%, var(--color-primary));
+}
+
+.sw-bulb.is-lit {
+  fill: var(--color-warning);
+}
+
+.sw-hub-ring {
+  fill: var(--color-base-100);
+  stroke: var(--efp-line-strong);
+  stroke-width: 1;
+}
+
+.sw-hub {
+  fill: color-mix(in oklab, var(--color-primary) 85%, var(--color-secondary));
+}
+
+.sw-pointer {
+  fill: var(--color-base-content);
+  stroke: var(--color-base-100);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+/* An empty wheel says why, in its middle, where the hub would be. */
+.sw-wheel.is-empty .sw-hub,
+.sw-wheel.is-empty .sw-hub-ring {
+  display: none;
+}
+
+.sw-wheel-empty {
+  position: absolute;
+  inset: 22%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.35rem;
   text-align: center;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
 }
 
-.wheel-side .actions {
+.sw-wheel-empty .efp-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 1rem;
+  font-size: 1.3rem;
+  color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
+}
+
+.sw-wheel-empty strong {
+  color: var(--color-base-content);
+}
+
+/* ---- Who speaks next --------------------------------------------------------------------- */
+
+.sw-next {
+  display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 0.9rem;
+  min-height: 4.25rem;
+  text-align: left;
 }
 
-#status,
-#team-status {
-  min-height: 1.5rem;
-  margin: 0.5rem 0 0;
+.sw-next .sw-next-name {
+  font-size: clamp(1.5rem, 4.5vw, 2.1rem);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
 }
 
-#status {
+.sw-next .sw-next-note {
+  font-size: 0.82rem;
+  color: color-mix(in oklab, var(--color-base-content) 62%, transparent);
+}
+
+.sw-next .sw-hint {
+  font-size: 0.95rem;
+  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   text-align: center;
 }
 
-/* The lists */
+.sw-next .efp-avatar {
+  box-shadow: 0 0 0 3px var(--color-base-100), 0 0 0 5px var(--color-primary), var(--efp-glow);
+}
 
-.people {
+/* ---- The round --------------------------------------------------------------------------- */
+
+.sw-label {
+  margin-bottom: 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.sw-progress {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+  overflow: hidden;
+}
+
+.sw-progress > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+}
+
+.sw-spoken {
+  display: grid;
+  gap: 0.5rem;
   margin: 0;
-  padding-left: 1.5rem;
+  padding: 0;
+  list-style: none;
 }
 
-.people li {
-  padding: 0.1rem 0;
+.sw-spoken > li:not(.skeleton) {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.75rem 0.45rem 0.5rem;
+  border-radius: var(--radius-field);
+  background: color-mix(in oklab, var(--color-base-200) 75%, transparent);
 }
 
-.people small {
-  color: var(--muted);
+.sw-order {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 13%, transparent);
 }
 
-.chips {
+.sw-spoken > li.is-latest {
+  background: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-primary) 30%, transparent);
+}
+
+.sw-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
-  padding: 0;
-  list-style: none;
-}
-
-.chips li {
-  padding: 0.15rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: 2rem;
-  background: var(--surface);
-}
-
-.round-side p {
-  margin: 0;
-}
-
-.history {
+  gap: 0.45rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.history li {
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--line);
+.sw-chips > li:not(.skeleton) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.2rem 0.75rem 0.2rem 0.25rem;
+  border: 1px solid var(--efp-line);
+  border-radius: 999px;
+  background: var(--color-base-100);
+  font-size: 0.875rem;
+  font-weight: 550;
 }
 
-.history .left {
-  color: var(--muted);
+.sw-chips.is-away > li {
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  border-style: dashed;
 }
 
-/* The owner's form */
-
-.scroll {
-  overflow-x: auto;
+.sw-chips.is-away .efp-avatar {
+  filter: grayscale(0.85);
+  opacity: 0.7;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
+/* ---- Earlier rounds ------------------------------------------------------------------------ */
+
+.sw-history {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-th,
-td {
-  padding: 0.3rem 0.4rem 0.3rem 0;
-  text-align: left;
-  vertical-align: middle;
+.sw-history > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.25rem 0.85rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--efp-line);
 }
 
-thead th {
-  color: var(--muted);
+.sw-history > li:first-child {
+  border-top: 0;
+  padding-top: 0.2rem;
+}
+
+.sw-history .sw-round {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 750;
+  color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 11%, transparent);
+}
+
+.sw-order-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.3rem;
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+}
+
+.sw-order-line .lucide {
+  width: 0.85rem;
+  height: 0.85rem;
+  opacity: 0.35;
+}
+
+/* ---- The team form ------------------------------------------------------------------------ */
+
+.sw-team-head,
+.sw-team > li {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr) minmax(0, 1.2fr) 6.5rem 2.5rem;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.sw-team-head {
+  padding-inline: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.sw-team {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sw-team > li {
+  padding: 0.5rem;
+  border-radius: var(--radius-field);
+  background: color-mix(in oklab, var(--color-base-200) 60%, transparent);
+}
+
+.sw-team > li.is-away .efp-avatar {
+  filter: grayscale(0.85);
+  opacity: 0.7;
+}
+
+.sw-team .sw-away {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.85rem;
-  font-weight: 600;
-  white-space: nowrap;
+  cursor: pointer;
 }
 
-td.narrow {
-  width: 1%;
-  white-space: nowrap;
+.sw-team .sw-away-text {
+  display: none;
 }
 
-dialog {
-  max-width: 26rem;
-  padding: 1.25rem;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  background: var(--page);
-  color: var(--ink);
+@media (max-width: 720px) {
+  .sw-team-head {
+    display: none;
+  }
+
+  .sw-team > li {
+    grid-template-columns: 2.25rem minmax(0, 1fr) auto;
+    grid-template-areas:
+      "avatar username remove"
+      "avatar name name"
+      "avatar away away";
+    gap: 0.5rem 0.6rem;
+  }
+
+  .sw-team > li > :nth-child(1) { grid-area: avatar; align-self: start; margin-top: 0.3rem; }
+  .sw-team > li > :nth-child(2) { grid-area: username; }
+  .sw-team > li > :nth-child(3) { grid-area: name; }
+  .sw-team > li > :nth-child(4) { grid-area: away; }
+  .sw-team > li > :nth-child(5) { grid-area: remove; }
+
+  .sw-team .sw-away-text {
+    display: inline;
+  }
 }
 
-dialog::backdrop {
-  background: rgb(0 0 0 / 45%);
-}
-
-dialog p {
-  margin: 0;
+.sw-confirm-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border-radius: 0.9rem;
+  font-size: 1.2rem;
+  color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
 }

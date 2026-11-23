@@ -1,457 +1,718 @@
+/*
+ * Mind map's own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them). The markup and app.js use Tailwind classes for
+ * spacing and type; this file holds the cards of the list, the editor's
+ * canvas with its dot grid, the floating toolbars and the selection ring.
+ *
+ * Make it yours: the eight branch colours are the variables below, taken
+ * from the theme. app.js reads them (kit.color) and writes them into the
+ * drawing, so a node is the same colour on the page, in the exported SVG
+ * and in the PNG. Change one here, or set data-theme on <html>, and the
+ * whole map follows.
+ */
+
 :root {
-  color-scheme: light dark;
-  --page: light-dark(#f4f5f7, #121417);
-  --surface: light-dark(#ffffff, #1b1e23);
-  --line: light-dark(#d5dae1, #353b45);
-  --text: light-dark(#1c2024, #e7e9ec);
-  --muted: light-dark(#5b6675, #9aa5b4);
-  --accent: light-dark(#2f5fd0, #8fb2ff);
-  --on-accent: light-dark(#ffffff, #0e1830);
-  --problem: light-dark(#b3261e, #f2b8b5);
-  --focus: light-dark(#1a4fd6, #a9c4ff);
-  --radius: 0.5rem;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--page);
-  color: var(--text);
+  --mm-blue: var(--color-info);
+  --mm-green: var(--color-success);
+  --mm-amber: var(--color-warning);
+  --mm-red: var(--color-error);
+  --mm-purple: var(--color-secondary);
+  --mm-teal: var(--color-accent);
+  --mm-pink: color-mix(in oklch, var(--color-error), var(--color-secondary));
+  --mm-gray: color-mix(in oklab, var(--color-base-content) 45%, var(--color-base-100));
+  --mm-paper: var(--color-base-100); /* the canvas, and the sheet of an export */
 }
 
 [hidden] {
   display: none !important;
 }
 
-h1,
-h2 {
-  margin: 0;
-  line-height: 1.25;
+/* A tone on a shape: a tint of the colour on the paper, with a line a little
+ * closer to the text colour, so that a light colour (amber) keeps its edge.
+ * app.js mixes the colours of the real map the same way. */
+.tone-blue { --tone: var(--mm-blue); }
+.tone-green { --tone: var(--mm-green); }
+.tone-amber { --tone: var(--mm-amber); }
+.tone-red { --tone: var(--mm-red); }
+.tone-purple { --tone: var(--mm-purple); }
+.tone-teal { --tone: var(--mm-teal); }
+.tone-pink { --tone: var(--mm-pink); }
+.tone-gray { --tone: var(--mm-gray); }
+
+.mm-shape {
+  fill: color-mix(in oklab, var(--tone) 16%, var(--mm-paper));
+  stroke: color-mix(in oklab, var(--tone) 78%, var(--color-base-content));
+  stroke-width: 1.5;
 }
 
-h1 {
-  font-size: 1.6rem;
+.mm-link {
+  fill: none;
+  stroke: color-mix(in oklab, var(--tone) 78%, var(--color-base-content));
+  stroke-width: 2.5;
+  stroke-linecap: round;
 }
 
-h2 {
-  font-size: 1.1rem;
+.mm-link.twig {
+  stroke-width: 1.75;
 }
 
-p {
-  margin: 0.25rem 0 0;
+/* ---- The list: a picture of a map, then the cards ------------------------------------------ */
+
+.mm-sketch {
+  padding: 1.25rem;
+  border-radius: calc(var(--radius-box) + 0.5rem);
+  border: 1px solid var(--efp-line);
+  box-shadow: var(--efp-shadow-md);
+  background-color: var(--mm-paper);
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--color-base-content) 14%, transparent) 1px, transparent 1.4px);
+  background-size: 20px 20px;
 }
 
-.muted {
-  color: var(--muted);
+.mm-sketch-root {
+  fill: url(#mm-sketch-root);
 }
 
-.problem {
-  color: var(--problem);
+.mm-stop-primary {
+  stop-color: var(--color-primary);
 }
 
-.status {
-  min-height: 1.5rem;
+.mm-stop-secondary {
+  stop-color: var(--color-secondary);
 }
 
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
+.mm-sketch-text {
+  fill: color-mix(in oklab, var(--color-base-content) 24%, transparent);
 }
 
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+.mm-sketch-text.on-root {
+  fill: color-mix(in oklab, var(--color-primary-content) 75%, transparent);
 }
 
-button,
-.button,
-summary {
-  display: inline-block;
-  padding: 0.35rem 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  text-decoration: none;
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-
-button:hover:not(:disabled),
-.button:hover,
-summary:hover {
-  border-color: var(--accent);
-}
-
-button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-
-button.danger {
-  color: var(--problem);
-}
-
-button.primary.danger {
-  border-color: var(--problem);
-  background: var(--problem);
-  color: var(--surface);
-}
-
-input[type="text"] {
-  min-width: 0;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
-
-.group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-/* --- The list of maps --- */
-
-.page {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 2rem 1rem 4rem;
-}
-
-.page section,
-.page form {
-  margin-top: 1.75rem;
-}
-
-.page label {
-  display: block;
-  margin-bottom: 0.35rem;
-  font-weight: 600;
-}
-
-.field-row {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.field-row input {
-  flex: 1;
-}
-
-.section-head {
+.mm-section-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
 }
 
-.cards {
+.mm-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
-  gap: 0.75rem;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
+  list-style: none;
   margin: 0;
   padding: 0;
-  list-style: none;
 }
 
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.9rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+.mm-card {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  background: var(--color-base-100);
+  border: 1px solid var(--efp-line);
+  border-radius: var(--radius-box);
+  box-shadow: var(--efp-shadow-sm);
 }
 
-.card-title {
-  color: var(--accent);
+.mm-card-link {
+  display: grid;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-box) var(--radius-box) 0 0;
+}
+
+.mm-card-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* The card's picture: the same paper and dots as the editor, so that opening
+ * a map looks like stepping into its card. */
+.mm-thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 7.5rem;
+  border-bottom: 1px solid var(--efp-line);
+  background-color: color-mix(in oklab, var(--color-primary) 3%, var(--mm-paper));
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--color-base-content) 13%, transparent) 1px, transparent 1.4px);
+  background-size: 16px 16px;
+}
+
+.mm-glyph {
+  width: 11rem;
+  height: auto;
+  overflow: visible;
+  transition: transform var(--efp-slow) var(--efp-spring);
+}
+
+.mm-card:hover .mm-glyph {
+  transform: scale(1.06);
+}
+
+.mm-glyph-root {
+  fill: var(--color-primary);
+}
+
+.mm-glyph-ghost {
+  fill: none;
+  stroke: color-mix(in oklab, var(--color-base-content) 30%, transparent);
+  stroke-width: 1.25;
+  stroke-dasharray: 3 3;
+}
+
+.mm-card-body {
+  min-width: 0;
+  padding: 0.8rem 1rem 0.2rem;
+}
+
+.mm-card-title {
   font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.card .group {
-  margin-top: auto;
-  padding-top: 0.5rem;
-}
-
-.card button {
-  padding: 0.2rem 0.6rem;
-  font-size: 0.9rem;
-}
-
-.badge {
-  padding: 0.05rem 0.5rem;
-  border: 1px solid var(--accent);
-  border-radius: 1rem;
-  color: var(--accent);
-  font-size: 0.8rem;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.empty {
-  padding: 1.5rem 1rem;
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  color: var(--muted);
-  text-align: center;
-}
-
-/* --- The editor --- */
-
-.editor {
+.mm-card-foot {
   display: flex;
-  flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
-}
-
-.bar {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  gap: 0.35rem;
+  min-height: 2.6rem;
+  padding: 0.2rem 0.5rem 0.55rem 1rem;
 }
 
-.bar .title {
-  flex: 1 1 12rem;
+/* A card's tools show when it is pointed at or focused; always on a touch screen. */
+.mm-card-tools {
+  display: flex;
+  gap: 0.1rem;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.mm-card:hover .mm-card-tools,
+.mm-card:focus-within .mm-card-tools {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .mm-card-tools {
+    opacity: 1;
+  }
+}
+
+/* While a map is being fetched, its card says so (after a moment). */
+.mm-card.is-opening .mm-thumb::after {
+  content: "";
+  position: absolute;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  border: 3px solid color-mix(in oklab, var(--color-primary) 22%, transparent);
+  border-top-color: var(--color-primary);
+  animation: mm-spin 0.8s linear infinite;
+}
+
+.mm-danger:hover:not(:disabled) {
+  color: var(--color-error);
+  background: color-mix(in oklab, var(--color-error) 12%, transparent);
+}
+
+/* ---- The editor ------------------------------------------------------------------------------ */
+
+.mm-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--mm-paper);
+}
+
+.mm-bar {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-inline: 0.75rem;
+}
+
+.mm-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.mm-title-field {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* The title reads as a heading until it is pointed at or focused; it is as
+ * wide as its text where the browser can do that (field-sizing). */
+.mm-title {
+  max-width: min(30rem, 100%);
+  min-width: 8rem;
+  field-sizing: content;
+  height: 2.25rem;
+  padding: 0 0.6rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: inherit;
   font-size: 1.05rem;
   font-weight: 600;
+  text-overflow: ellipsis;
+  transition: border-color var(--efp-fast) ease, box-shadow var(--efp-fast) ease, background var(--efp-fast) ease;
 }
 
-.bar .title:read-only {
-  border-color: transparent;
-  background: transparent;
+.mm-title:not([readonly]):hover {
+  border-color: var(--efp-line-strong);
 }
 
-.tools button,
-.tools summary {
-  padding: 0.2rem 0.6rem;
-  font-size: 0.9rem;
+.mm-title:focus {
+  outline: none;
 }
 
-.swatches {
-  display: inline-flex;
-  gap: 0.2rem;
-  margin: 0 0.25rem;
+.mm-title:not([readonly]):focus {
+  border-color: var(--color-primary);
+  background: var(--color-base-100);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
 
-.swatch {
-  width: 1.4rem;
-  height: 1.4rem;
-  padding: 0;
-  border-radius: 50%;
-  /* "No colour of its own": a white disc with a stroke through it. */
-  background: linear-gradient(135deg, transparent 45%, var(--muted) 45%, var(--muted) 55%, transparent 55%) #ffffff;
-}
-
-.swatch[aria-pressed="true"] {
-  outline: 2px solid var(--text);
-  outline-offset: 1px;
-}
-
-.check {
+/* Saved, saving, not saved yet, changed elsewhere: a chip in the colour of the state. */
+.mm-status {
+  --tone: var(--color-success);
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.9rem;
+  gap: 0.35rem;
+  height: 1.75rem;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: color-mix(in oklab, var(--tone) 72%, var(--color-base-content));
+  background: color-mix(in oklab, var(--tone) 13%, transparent);
+  transition: color var(--efp-medium) ease, background var(--efp-medium) ease;
 }
 
-.menu {
-  position: relative;
+.mm-status[data-state="dirty"] {
+  --tone: var(--color-warning);
 }
 
-.menu summary {
+.mm-status[data-state="saving"] {
+  --tone: var(--color-info);
+}
+
+.mm-status[data-state="conflict"],
+.mm-status[data-state="error"] {
+  --tone: var(--color-error);
+}
+
+.mm-status[data-state="readonly"] {
+  --tone: var(--color-base-content);
+}
+
+.mm-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2rem;
+  padding: 0 0.65rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--efp-fast) ease;
+}
+
+.mm-share:hover {
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+}
+
+.mm-menu > summary {
   list-style: none;
 }
 
-.menu summary::-webkit-details-marker {
+.mm-menu > summary::-webkit-details-marker {
   display: none;
 }
 
-.menu-items {
-  position: absolute;
-  z-index: 3;
-  top: calc(100% + 0.25rem);
-  right: 0;
-  display: grid;
-  gap: 0.25rem;
-  min-width: 12rem;
-  margin: 0;
-  padding: 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: 0 0.4rem 1.2rem rgb(0 0 0 / 0.18);
-}
+/* ---- The canvas: paper with a dot grid that moves and scales with the map --------------------- */
 
-.menu-items button {
-  text-align: left;
-}
-
-.keys {
-  grid-template-columns: auto 1fr;
-  gap: 0.2rem 0.75rem;
-  min-width: 18rem;
-  font-size: 0.9rem;
-}
-
-.keys dt {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.keys dd {
-  margin: 0;
-  color: var(--muted);
-}
-
-.notice {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-}
-
-.stage {
+.mm-stage {
+  --grid-size: 24px;
+  --grid-x: 0px;
+  --grid-y: 0px;
   position: relative;
-  flex: 1;
-  min-height: 0;
   overflow: hidden;
+  touch-action: none;
+  background-color: var(--mm-paper);
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--color-base-content) 15%, transparent) 1px, transparent 1.4px);
+  background-size: var(--grid-size) var(--grid-size);
+  background-position: var(--grid-x) var(--grid-y);
 }
 
 #canvas {
   display: block;
   width: 100%;
   height: 100%;
-  /* The page handles every touch on the map itself: one finger moves it, two zoom. */
-  touch-action: none;
-  user-select: none;
   cursor: grab;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
+#canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--color-primary) 30%, transparent);
+}
+
+.mm-stage.is-panning #canvas,
 #canvas.dragging {
   cursor: grabbing;
 }
 
-#canvas:focus-visible {
-  outline-offset: -2px;
-}
-
-.node {
+#canvas .node {
   cursor: pointer;
 }
 
-/* A style sheet rule wins over the attributes the drawing sets, so the
-   marks below exist on the page only and never reach an exported file. */
-.node.selected rect {
-  stroke: var(--focus);
-  stroke-width: 3.5;
+#canvas .node-body {
+  transition: stroke-width var(--efp-fast) ease;
 }
 
-.node.moving {
-  opacity: 0.45;
+#canvas .node:hover .node-body {
+  stroke-width: 2.25px;
 }
 
-.node.drop rect {
-  stroke: var(--focus);
-  stroke-width: 3.5;
-  stroke-dasharray: 5 4;
-}
-
-.node-editor {
-  position: absolute;
-  z-index: 2;
-  border-color: var(--focus) !important;
-}
-
-.hint {
-  position: absolute;
-  left: 0.75rem;
-  bottom: 0.5rem;
-  max-width: calc(100% - 1.5rem);
-  margin: 0;
-  padding: 0.15rem 0.6rem;
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--surface) 85%, transparent);
-  color: var(--muted);
-  font-size: 0.85rem;
+/* The node that is being moved: faded, and transparent to the pointer, so
+ * that while it is dragged the node under it can be found. */
+#canvas .node.moving {
+  opacity: 0.55;
   pointer-events: none;
 }
 
-.hint.problem {
-  color: var(--problem);
+/* Carried by the mouse, it is lifted off the paper instead. */
+#canvas.dragging .node.moving {
+  opacity: 0.92;
+  filter: drop-shadow(0 10px 14px color-mix(in oklab, var(--color-neutral) 30%, transparent));
 }
 
-/* --- The dialog --- */
-
-dialog {
-  width: min(26rem, calc(100vw - 2rem));
-  padding: 1.25rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
+#canvas .node.drop .node-body {
+  stroke: var(--color-primary);
+  stroke-width: 3px;
+  stroke-dasharray: 6 4;
 }
 
-dialog::backdrop {
-  background: rgb(0 0 0 / 0.45);
+/* The ring around the selected node; scene.js slides it from node to node.
+ * While a node's text is typed the field has a ring of its own. */
+.selection-ring {
+  stroke: var(--color-primary);
+  stroke-width: 2px;
+  pointer-events: none;
+  filter: drop-shadow(0 0 5px color-mix(in oklab, var(--color-primary) 50%, transparent));
 }
 
-dialog input {
-  width: 100%;
-  margin-top: 0.75rem;
+.mm-stage.is-typing .selection-ring {
+  visibility: hidden;
 }
 
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
+.mm-node-editor {
+  position: absolute;
+  z-index: 5;
+  padding: 0 12px;
+  border: 2px solid var(--color-primary);
+  border-radius: 10px;
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  box-shadow: var(--efp-shadow-md), 0 0 0 4px color-mix(in oklab, var(--color-primary) 18%, transparent);
+  outline: none;
+}
+
+/* Messages float over the top of the canvas. */
+.mm-top {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  z-index: 6;
+  display: grid;
+  justify-items: center;
   gap: 0.5rem;
-  margin-top: 1.25rem;
+  width: min(44rem, calc(100% - 1.5rem));
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
-@media (max-width: 40rem) {
-  .bar {
-    padding: 0.4rem 0.5rem;
-  }
+.mm-top > * {
+  pointer-events: auto;
+}
 
-  .menu-items {
-    right: auto;
-    left: 0;
+.mm-notice {
+  box-shadow: var(--efp-shadow-md);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.mm-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-neutral-content);
+  background: color-mix(in oklab, var(--color-neutral) 92%, transparent);
+  box-shadow: var(--efp-shadow-lg);
+}
+
+/* A few keys, in a corner, for a keyboard; the rest are behind "?". */
+.mm-legend {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 4;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+  pointer-events: none;
+}
+
+.mm-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mm-legend-row .kbd {
+  min-width: 2.6rem;
+}
+
+@media (max-width: 1100px), (hover: none) {
+  .mm-legend {
+    display: none;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
+/* ---- The floating toolbars ---------------------------------------------------------------------- */
+
+.mm-dock {
+  position: absolute;
+  left: 50%;
+  bottom: max(0.9rem, env(safe-area-inset-bottom));
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  width: max-content;
+  max-width: calc(100% - 1rem);
+  transform: translateX(-50%);
+}
+
+.mm-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--color-base-100) 84%, transparent);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid var(--efp-line-strong);
+  box-shadow: var(--efp-shadow-lg);
+}
+
+.mm-sep {
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 3px;
+  background: var(--efp-line-strong);
+}
+
+.mm-zoom {
+  min-width: 3.1rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+
+/* The colour of the selected node: a dot in the toolbar, swatches above it. */
+.mm-dot {
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  background: var(--dot-fill, transparent);
+  border: 2px solid var(--dot-line, var(--efp-line-strong));
+  transition: background var(--efp-medium) ease, border-color var(--efp-medium) ease;
+}
+
+.mm-dot.is-plain {
+  border-style: dashed;
+}
+
+.mm-swatches {
+  width: 13rem;
+  padding: 0.6rem;
+  border-radius: var(--radius-box);
+  background: var(--color-base-100);
+  border: 1px solid var(--efp-line-strong);
+  box-shadow: var(--efp-shadow-lg);
+}
+
+.mm-swatch {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 2px solid var(--efp-line-strong);
+  cursor: pointer;
+  transition: transform var(--efp-medium) var(--efp-spring), box-shadow var(--efp-fast) ease;
+}
+
+.mm-swatch:hover {
+  transform: scale(1.12);
+}
+
+.mm-swatch:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.mm-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--color-base-100), 0 0 0 4px var(--color-primary);
+}
+
+/* "Like the branch above": no colour of its own, a dashed ring with a slash. */
+.mm-swatch.is-plain {
+  border-style: dashed;
+  background: linear-gradient(135deg, transparent 46%, var(--efp-line-strong) 46%, var(--efp-line-strong) 54%, transparent 54%);
+}
+
+/* ---- Dialogs ---------------------------------------------------------------------------------- */
+
+.mm-dialog-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border-radius: 1rem;
+  font-size: 1.3rem;
+  color: var(--color-primary);
+  background: color-mix(in oklab, var(--color-primary) 14%, transparent);
+}
+
+.mm-dialog-icon.is-danger {
+  color: var(--color-error);
+  background: color-mix(in oklab, var(--color-error) 14%, transparent);
+}
+
+.mm-keys {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.55rem 1rem;
+}
+
+.mm-keys dt {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mm-keys dd {
+  margin: 0;
+  font-size: 0.875rem;
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+}
+
+/* ---- A phone ------------------------------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .mm-bar {
+    padding-block: 0.4rem;
+  }
+
+  .mm-bar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .mm-status-text {
+    display: none;
+  }
+
+  .mm-status {
+    width: 1.75rem;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .mm-share {
+    margin-right: auto;
+    padding-left: 0.25rem;
+  }
+
+  #keys {
+    display: none;
+  }
+}
+
+/* ---- Motion -------------------------------------------------------------------------------------- */
+
+@keyframes mm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes mm-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes mm-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+}
+
+/* The picture on the list draws itself once: the centre, then its branches,
+ * each line running out to the node it leads to. Coming back from a map,
+ * the list is simply there (app.js adds mm-settled). */
+.mm-settled .efp-rise,
+.mm-settled .mm-sketch * {
+  animation: none !important;
+}
+
+.mm-settled .mm-sketch .mm-link {
+  stroke-dashoffset: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mm-sketch .mm-link {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: mm-draw 640ms var(--efp-ease-out) forwards;
+    animation-delay: calc(380ms + var(--i) * 120ms);
+  }
+
+  .mm-sketch .mm-shape,
+  .mm-sketch .mm-sketch-root,
+  .mm-sketch .mm-sketch-text {
+    transform-box: fill-box;
+    transform-origin: left center;
+    animation: mm-pop 700ms var(--efp-bounce) both;
+    animation-delay: calc(420ms + var(--i) * 120ms);
+  }
+
+  .mm-sketch .mm-sketch-text {
+    animation-delay: calc(560ms + var(--i) * 120ms);
   }
 }

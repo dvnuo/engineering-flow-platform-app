@@ -109,7 +109,8 @@ def source_line(number: int, page: dict) -> str:
     return "%d. [%s](%s)" % (number, title, page["url"]) if page["url"] else "%d. %s" % (number, title)
 
 
-st.set_page_config(page_title="Ask the wiki")
+# A Material icon by name (ASCII, unlike an emoji) for the browser tab.
+st.set_page_config(page_title="Ask the wiki", page_icon=":material/menu_book:")
 
 # The gateway signs the visitor into the request that opens the session.
 visitor = get_visitor()

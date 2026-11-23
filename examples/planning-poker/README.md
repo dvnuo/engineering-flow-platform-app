@@ -18,7 +18,11 @@ does, the others see at once.
   round is revealed;
 - a page that reconnects by itself, with a growing delay, and says whether
   it is connected;
-- tidying up without a scheduler: old rooms go when a new one is created.
+- tidying up without a scheduler: old rooms go when a new one is created;
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)): a
+  round table, a hand of cards, a result that counts up, in light and dark,
+  and motion only for what changed: a card lands on the table, the cards
+  turn over one after the other, confetti when everybody agrees.
 
 **Turn on in the Portal:** nothing. The app uses no model and no connector,
 so it costs nothing to run.
@@ -44,7 +48,12 @@ of others, deploy the app and send the room's link to a colleague.
 1. Copy this directory into your own repository.
 2. Write your cards into `deck.json` (T-shirt sizes work as well; cards that
    are not numbers count as votes, not in the average).
-3. `efp-app check`, push, register the directory as an app in the Portal and
+3. Give it another look if you like: link
+   `/_efp/lib/daisyui@5.8.2/themes.css` in `static/index.html` and set
+   `data-theme="retro"` (or any daisyUI theme) on `<html>`; the cards and the
+   table take its colours. `--pp-card-w` in `static/style.css` sets the size
+   of the cards.
+4. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy.
 
 ## Things to notice
@@ -88,3 +97,9 @@ of others, deploy the app and send the room's link to a colleague.
 - **No scheduler.** Rooms nobody touched for 30 days are removed when
   somebody creates a new one: housekeeping happens in a request, because
   nothing else is guaranteed to run.
+- **Motion from the difference of two states.** `draw(previous)` in
+  `static/app.js` compares what the server sent with what it sent before:
+  only a pick that is new lands, only a reveal turns the cards over. The
+  seats are kept by member id, so nothing is drawn anew that did not
+  change. The kit skips every animation for a visitor who asked the system
+  for less motion.

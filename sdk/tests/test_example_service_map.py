@@ -119,6 +119,8 @@ def test_service_map_is_a_page_and_a_data_file():
         assert call not in together
     for script in scripts:
         for address in re.findall(r'^import [^"]*"([^"]+)";$', script.read_text(encoding="utf-8"), flags=re.MULTILINE):
+            if address.startswith("/_efp/lib/"):
+                continue  # the shared libraries, at the one address every gateway serves (docs/UI_KIT.md)
             target = (script.parent / address).resolve()
             assert address.startswith("./") and target.is_file() and PUBLIC.resolve() in target.parents, (script.name, address)
 

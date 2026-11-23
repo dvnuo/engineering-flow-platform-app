@@ -30,7 +30,7 @@ name is missing here.
 | `efp_app.manifest` | the rules of `efp-app.json` (section 11) |
 | `efp_app.cli` | the `efp-app` command: `init`, `dev`, `check` (section 12) |
 | `efp_app.testing` | an app's own tests: the host's environment, a fake Portal and the gateway's visitor header, with no Portal and no host (section 14). A running app never uses it |
-| `efp_app._check`, `efp_app._sse`, `efp_app._devgateway` | internal: what `efp-app check` looks at (12.4), the parser of streamed answers (4.6), the local gateway of `efp-app dev --prefix` (12.3) |
+| `efp_app._check`, `efp_app._sse`, `efp_app._devgateway` | internal: what `efp-app check` looks at (12.4), the parser of streamed answers (4.6), the local gateway of `efp-app dev` (12.3) |
 
 The import lines of an app (the last one is for FastAPI; section 9 has the
 other frameworks):
@@ -153,7 +153,7 @@ needed, and only for the model, the connectors and `app.info`.
 | `EFP_APP_TOKEN` | `config.APP_TOKEN` | the app token | the app token, from the app's page in the Portal | every call to the Portal raises `ConfigurationError`: the functions of `llm` and `connectors`, `app.info`, `app.ainfo`. Storage, `visitor.parse` and the other functions of `app` still work. A token with a character no token has (a blank, a control character, a character outside ASCII) raises `ConfigurationError` as well; the message names the variable and the position, never the token |
 | `EFP_PORTAL_URL` | `config.PORTAL_URL` | the Portal's address inside the cluster | the Portal's address as a browser opens it, for example `https://efp.example.com` | as for the token. A value that does not start with `http://` or `https://` raises `ConfigurationError` as well |
 | `EFP_APP_BASE_PATH` | `config.APP_BASE_PATH` | `/{slug}` | not needed: `efp-app dev` removes it, `efp-app dev --prefix NAME` sets it to `/NAME` | `app.base_path()` returns `""` |
-| `EFP_APP_PUBLIC_URL` | `config.APP_PUBLIC_URL` | `{apps address}/{slug}/` | not needed (`efp-app dev --prefix NAME` sets it) | `app.public_url()` returns `http://127.0.0.1:{PORT}/` on a developer's machine when `PORT` is set, else `None` |
+| `EFP_APP_PUBLIC_URL` | `config.APP_PUBLIC_URL` | `{apps address}/{slug}/` | not needed (`efp-app dev` sets it to the address it prints, with `/NAME/` under `--prefix NAME`) | `app.public_url()` returns `http://127.0.0.1:{PORT}/` on a developer's machine when `PORT` is set, else `None` |
 | `EFP_VISITOR_KEY` | `config.VISITOR_KEY` | the app's visitor key, base64url text | leave it out: no gateway signs a header there, and with it set there is no local stand-in (3.2) | no `X-EFP-Visitor` value can be verified: `visitor.parse` returns `None` |
 | `EFP_APP_DATA_DIR` | `config.APP_DATA_DIR` | on a host in `sandbox` mode: the app's own directory | not needed | storage chooses another place (6.1) |
 | `EFP_APP_STORAGE_SOCKET` | `config.APP_STORAGE_SOCKET` | on a host in `hidden` mode: the unix socket of the storage service | not needed | storage chooses another place (6.1) |
@@ -2954,7 +2954,7 @@ host uses for its type (CONTRACTS.md, section 8.1).
 |---|---|
 | `directory` | The app's directory. Default: the current one. The app runs with this directory as its working directory. |
 | `--port N` | The port to listen on, on `127.0.0.1`. Default: `PORT` of the environment, else `PORT` of `.env`, else `8000`. |
-| `--prefix NAME` | Serve the app under `/NAME/`, behind a local stand-in for the gateway, as it is addressed once deployed. Without it the app is served at `/`, with no path prefix. |
+| `--prefix NAME` | Serve the app under `/NAME/`, as it is addressed once deployed. Without it the app is served at `/`, with no path prefix. |
 | `--dry-run` | Print what would be started and stop. |
 
 **What it starts.** `python` is the interpreter that runs `efp-app`, so the
@@ -2987,13 +2987,26 @@ app's requirements must be installed in the same environment.
    Bash rewrites neither the prefix nor a command's arguments into Windows
    paths;
 5. the variables of the table above;
-6. with `--prefix`, the variables named below.
+6. `EFP_APP_PUBLIC_URL`: the address it prints (the stand-in gateway's,
+   below), so that `app.public_url()` never names the app's own port;
+7. with `--prefix`, the variables named below.
 
 `EFP_APP_ID` is never set by `efp-app dev`, so the SDK behaves as on a
 developer's machine (2.2). When the variable is set in the environment
 anyway, a warning says so. `EFP_VISITOR_KEY` is not set either; when the
 environment or `.env` holds it, a warning says that `EFP_DEV_VISITOR` is
 not used.
+
+**The stand-in gateway.** It listens on the port; the app listens on a free
+port behind it, which is the `PORT` it is given. Open the address that
+`efp-app dev` prints, not the one the app's own server prints: that port has
+no gateway. The gateway answers `/_efp/lib/` itself, from the shared browser
+libraries (CONTRACTS.md, section 6.6; [UI_KIT.md](UI_KIT.md)): the copy in
+the SDK's wheel, or `lib/` of the checkout the SDK runs from. A file that is
+not there is `404` with a line on the console that names the versions there
+are. Without `--prefix` every other request goes to the app as it came, with
+its path and its cookies, and with the `X-Forwarded-For`, `-Proto` and
+`-Host` headers.
 
 **The `.env` file.** One `NAME=value` per line. Blank lines and lines that
 start with `#` are skipped. A leading `export ` is allowed. Quotes around a
@@ -3007,9 +3020,6 @@ letters, digits and `-`, with a letter or a digit at both ends. A leading
 `assets`, `auth`, `efp`, `health`, `login`, `logout`, `portal`, `static`,
 `www`) or another bad value ends with exit code `2`.
 
-- The stand-in gateway listens on the port; the app listens on a free port
-  behind it. Open the address that `efp-app dev` prints, not the one the
-  app's own server prints: that port has no gateway.
 - The app is started as on the host: `--root-path /NAME` for `fastapi`,
   `SCRIPT_NAME=/NAME` for `flask`, `--server.baseUrlPath /NAME` for
   `streamlit`, `GRADIO_ROOT_PATH=/NAME` for `gradio`. `EFP_APP_BASE_PATH`
@@ -3034,7 +3044,10 @@ letters, digits and `-`, with a letter or a digit at both ends. A leading
 efp-app dev: Mind map (fastapi)
   directory  /home/alice/my-app
   address    http://127.0.0.1:8000/
-  command    /home/alice/my-app/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000 --no-server-header
+  gateway    127.0.0.1:8000 -> the app on 127.0.0.1:53817, paths unchanged
+             open the address above, not the one the app's own server prints: that port has no gateway
+  libraries  /_efp/lib/ answered from /home/alice/my-app/.venv/lib/python3.11/site-packages/efp_app/_lib
+  command    /home/alice/my-app/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 53817 --no-server-header
   Portal     https://efp.example.com
   token      set
 ```
@@ -3120,6 +3133,7 @@ With nothing to report it prints one line:
 | a root-absolute URL in a `url(...)` of a style sheet, a `.css` file (here `static/style.css`) | `root-absolute URL url(/img/bg.png): use a path relative to the style sheet: url(../img/bg.png)` |
 | a root-absolute URL in a `url(...)` of any other file: a `style` attribute or a `<style>` element of a page or a template | `root-absolute URL url(/img/bg.png): use a relative URL: url(img/bg.png)` |
 | more than 20 such URLs in one file | `<N> more root-absolute URLs in this file` |
+| a URL under `/_efp/lib/` (in an attribute, a call, a `url(...)` or an `import`) that names no file of the shared libraries; one that does is not a finding | `no such file in the shared libraries: /_efp/lib/daisyui@5.8.1/daisyui.css (there is daisyui@5.8.2)` |
 
 How it looks:
 

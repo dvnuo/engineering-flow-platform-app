@@ -18,7 +18,16 @@ a copy.
 - a second object that is only a list (`shared/...`) and may be wrong for a
   moment, because two saves are not one transaction;
 - a page of several ES modules without a build step, with the tree and its
-  layout as plain functions that are tested with node.
+  layout as plain functions that are tested with node;
+- an editor built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)),
+  in light and dark, with motion only where the eye has to follow a change:
+  a map opens out of its card (a View Transition) and grows from its centre;
+  a new node grows out of its parent while the others glide to their new
+  places, a folded branch is drawn back into its node, and the selection
+  ring slides from node to node (`static/scene.js` moves the SVG groups from
+  the old layout to the new one); the view glides when a node has to be
+  shown. The colours of the nodes and lines are read from the theme
+  (`kit.color`), so they change with it.
 
 **Turn on in the Portal:** nothing. The app uses no model and no connector,
 so it costs nothing to run.
@@ -44,9 +53,15 @@ files under `.efp-data/`.
 
 1. Copy this directory into your own repository.
 2. Set the limits at the top of `main.py` (`MAX_NODES`, `MAX_MAPS`,
-   `MAX_MAP_BYTES`) and the colours in `COLORS`, `static/tree.js` and
-   `static/render.js`.
-3. `efp-app check`, push, register the directory as an app in the Portal and
+   `MAX_MAP_BYTES`). The names of the branch colours are in `COLORS` (in
+   `main.py` and `static/tree.js`); what each one looks like is a variable
+   at the top of `static/style.css` (`--mm-blue: var(--color-info)` ...).
+3. Give the page another look with a daisyUI theme: link
+   `/_efp/lib/daisyui@5.8.2/themes.css` in `static/index.html` and set
+   `data-theme="nord"` (or any theme) on `<html>`. The cards, the canvas,
+   the nodes, the lines and the exported pictures all take its colours
+   ([docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours)).
+4. `efp-app check`, push, register the directory as an app in the Portal and
    press Deploy.
 
 ## Things to notice
@@ -73,7 +88,17 @@ files under `.efp-data/`.
 - **The picture is complete in itself.** Colours and fonts are attributes of
   the SVG elements, not style sheet rules, so the exported SVG looks like the
   page; the PNG is that SVG painted on a canvas. Everything is made in the
-  browser, from files of this directory.
+  browser, from files of this directory. The colours are read from the theme
+  when the map is drawn (`themeColors` in `static/app.js`), so a picture
+  exported in the dark theme is dark, like the page it came from.
+- **Kept by id, not drawn anew.** The export draws a whole map at once
+  (`render.js`); the page keeps one SVG group per node between two layouts
+  (`scene.js`) and moves it from where it is to where the new layout puts
+  it. That is what lets a change be followed with the eye; under reduced
+  motion the same code runs with no time in between.
+- **Colour without effort.** A new main branch gets a colour of its own, the
+  first one its siblings do not wear yet; everything below it inherits it.
+  It is an ordinary colour of the node, so it can be changed or undone.
 - **No timers.** Nothing is saved or loaded on a clock. A save goes out when
   you press Save (or Ctrl+S), when you tick "Visible to everyone", when you
   leave the map and when the tab goes into the background.

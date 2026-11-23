@@ -4,87 +4,174 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Screenshot diff</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="dim" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <header class="top">
-    <h1>Screenshot diff</h1>
-    <p class="privacy">
-      <strong>Nothing is uploaded.</strong>
-      The two images are read and compared by your browser, pixel by pixel. This app has no backend to send them to.
-    </p>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="scan-eye"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Screenshot diff</h1>
+      <p class="text-xs text-base-content/60 truncate">The expected screen against the actual one, pixel by pixel</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span class="badge badge-soft badge-success gap-1.5 hidden sm:inline-flex" title="The images are compared in this tab and never sent anywhere">
+        <i data-lucide="shield-check"></i>Stays in this tab
+      </span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
   </header>
 
-  <main>
-    <section class="inputs" aria-label="The two images">
-      <div class="drop" id="drop-expected">
-        <h2>Expected</h2>
-        <p id="info-expected" class="muted">The baseline: how the screen should look.</p>
-        <input id="file-expected" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" aria-label="Expected image">
-      </div>
-      <div class="drop" id="drop-actual">
-        <h2>Actual</h2>
-        <p id="info-actual" class="muted">What the test run produced.</p>
-        <input id="file-actual" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" aria-label="Actual image">
-      </div>
-    </section>
-    <div class="row">
-      <span class="muted">Choose files, drop them on a box, or paste a screenshot (Ctrl+V).</span>
-      <button id="sample" type="button">Try two sample screenshots</button>
-      <button id="swap" type="button">Swap</button>
-      <button id="clear" type="button">Clear</button>
-    </div>
-
-    <p id="status" class="status" role="status">Choose two images to compare.</p>
-    <progress id="progress" max="1" value="0" hidden aria-label="Comparing"></progress>
-
-    <section id="workbench" hidden>
-      <div class="controls">
-        <label class="field">
-          <span class="label">Tolerance per colour channel: <output id="tolerance-value" for="tolerance">16</output> of 255</span>
-          <input id="tolerance" type="range" min="0" max="255" value="16">
-        </label>
-        <label class="check"><input id="antialiasing" type="checkbox" checked> <span>Ignore anti-aliasing</span></label>
-        <label class="check"><input id="outline" type="checkbox" checked> <span>Outline changed regions</span></label>
-        <fieldset class="choice">
-          <legend class="label">View</legend>
-          <label class="check"><input type="radio" name="view" value="side" checked> <span>Side by side</span></label>
-          <label class="check"><input type="radio" name="view" value="swipe"> <span>Swipe</span></label>
-          <label class="check"><input type="radio" name="view" value="overlay"> <span>Overlay</span></label>
-          <label class="check"><input type="radio" name="view" value="diff"> <span>Differences only</span></label>
-        </fieldset>
-        <label class="field" id="divider-field" hidden>
-          <span class="label">Divider (expected on the left, actual on the right)</span>
-          <input id="divider" type="range" min="0" max="100" value="50">
-        </label>
-        <label class="field" id="opacity-field" hidden>
-          <span class="label">Opacity of the actual image over the expected one</span>
-          <input id="opacity" type="range" min="0" max="100" value="50">
-        </label>
-        <div class="buttons" role="group" aria-label="Zoom">
-          <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">&minus;</button>
-          <output id="zoom-value" aria-label="Zoom">100%</output>
-          <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
-          <button id="zoom-fit" type="button">Fit</button>
-          <button id="zoom-full" type="button">100%</button>
+  <main class="efp-container py-6 sm:py-8 grid gap-6">
+    <section class="grid gap-4" aria-label="The two images">
+      <div class="sd-inputs">
+        <div class="sd-drop efp-rise" id="drop-expected" style="--i: 1">
+          <div class="sd-drop-head">
+            <span class="sd-tag is-expected">Expected</span>
+            <span class="text-xs text-base-content/60">the baseline</span>
+          </div>
+          <div class="sd-art" aria-hidden="true">
+            <span class="sd-art-icon"><i data-lucide="image-plus"></i></span>
+            <strong class="sd-art-title">Drop the expected screenshot</strong>
+            <span class="sd-art-over">Let go to use it as the expected image</span>
+          </div>
+          <div id="thumb-expected" class="sd-thumb"></div>
+          <p id="info-expected" class="sd-info">The baseline: how the screen should look.</p>
+          <label class="btn btn-sm btn-soft btn-primary efp-press sd-pick">
+            <i data-lucide="folder-open"></i><span>Choose a file</span>
+            <input id="file-expected" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" class="sr-only" aria-label="Expected image">
+          </label>
         </div>
-        <button id="download" type="button" class="primary">Download the diff as PNG</button>
+
+        <button type="button" id="swap" class="btn btn-circle btn-sm sd-swap efp-press" aria-label="Swap the two images" title="Swap expected and actual" disabled>
+          <i data-lucide="arrow-left-right"></i>
+        </button>
+
+        <div class="sd-drop efp-rise" id="drop-actual" style="--i: 2">
+          <div class="sd-drop-head">
+            <span class="sd-tag is-actual">Actual</span>
+            <span class="text-xs text-base-content/60">the test run</span>
+          </div>
+          <div class="sd-art" aria-hidden="true">
+            <span class="sd-art-icon"><i data-lucide="image-plus"></i></span>
+            <strong class="sd-art-title">Drop the actual screenshot</strong>
+            <span class="sd-art-over">Let go to use it as the actual image</span>
+          </div>
+          <div id="thumb-actual" class="sd-thumb"></div>
+          <p id="info-actual" class="sd-info">What the test run produced.</p>
+          <label class="btn btn-sm btn-soft btn-primary efp-press sd-pick">
+            <i data-lucide="folder-open"></i><span>Choose a file</span>
+            <input id="file-actual" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" class="sr-only" aria-label="Actual image">
+          </label>
+        </div>
       </div>
 
-      <div class="result">
-        <div id="stage" class="stage" tabindex="0" role="group" aria-label="The images. Scroll to move around when zoomed in."></div>
-        <aside class="report" aria-label="Result">
-          <h2>Result</h2>
-          <dl id="stats"></dl>
-          <h3>Changed regions</h3>
-          <p id="regions-note" class="muted"></p>
-          <ol id="regions"></ol>
-          <p class="muted legend">
-            <span class="key changed"></span>changed
-            <span class="key blend"></span>ignored as anti-aliasing
-            <span class="key only"></span>in one image only
-          </p>
+      <div class="sd-row efp-rise" style="--i: 3">
+        <p class="sd-privacy">
+          <i data-lucide="shield-check"></i>
+          <span><strong>Nothing is uploaded.</strong> The two images are read and compared by your browser, pixel by pixel. This app has no backend to send them to.</span>
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs text-base-content/60 hidden md:inline">Drop, choose, or paste with <kbd class="kbd kbd-xs">Ctrl</kbd> <kbd class="kbd kbd-xs">V</kbd></span>
+          <button id="sample" type="button" class="btn btn-sm btn-ghost efp-press"><i data-lucide="sparkles"></i> Try two sample screens</button>
+          <button id="clear" type="button" class="btn btn-sm btn-ghost efp-press" disabled><i data-lucide="eraser"></i> Clear</button>
+        </div>
+      </div>
+
+      <div id="status" class="sd-status" role="status" aria-live="polite"></div>
+      <progress id="progress" class="progress progress-primary w-full" max="1" value="0" hidden aria-label="Comparing"></progress>
+    </section>
+
+    <section id="workbench" class="grid gap-6" aria-label="The comparison" hidden>
+      <div class="sd-verdict efp-surface" aria-live="polite">
+        <div class="sd-score">
+          <span id="score" class="sd-percent efp-number">0%</span>
+          <span class="text-sm text-base-content/60">of the compared pixels differ</span>
+        </div>
+        <div class="sd-verdict-text">
+          <span id="verdict" class="badge badge-lg gap-1.5"></span>
+          <p id="headline" class="sd-headline"></p>
+        </div>
+        <dl id="stats" class="sd-stats"></dl>
+      </div>
+
+      <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] items-start">
+        <section class="sd-viewer efp-surface" aria-label="The images">
+          <div class="sd-viewer-bar">
+            <div class="tabs tabs-box tabs-sm sd-modes" role="radiogroup" aria-label="View">
+              <input type="radio" name="view" value="side" class="tab" aria-label="Side by side" checked>
+              <input type="radio" name="view" value="swipe" class="tab" aria-label="Swipe">
+              <input type="radio" name="view" value="overlay" class="tab" aria-label="Onion skin">
+              <input type="radio" name="view" value="diff" class="tab" aria-label="Differences">
+            </div>
+            <div class="join sd-zoom" role="group" aria-label="Zoom">
+              <button id="zoom-out" type="button" class="btn btn-sm btn-ghost join-item" aria-label="Zoom out" title="Zoom out (-)"><i data-lucide="zoom-out"></i></button>
+              <output id="zoom-value" class="btn btn-sm btn-ghost join-item sd-zoom-value" aria-label="Zoom">100%</output>
+              <button id="zoom-in" type="button" class="btn btn-sm btn-ghost join-item" aria-label="Zoom in" title="Zoom in (+)"><i data-lucide="zoom-in"></i></button>
+              <button id="zoom-fit" type="button" class="btn btn-sm btn-ghost join-item" title="Fit the window (0)">Fit</button>
+              <button id="zoom-full" type="button" class="btn btn-sm btn-ghost join-item" title="One image pixel per screen pixel">1:1</button>
+            </div>
+          </div>
+          <div id="stage" class="sd-stage" tabindex="0" role="group" aria-label="The images. Scroll to move around when zoomed in."></div>
+          <div class="sd-viewer-foot">
+            <label class="sd-slider" id="divider-field" hidden>
+              <span>Expected</span>
+              <input id="divider" type="range" min="0" max="100" value="50" class="range range-primary range-xs" aria-label="Divider: expected on the left, actual on the right">
+              <span>Actual</span>
+            </label>
+            <label class="sd-slider" id="opacity-field" hidden>
+              <span>Expected</span>
+              <input id="opacity" type="range" min="0" max="100" value="50" class="range range-primary range-xs" aria-label="Opacity of the actual image over the expected one">
+              <span>Actual</span>
+            </label>
+            <p class="sd-keys">
+              <kbd class="kbd kbd-xs">1</kbd>-<kbd class="kbd kbd-xs">4</kbd> view
+              <kbd class="kbd kbd-xs">+</kbd> <kbd class="kbd kbd-xs">-</kbd> zoom
+              <kbd class="kbd kbd-xs">0</kbd> fit
+            </p>
+          </div>
+        </section>
+
+        <aside class="grid gap-6">
+          <section class="efp-surface p-5 grid gap-4" aria-labelledby="settings-heading">
+            <h2 id="settings-heading" class="font-semibold">What counts as a change</h2>
+            <label class="grid gap-1.5">
+              <span class="flex items-baseline justify-between text-sm">
+                <span>Tolerance per colour channel</span>
+                <span class="efp-number font-semibold"><output id="tolerance-value" for="tolerance">16</output><span class="text-base-content/50 font-normal"> / 255</span></span>
+              </span>
+              <input id="tolerance" type="range" min="0" max="255" value="16" class="range range-primary range-xs">
+              <span class="flex justify-between text-xs text-base-content/50"><span>exact</span><span>forgiving</span></span>
+            </label>
+            <label class="sd-toggle">
+              <input id="antialiasing" type="checkbox" class="toggle toggle-primary toggle-sm" checked>
+              <span><span class="font-medium">Ignore anti-aliasing</span><span class="block text-xs text-base-content/60">Soft edges that moved by a fraction of a pixel</span></span>
+            </label>
+            <label class="sd-toggle">
+              <input id="outline" type="checkbox" class="toggle toggle-primary toggle-sm" checked>
+              <span><span class="font-medium">Outline changed regions</span><span class="block text-xs text-base-content/60">A box around every group of changes</span></span>
+            </label>
+            <button id="download" type="button" class="btn btn-primary efp-press efp-shine"><i data-lucide="download"></i> Download the diff as PNG</button>
+          </section>
+
+          <section class="efp-surface p-5" aria-labelledby="regions-heading">
+            <h2 id="regions-heading" class="font-semibold">Changed regions</h2>
+            <p id="regions-note" class="text-xs text-base-content/60 mt-0.5"></p>
+            <ol id="regions" class="sd-regions"></ol>
+            <ul class="sd-legend" aria-label="Colours of the differences">
+              <li><span class="sd-key changed"></span>changed</li>
+              <li><span class="sd-key blend"></span>ignored as anti-aliasing</li>
+              <li><span class="sd-key only"></span>in one image only</li>
+            </ul>
+          </section>
         </aside>
       </div>
     </section>

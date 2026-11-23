@@ -4,39 +4,87 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Build health</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). The charts are ECharts, loaded by the
+       kit when the first one is drawn. For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="business" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <h1>Build health</h1>
-    <p class="lede">The last 30 builds of each job. Jenkins is read with the app owner's connector, and what it says is kept for five minutes.</p>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="activity"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Build health</h1>
+      <p id="status" role="status" class="text-xs text-base-content/60 truncate">Asking Jenkins...</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <button type="button" id="refresh" class="btn btn-sm btn-soft btn-primary efp-press" disabled>
+        <i data-lucide="refresh-cw"></i><span class="hidden sm:inline">Refresh</span>
+      </button>
+      <span id="me"></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
 
-    <div class="toolbar">
-      <p id="status" role="status">Asking Jenkins...</p>
-      <button type="button" id="refresh" disabled>Refresh</button>
+  <main class="efp-container py-6 sm:py-8 grid gap-6">
+    <div>
+      <p class="text-sm text-base-content/60 max-w-3xl">
+        The last 30 builds of each job. Jenkins is read with the app owner's
+        connector, and what it says is kept for five minutes.
+      </p>
     </div>
 
-    <dl id="tiles" class="tiles" hidden></dl>
+    <div id="problem" hidden></div>
 
-    <section id="board" class="card" aria-label="Jobs" hidden>
-      <ul id="legend" class="legend" aria-label="What the squares mean"></ul>
-      <table id="jobs">
-        <thead>
-          <tr>
-            <th scope="col">Job</th>
-            <th scope="col">Last 30 builds, oldest to newest</th>
-            <th scope="col" class="number">Success</th>
-            <th scope="col">Median duration</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+    <div id="loading" class="grid gap-6" aria-hidden="true">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="skeleton h-28 rounded-box"></div><div class="skeleton h-28 rounded-box"></div>
+        <div class="skeleton h-28 rounded-box"></div><div class="skeleton h-28 rounded-box"></div>
+        <div class="skeleton h-28 rounded-box col-span-2 md:col-span-1"></div>
+      </div>
+      <div class="skeleton h-72 rounded-box"></div>
+    </div>
+
+    <dl id="tiles" class="grid grid-cols-2 md:grid-cols-5 gap-4" hidden></dl>
+
+    <section id="charts" class="grid lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] gap-6" hidden>
+      <div class="efp-surface p-5">
+        <h2 class="font-semibold">Builds per day</h2>
+        <p class="text-xs text-base-content/60">Every job together, by how the builds ended</p>
+        <div id="chart-days" class="bh-chart" role="img" aria-label="Builds per day, by result"></div>
+      </div>
+      <div class="efp-surface p-5">
+        <h2 class="font-semibold">How the builds ended</h2>
+        <p class="text-xs text-base-content/60">The last 30 builds of every job</p>
+        <div id="chart-states" class="bh-chart" role="img" aria-label="Share of each result"></div>
+      </div>
     </section>
 
-    <p id="empty" class="empty" hidden>No job is listed yet. Add your jobs to jobs.json and deploy again.</p>
+    <section id="board" class="efp-surface overflow-hidden" aria-labelledby="jobs-heading" hidden>
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-4 border-b border-base-content/10">
+        <h2 id="jobs-heading" class="font-semibold">Jobs</h2>
+        <ul id="legend" class="bh-legend" aria-label="What the squares mean"></ul>
+      </div>
+      <div class="bh-head" aria-hidden="true">
+        <span>Job</span><span>Last 30 builds, oldest to newest</span><span class="text-right">Success</span><span>Median duration</span>
+      </div>
+      <ul id="jobs" class="bh-jobs"></ul>
+    </section>
+
+    <div id="empty" class="efp-surface efp-empty" hidden>
+      <span class="efp-empty-icon"><i data-lucide="list-plus"></i></span>
+      <strong>No job is listed yet</strong>
+      <span class="text-sm">Add your jobs to jobs.json and deploy again.</span>
+    </div>
   </main>
-  <div id="tooltip" class="tooltip" hidden></div>
+
+  <div id="tooltip" class="bh-tooltip" role="tooltip" hidden></div>
   <script type="module" src="static/app.js"></script>
 </body>
 </html>

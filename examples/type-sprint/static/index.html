@@ -4,93 +4,152 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Type sprint</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="dracula" (or any
+       daisyUI theme) on <html>: the line, the charts and the board follow it. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <header>
-      <h1>Type sprint</h1>
-      <p id="who" class="muted">Loading...</p>
-    </header>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="keyboard"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Type sprint</h1>
+      <p id="who" class="text-xs text-base-content/60 truncate">Loading...</p>
+    </div>
+    <div class="ml-auto flex items-center gap-1">
+      <span id="me" class="mx-1"></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
 
-    <section id="setup" aria-labelledby="setup-title">
-      <h2 id="setup-title" class="visually-hidden">Start</h2>
-      <fieldset class="topics" id="topics">
-        <legend>What do you want to type for a minute?</legend>
-      </fieldset>
-      <button type="button" class="primary" id="start" disabled>Start a sprint</button>
-      <p id="status" class="muted" role="status"></p>
-    </section>
-
-    <section id="sprint" aria-labelledby="sprint-title" hidden>
-      <h2 id="sprint-title" class="visually-hidden">The sprint</h2>
-      <div class="meters">
-        <div class="stat">
-          <span class="label">Seconds left</span>
-          <span class="value" id="time">-</span>
+  <main class="efp-container py-6 sm:py-8 grid lg:grid-cols-[minmax(0,1fr)_22rem] gap-6 items-start">
+    <div class="grid gap-6 min-w-0">
+      <!-- Choosing what to type. -->
+      <section id="setup" class="efp-surface ts-card efp-rise" aria-labelledby="setup-title">
+        <div>
+          <p class="ts-kicker">Sixty seconds</p>
+          <h2 id="setup-title" class="text-2xl sm:text-3xl font-bold tracking-tight mt-1">What do you want to type for a minute?</h2>
+          <p class="text-sm text-base-content/60 mt-1">Command lines and code, the way engineers type them. The clock starts with your first key.</p>
         </div>
-        <div class="stat">
-          <span class="label">Words a minute</span>
-          <span class="value" id="wpm">-</span>
+        <fieldset class="ts-topics" id="topics">
+          <legend class="sr-only">Topic</legend>
+          <span class="skeleton h-10 w-28 rounded-full"></span>
+          <span class="skeleton h-10 w-24 rounded-full"></span>
+          <span class="skeleton h-10 w-28 rounded-full"></span>
+          <span class="skeleton h-10 w-20 rounded-full"></span>
+        </fieldset>
+        <p class="ts-sample" id="sample" aria-hidden="true">&nbsp;</p>
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="button" class="btn btn-primary btn-lg efp-press efp-shine min-w-48" id="start" disabled>
+            <i data-lucide="play"></i> Start a sprint
+          </button>
+          <span class="text-xs text-base-content/55 hidden sm:inline"><kbd class="kbd kbd-xs">Enter</kbd> starts</span>
         </div>
-        <div class="stat">
-          <span class="label">Accuracy</span>
-          <span class="value" id="accuracy">-</span>
+        <div id="status" role="status" hidden></div>
+      </section>
+
+      <!-- The sprint: the clock, the line, the box. -->
+      <section id="sprint" class="efp-surface ts-card" aria-labelledby="sprint-title" hidden>
+        <h2 id="sprint-title" class="sr-only">The sprint</h2>
+        <div class="ts-meters">
+          <div class="ts-stat" id="time-stat">
+            <span class="ts-label">Seconds left</span>
+            <span class="ts-value efp-number" id="time">-</span>
+          </div>
+          <div class="ts-stat">
+            <span class="ts-label">Words a minute</span>
+            <span class="ts-value efp-number" id="wpm">-</span>
+          </div>
+          <div class="ts-stat">
+            <span class="ts-label">Accuracy</span>
+            <span class="ts-value efp-number" id="accuracy">-</span>
+          </div>
+          <div class="ts-stat">
+            <span class="ts-label">Lines</span>
+            <span class="ts-value efp-number" id="lines">0</span>
+          </div>
         </div>
-      </div>
-      <div class="timebar" aria-hidden="true"><span id="timebar"></span></div>
-      <!-- The line is shown character by character; a screen reader gets it as the label of the box below. -->
-      <p class="line" id="line" aria-hidden="true"></p>
-      <input type="text" id="typing" class="typing" aria-label="Type the line" autocomplete="off" autocapitalize="off"
-             autocorrect="off" spellcheck="false" inputmode="text" maxlength="80">
-      <p id="hint" class="muted" role="status"></p>
-      <button type="button" id="stop">Stop this sprint</button>
-    </section>
+        <div class="ts-timebar" id="timebar-track" aria-hidden="true"><span id="timebar"></span></div>
+        <div class="ts-typing">
+          <!-- The line is shown character by character; a screen reader gets it as the label of the box below. -->
+          <p class="ts-line" id="line" aria-hidden="true"></p>
+          <input type="text" id="typing" class="ts-box" aria-label="Type the line" autocomplete="off" autocapitalize="off"
+                 autocorrect="off" spellcheck="false" inputmode="text" maxlength="80">
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <p id="hint" class="text-sm text-base-content/60 grow" role="status"></p>
+          <button type="button" id="stop" class="btn btn-ghost btn-sm efp-press"><i data-lucide="square"></i> Stop <kbd class="kbd kbd-xs">Esc</kbd></button>
+        </div>
+      </section>
 
-    <section id="result" tabindex="-1" aria-labelledby="result-title" hidden>
-      <h2 id="result-title">Your sprint</h2>
-      <p class="headline" id="headline"></p>
-      <p id="verdict" role="status"></p>
-      <h3 id="speed-title">Speed over the minute</h3>
-      <svg id="speed-chart" class="chart" role="img" aria-labelledby="speed-title speed-text"></svg>
-      <p id="speed-text" class="muted"></p>
-      <h3>The line that cost you the most</h3>
-      <p id="worst"></p>
-    </section>
+      <!-- What the minute came to. -->
+      <section id="result" class="efp-surface ts-card" tabindex="-1" aria-labelledby="result-title" hidden>
+        <div class="ts-result-head">
+          <div>
+            <p class="ts-kicker" id="result-title">Your sprint</p>
+            <p class="ts-big"><span id="result-wpm" class="efp-number">0</span><span class="ts-unit">words a minute</span></p>
+            <p class="sr-only" id="headline"></p>
+          </div>
+          <dl class="ts-figures">
+            <div><dt>Accuracy</dt><dd id="result-accuracy" class="efp-number">-</dd></div>
+            <div><dt>Characters</dt><dd id="result-chars" class="efp-number">0</dd></div>
+            <div><dt>Wrong keys</dt><dd id="result-mistakes" class="efp-number">0</dd></div>
+          </dl>
+        </div>
+        <p id="verdict" class="ts-verdict" role="status" aria-live="polite"></p>
+        <div>
+          <h3 id="speed-title" class="ts-label mb-2">Speed over the minute</h3>
+          <svg id="speed-chart" class="ts-chart" role="img" aria-labelledby="speed-title speed-text"></svg>
+          <p id="speed-text" class="text-sm text-base-content/60 mt-1"></p>
+        </div>
+        <div>
+          <h3 class="ts-label mb-2">The line that cost you the most</h3>
+          <p id="worst" class="text-sm"></p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+          <button type="button" id="again" class="btn btn-primary efp-press"><i data-lucide="rotate-ccw"></i> Another sprint</button>
+          <button type="button" id="change" class="btn btn-ghost efp-press"><i data-lucide="list"></i> Choose a topic</button>
+        </div>
+      </section>
+    </div>
 
-    <section id="history" aria-labelledby="history-title" hidden>
-      <h2 id="history-title">Your last sprints</h2>
-      <p id="history-note" class="muted"></p>
-      <svg id="history-chart" class="chart" role="img" aria-labelledby="history-title history-note" hidden></svg>
-      <p id="history-key" class="muted key" hidden>
-        <span class="swatch"></span> ranked
-        <span class="swatch hollow"></span> under <span id="key-accuracy"></span>% accuracy, not ranked
-        <span class="swatch best"></span> your best
-      </p>
-    </section>
+    <aside class="grid gap-6 min-w-0">
+      <section id="history" class="efp-surface p-5 efp-rise" style="--i: 1" aria-labelledby="history-title">
+        <h2 id="history-title" class="font-semibold flex items-center gap-2"><i data-lucide="chart-line" class="text-primary"></i> Your last sprints</h2>
+        <p id="history-note" class="text-sm text-base-content/60 mt-1"></p>
+        <div id="history-loading" class="skeleton h-36 rounded-field mt-3"></div>
+        <svg id="history-chart" class="ts-chart mt-3" role="img" aria-labelledby="history-title history-note" hidden></svg>
+        <p id="history-key" class="ts-key" hidden>
+          <span class="ts-swatch"></span><span>ranked</span>
+          <span class="ts-swatch is-hollow"></span><span>under <span id="key-accuracy"></span>% accuracy</span>
+          <span class="ts-swatch is-best"></span><span>your best</span>
+        </p>
+      </section>
 
-    <section aria-labelledby="leaders-title">
-      <div class="heading-row">
-        <h2 id="leaders-title">Leaderboard</h2>
-        <button type="button" id="refresh">Refresh</button>
-      </div>
-      <p id="board-note" class="muted" role="status">Loading...</p>
-      <div class="scroll">
-        <table id="leaders" hidden>
-          <thead>
-            <tr>
-              <th scope="col" class="number">Rank</th>
-              <th scope="col">Member</th>
-              <th scope="col" class="number">Words a minute</th>
-              <th scope="col" class="number">Accuracy</th>
-              <th scope="col">Topic</th>
-            </tr>
-          </thead>
-          <tbody id="leader-rows"></tbody>
-        </table>
-      </div>
-    </section>
+      <section class="efp-surface p-5 grid gap-4 efp-rise" style="--i: 2" aria-labelledby="leaders-title">
+        <div class="flex items-center justify-between gap-3">
+          <h2 id="leaders-title" class="font-semibold flex items-center gap-2"><i data-lucide="trophy" class="text-warning"></i> Leaderboard</h2>
+          <button type="button" id="refresh" class="btn btn-ghost btn-sm btn-square efp-press" aria-label="Refresh the leaderboard" title="Refresh"><i data-lucide="refresh-cw"></i></button>
+        </div>
+        <p id="board-note" class="text-sm text-base-content/60" role="status"></p>
+        <ol id="leaders" class="ts-leaders">
+          <li class="skeleton h-12 rounded-field"></li>
+          <li class="skeleton h-12 rounded-field"></li>
+          <li class="skeleton h-12 rounded-field"></li>
+        </ol>
+        <div id="leaders-empty" class="efp-empty !py-4" hidden>
+          <span class="efp-empty-icon"><i data-lucide="crown"></i></span>
+          <strong>The first place is free</strong>
+          <span class="text-sm" id="leaders-empty-text">No ranked sprint yet.</span>
+        </div>
+      </section>
+    </aside>
   </main>
   <script type="module" src="static/app.js"></script>
 </body>

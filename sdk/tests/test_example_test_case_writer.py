@@ -90,6 +90,8 @@ class FakeGradio(types.ModuleType):
         self.Request = Request
         for name in ("Blocks", "Markdown", "Row", "Column", "Textbox", "Button", "Slider", "Radio", "DownloadButton"):
             setattr(self, name, type(name, (Component,), {}))
+        # gr.themes.Soft(...): the theme, here as its name and options.
+        self.themes = types.SimpleNamespace(Soft=lambda **options: ("Soft", options))
 
     @staticmethod
     def update(**options):
@@ -133,17 +135,20 @@ def test_the_page_is_built_with_blocks_and_does_not_launch_on_import(writer):
     assert slider == (module.MIN_SCENARIOS, module.MAX_SCENARIOS)
 
 
-def test_the_script_launches_without_arguments(monkeypatch):
+def test_the_script_launches_without_an_address(monkeypatch):
     fake = FakeGradio()
     monkeypatch.setitem(sys.modules, "gradio", fake)
     before = sys.dont_write_bytecode
     sys.dont_write_bytecode = True
     try:
-        runpy.run_path(str(SCRIPT), run_name="__main__")
+        script = runpy.run_path(str(SCRIPT), run_name="__main__")
     finally:
         sys.dont_write_bytecode = before
     launches = [(args, options) for kind, args, options in fake.built if kind == "launch"]
-    assert launches == [((), {})]  # the host's GRADIO_* variables decide where it listens and under which prefix
+    # The theme alone: the host's GRADIO_* variables decide where it listens and under which prefix.
+    assert launches == [((), {"theme": script["THEME"]})]
+    assert script["THEME"][0] == "Soft" and script["THEME"][1]["primary_hue"] == "blue"
+    assert "GoogleFont" not in SCRIPT.read_text(encoding="utf-8")  # nothing is loaded from another host
     source = SCRIPT.read_text(encoding="utf-8")
     assert "share=True)" not in source and "server_port=" not in source and "root_path=" not in source
 

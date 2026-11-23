@@ -4,84 +4,145 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Whiteboard</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="lofi" (or any
+       daisyUI theme) on <html>: the paper and the theme's inks follow it. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <header>
-      <h1>Whiteboard</h1>
-      <p id="who" class="muted"></p>
-    </header>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="brush"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Whiteboard</h1>
+      <p id="who" class="text-xs text-base-content/60 truncate">&nbsp;</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span id="me"></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
 
-    <section aria-label="The board">
-      <div class="toolbar" role="toolbar" aria-label="Drawing">
-        <div id="tools" class="group" role="group" aria-label="Tool">
-          <button type="button" data-tool="pen" aria-pressed="true" title="Pen (P)">Pen</button>
-          <button type="button" data-tool="eraser" aria-pressed="false" title="Eraser (E)">Eraser</button>
-          <button type="button" data-tool="line" aria-pressed="false" title="Line (L)">Line</button>
-          <button type="button" data-tool="rectangle" aria-pressed="false" title="Rectangle (R)">Box</button>
-          <button type="button" data-tool="ellipse" aria-pressed="false" title="Ellipse (O)">Ellipse</button>
-          <button type="button" data-tool="arrow" aria-pressed="false" title="Arrow (A)">Arrow</button>
-          <button type="button" data-tool="text" aria-pressed="false" title="Text (T)">Text</button>
+  <main class="wb-main">
+    <div class="wb-studio">
+      <section id="studio" class="wb-board-column" aria-label="The board">
+        <div class="wb-toolbar efp-rise" role="toolbar" aria-label="Drawing">
+          <div id="tools" class="wb-tools" role="group" aria-label="Tool">
+            <span id="tool-pill" class="wb-tool-pill" aria-hidden="true"></span>
+            <button type="button" data-tool="pen" aria-pressed="true" aria-label="Pen" title="Pen (P)"><i data-lucide="pencil"></i><span class="wb-key" aria-hidden="true">P</span></button>
+            <button type="button" data-tool="eraser" aria-pressed="false" aria-label="Eraser" title="Eraser (E)"><i data-lucide="eraser"></i><span class="wb-key" aria-hidden="true">E</span></button>
+            <button type="button" data-tool="line" aria-pressed="false" aria-label="Line" title="Line (L)"><i data-lucide="slash"></i><span class="wb-key" aria-hidden="true">L</span></button>
+            <button type="button" data-tool="rectangle" aria-pressed="false" aria-label="Box" title="Box (R)"><i data-lucide="square"></i><span class="wb-key" aria-hidden="true">R</span></button>
+            <button type="button" data-tool="ellipse" aria-pressed="false" aria-label="Ellipse" title="Ellipse (O)"><i data-lucide="circle"></i><span class="wb-key" aria-hidden="true">O</span></button>
+            <button type="button" data-tool="arrow" aria-pressed="false" aria-label="Arrow" title="Arrow (A)"><i data-lucide="move-up-right"></i><span class="wb-key" aria-hidden="true">A</span></button>
+            <button type="button" data-tool="text" aria-pressed="false" aria-label="Text" title="Text (T)"><i data-lucide="type"></i><span class="wb-key" aria-hidden="true">T</span></button>
+          </div>
+          <span class="wb-sep" aria-hidden="true"></span>
+          <div id="colors" class="wb-colors" role="group" aria-label="Colour">
+            <label class="wb-swatch wb-custom" title="Another colour">
+              <input type="color" id="custom-color" value="#8b5cf6" aria-label="Another colour">
+            </label>
+          </div>
+          <span class="wb-sep" aria-hidden="true"></span>
+          <div id="widths" class="wb-widths" role="group" aria-label="Width of the line" title="Width of the line ([ and ])"></div>
+          <span class="wb-sep" aria-hidden="true"></span>
+          <div class="wb-history">
+            <button type="button" id="undo" class="btn btn-ghost btn-sm btn-square" aria-label="Undo" title="Undo (Ctrl+Z)" disabled><i data-lucide="undo-2"></i></button>
+            <button type="button" id="redo" class="btn btn-ghost btn-sm btn-square" aria-label="Redo" title="Redo (Ctrl+Y)" disabled><i data-lucide="redo-2"></i></button>
+            <button type="button" id="clear" class="btn btn-ghost btn-sm btn-square wb-danger" aria-label="Wipe the board" title="Wipe the board (can be undone)" disabled><i data-lucide="trash-2"></i></button>
+          </div>
         </div>
-        <div id="colors" class="group" role="group" aria-label="Colour">
-          <input type="color" id="custom-color" value="#1c2024" title="Another colour" aria-label="Another colour">
+
+        <div id="paper" class="wb-paper efp-rise" style="--i: 1">
+          <canvas id="board" width="1600" height="1000" role="img" aria-label="The drawing board"></canvas>
+          <input type="text" id="text-entry" class="wb-text-entry" maxlength="120" aria-label="Text to put on the board" autocomplete="off" hidden>
+          <span id="brush" class="wb-brush" aria-hidden="true" hidden></span>
+          <div class="wb-invite" aria-hidden="true">
+            <span class="wb-invite-icon"><i data-lucide="pencil-line"></i></span>
+            <strong>Draw anything</strong>
+            <span>With a mouse, a finger or a pen.
+              <span class="wb-keys"><kbd class="kbd kbd-xs">P</kbd> pen <kbd class="kbd kbd-xs">R</kbd> box <kbd class="kbd kbd-xs">T</kbd> text <kbd class="kbd kbd-xs">[</kbd><kbd class="kbd kbd-xs">]</kbd> size</span>
+            </span>
+          </div>
         </div>
-        <div id="widths" class="group" role="group" aria-label="Width of the line"></div>
-        <div class="group">
-          <button type="button" id="undo" title="Undo (Ctrl+Z)" disabled>Undo</button>
-          <button type="button" id="redo" title="Redo (Ctrl+Y)" disabled>Redo</button>
-          <button type="button" id="clear" title="Wipe the board (can be undone)" disabled>Clear</button>
+
+        <form id="save-form" class="wb-save efp-rise" style="--i: 2">
+          <label class="input grow min-w-0">
+            <i data-lucide="tag" class="opacity-50"></i>
+            <span class="sr-only">Title of the drawing</span>
+            <input type="text" id="title" class="grow" maxlength="80" placeholder="A title for the gallery" autocomplete="off">
+          </label>
+          <button type="submit" id="save" class="btn btn-primary efp-press efp-shine" disabled><i data-lucide="images"></i> Save to the gallery</button>
+          <button type="button" id="download" class="btn btn-ghost efp-press"><i data-lucide="download"></i> <span class="hidden sm:inline">Download</span> PNG</button>
+        </form>
+        <p class="wb-hint text-xs text-base-content/55">
+          <kbd class="kbd kbd-xs">Ctrl</kbd> <kbd class="kbd kbd-xs">Z</kbd> undo
+          <kbd class="kbd kbd-xs">Ctrl</kbd> <kbd class="kbd kbd-xs">Y</kbd> redo.
+          The board is yours until you save it; what you save, everyone who can open the app sees.
+        </p>
+      </section>
+
+      <aside class="wb-gallery-column" aria-labelledby="gallery-heading">
+        <div class="wb-gallery-head">
+          <h2 id="gallery-heading" class="text-lg font-semibold">Gallery</h2>
+          <span id="count" class="badge badge-soft badge-sm efp-number" hidden></span>
+          <button type="button" id="refresh" class="btn btn-ghost btn-sm btn-square ml-auto efp-press" aria-label="Refresh the gallery" title="Refresh"><i data-lucide="refresh-cw"></i></button>
         </div>
-      </div>
-
-      <div id="paper" class="paper">
-        <canvas id="board" width="1600" height="1000" role="img" aria-label="The drawing board"></canvas>
-        <input type="text" id="text-entry" class="text-entry" maxlength="120" aria-label="Text to put on the board" autocomplete="off" hidden>
-      </div>
-
-      <form id="save-form" class="save-row">
-        <label for="title" class="visually-hidden">Title of the drawing</label>
-        <input type="text" id="title" maxlength="80" placeholder="A title for the gallery" autocomplete="off">
-        <button type="submit" id="save" class="primary" disabled>Save to the gallery</button>
-        <button type="button" id="download">Download PNG</button>
-      </form>
-      <p id="status" class="status" role="status"></p>
-    </section>
-
-    <section aria-labelledby="gallery-heading">
-      <div class="section-head">
-        <h2 id="gallery-heading">Gallery</h2>
-        <span id="count" class="muted"></span>
-        <button type="button" id="refresh">Refresh</button>
-      </div>
-      <p id="gallery-status" class="status" role="status"></p>
-      <ul id="gallery" class="gallery"></ul>
-      <p id="gallery-empty" class="empty" hidden>No drawings yet. Draw something above and save it.</p>
-    </section>
+        <div id="gallery-status" role="status" hidden></div>
+        <ul id="gallery" class="wb-gallery">
+          <li class="skeleton wb-skeleton"></li>
+          <li class="skeleton wb-skeleton"></li>
+          <li class="skeleton wb-skeleton"></li>
+          <li class="skeleton wb-skeleton"></li>
+        </ul>
+        <div id="gallery-empty" class="efp-surface efp-empty wb-empty" hidden>
+          <span class="efp-empty-icon"><i data-lucide="palette"></i></span>
+          <strong>The gallery is waiting for its first picture</strong>
+          <span class="text-sm">Sketch on the board, give it a title and save it: it lands here, for everyone who opens the app.</span>
+          <button type="button" id="start" class="btn btn-primary btn-sm mt-2 efp-press"><i data-lucide="pencil"></i> Start drawing</button>
+        </div>
+      </aside>
+    </div>
   </main>
 
-  <dialog id="viewer" class="viewer" aria-labelledby="viewer-title">
-    <h2 id="viewer-title"></h2>
-    <img id="viewer-image" alt="">
-    <p id="viewer-facts" class="muted"></p>
-    <div class="dialog-actions">
-      <button type="button" id="viewer-delete" class="danger">Delete</button>
-      <button type="button" id="viewer-continue">Continue on the board</button>
-      <button type="button" id="viewer-close" class="primary">Close</button>
+  <dialog id="viewer" class="modal modal-bottom sm:modal-middle" aria-labelledby="viewer-title">
+    <div class="modal-box wb-viewer">
+      <div class="flex items-start gap-3">
+        <div class="min-w-0 grow">
+          <h2 id="viewer-title" class="text-lg font-semibold break-words"></h2>
+          <p id="viewer-facts" class="text-sm text-base-content/65 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"></p>
+        </div>
+        <button type="button" id="viewer-close" class="btn btn-ghost btn-sm btn-square" aria-label="Close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="wb-viewer-frame mt-4"><img id="viewer-image" alt="" width="1600" height="1000"></div>
+      <div class="modal-action flex-wrap">
+        <button type="button" id="viewer-delete" class="btn btn-ghost wb-danger mr-auto"><i data-lucide="trash-2"></i> Delete</button>
+        <button type="button" id="viewer-continue" class="btn btn-soft btn-primary"><i data-lucide="pencil"></i> Continue on the board</button>
+      </div>
     </div>
+    <form method="dialog" class="modal-backdrop"><button>Close</button></form>
   </dialog>
 
-  <dialog id="confirm" aria-labelledby="confirm-title">
-    <form method="dialog">
-      <h2 id="confirm-title">Delete this drawing?</h2>
-      <p id="confirm-text"></p>
-      <div class="dialog-actions">
-        <button type="button" id="confirm-cancel">Cancel</button>
-        <button type="submit" class="primary danger" value="ok">Delete</button>
+  <dialog id="confirm" class="modal modal-bottom sm:modal-middle" aria-labelledby="confirm-title">
+    <form method="dialog" class="modal-box">
+      <div class="flex gap-4">
+        <span class="wb-confirm-icon" aria-hidden="true"><i data-lucide="trash-2"></i></span>
+        <div>
+          <h2 id="confirm-title" class="text-lg font-semibold"></h2>
+          <p id="confirm-text" class="text-sm text-base-content/70 mt-1"></p>
+        </div>
+      </div>
+      <div class="modal-action">
+        <button type="button" id="confirm-cancel" class="btn btn-ghost">Cancel</button>
+        <button type="submit" id="confirm-ok" class="btn btn-error" value="ok">Delete</button>
       </div>
     </form>
+    <form method="dialog" class="modal-backdrop"><button>Close</button></form>
   </dialog>
 
   <script type="module" src="static/app.js"></script>

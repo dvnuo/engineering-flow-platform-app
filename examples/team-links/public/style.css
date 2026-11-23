@@ -1,80 +1,233 @@
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
+/*
+ * Team links' own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them). The markup uses Tailwind classes for spacing and
+ * type; this file holds the search and the cards.
+ *
+ * Make it yours: each group takes its colour from --tl-tone, which app.js
+ * sets from a colour of the theme (TONES at the top of app.js).
+ */
+
+[hidden] {
+  display: none !important;
 }
 
-body {
-  margin: 0;
+.tl-main {
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  padding: 2.5rem 1rem 5rem;
 }
 
-main {
-  max-width: 48rem;
-  margin: 0 auto;
-  padding: 2rem 1rem 4rem;
+/* ---- The search ------------------------------------------------------------------ */
+
+.tl-search {
+  display: flex;
+  max-width: 38rem;
+  margin: 1.75rem auto 0;
+  box-shadow: var(--efp-shadow-md);
+  transition: box-shadow var(--efp-medium) var(--efp-ease-out);
 }
 
-h1 {
-  margin-bottom: 0.25rem;
+/* A soft ring in the theme's colour instead of daisyUI's outline: the field is the page's centre. */
+.tl-search:focus-within {
+  --input-color: var(--color-primary);
+  outline: none;
+  box-shadow: var(--efp-shadow-md), 0 0 0 4px color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
 
-section {
-  margin-top: 2rem;
+.tl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  max-width: 38rem;
+  margin: 1rem auto 0;
 }
 
-label {
-  display: block;
-  margin-top: 0.75rem;
+.tl-chip {
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.tl-chip[aria-pressed="true"] {
+  --btn-color: var(--color-primary);
+  --btn-fg: var(--color-primary-content);
+}
+
+/* ---- Groups ----------------------------------------------------------------------- */
+
+.tl-groups {
+  display: grid;
+  gap: 2.5rem;
+  margin-top: 2.5rem;
+}
+
+.tl-group {
+  --tl-tone: var(--color-primary);
+}
+
+.tl-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
   font-weight: 600;
 }
 
-input[type="text"],
-input[type="search"],
-input[type="number"],
-select,
-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 0.5rem;
-  font: inherit;
+.tl-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: var(--tl-tone);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--tl-tone) 18%, transparent);
 }
 
-button {
-  margin-top: 0.75rem;
-  padding: 0.4rem 1rem;
-  font: inherit;
+.tl-count {
+  min-width: 1.6rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklab, var(--tl-tone) 78%, var(--color-base-content));
+  background: color-mix(in oklab, var(--tl-tone) 13%, transparent);
+}
+
+.tl-list {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- A card: the whole of it is the link ---------------------------------------- */
+
+.tl-card {
+  position: relative;
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 0.95rem 2.4rem 0.95rem 1rem;
+  transition: transform var(--efp-medium) var(--efp-spring), box-shadow var(--efp-medium) var(--efp-ease-out),
+    border-color var(--efp-fast) ease;
+}
+
+.tl-card:hover,
+.tl-card:focus-within {
+  transform: translateY(-3px);
+  box-shadow: var(--efp-shadow-md);
+  border-color: color-mix(in oklab, var(--tl-tone) 45%, var(--efp-line));
+}
+
+.tl-card:has(.tl-anchor:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.tl-tile {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: 0.8rem;
+  font-weight: 700;
+  color: color-mix(in oklab, var(--tl-tone) 78%, var(--color-base-content));
+  background: color-mix(in oklab, var(--tl-tone) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tl-tone) 20%, transparent);
+  transition: transform var(--efp-slow) var(--efp-bounce);
+}
+
+.tl-card:hover .tl-tile {
+  transform: rotate(-8deg) scale(1.08);
+}
+
+.tl-anchor {
+  font-weight: 600;
+  line-height: 1.35;
+  outline: none;
+}
+
+/* The link covers the card, so the whole card can be clicked. */
+.tl-anchor::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.tl-note {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: color-mix(in oklab, var(--color-base-content) 68%, transparent);
+}
+
+.tl-host {
+  display: block;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: color-mix(in oklab, var(--color-base-content) 48%, transparent);
+}
+
+.tl-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.6rem;
+}
+
+/* Above the link that covers the card: a tag filters, it does not open the link. */
+.tl-tag {
+  position: relative;
+  z-index: 1;
+  padding: 0.05rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 500;
   cursor: pointer;
+  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
+  transition: background var(--efp-fast) ease, color var(--efp-fast) ease;
 }
 
-pre {
-  min-height: 1.5rem;
-  margin-top: 1rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: inherit;
+.tl-tag:hover,
+.tl-tag:focus-visible {
+  color: color-mix(in oklab, var(--tl-tone) 80%, var(--color-base-content));
+  background: color-mix(in oklab, var(--tl-tone) 16%, transparent);
 }
 
-.muted {
-  opacity: 0.7;
+.tl-tag:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
 }
 
-.problem {
-  color: light-dark(#b3261e, #f2b8b5);
+.tl-go {
+  position: absolute;
+  top: 1rem;
+  right: 0.95rem;
+  opacity: 0.35;
+  transition: transform var(--efp-medium) var(--efp-spring), opacity var(--efp-fast) ease, color var(--efp-fast) ease;
 }
 
-ul {
-  padding-left: 1.25rem;
+.tl-card:hover .tl-go {
+  opacity: 1;
+  color: var(--tl-tone);
+  transform: translate(2px, -2px);
 }
 
-li {
-  margin: 0.35rem 0;
-}
-
-kbd,
-.tag {
-  margin-left: 0.4rem;
-  padding: 0 0.4rem;
-  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-  border-radius: 0.6rem;
-  font-size: 0.8rem;
+/* The words that matched the search. */
+.tl-hit {
+  padding: 0 0.1rem;
+  border-radius: 0.25rem;
+  color: inherit;
+  background: color-mix(in oklab, var(--color-primary) 22%, transparent);
 }

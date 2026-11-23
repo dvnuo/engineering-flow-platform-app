@@ -9,7 +9,11 @@ build with it.
 New here? Read [team-links](team-links/), [team-poll](team-poll/) and
 [log-explainer](log-explainer/) in that order, then go to the example closest
 to what you want to build. Not sure whether your setup works? Deploy
-[setup-check](setup-check/) first.
+[setup-check](setup-check/) first. Every example that draws its own page is
+built on the UI kit every gateway serves ([docs/UI_KIT.md](../docs/UI_KIT.md)):
+it looks finished in light and dark, on a phone and on a wide screen, and its
+look changes with one attribute. The Streamlit and Gradio examples take the
+same colours through their framework's theme.
 
 Contents: [The examples](#the-examples) -
 [Which example shows what](#which-example-shows-what) - [Run one](#run-one) -
@@ -90,6 +94,9 @@ Contents: [The examples](#the-examples) -
 | know who is visiting, and refuse a guest | [team-poll](team-poll/) (`require_visitor`, `get_visitor`) |
 | let only the owner do something | [setup-check](setup-check/), [standup-wheel](standup-wheel/), [glossary-translator](glossary-translator/), [retro-board](retro-board/) |
 | let many visitors write at the same moment | [team-poll](team-poll/) (one object per writer), [retro-board](retro-board/) (one object per item), [mind-map](mind-map/) and [incident-timeline](incident-timeline/) (a version number that refuses a stale save), [standup-wheel](standup-wheel/) (create only if absent, under one lock) |
+| build a page that looks finished: themes, motion, toasts, busy buttons | [planning-poker](planning-poker/), [retro-board](retro-board/), [build-health](build-health/) (the UI kit, [docs/UI_KIT.md](../docs/UI_KIT.md)) |
+| animate what changed between two states the server sent | [planning-poker](planning-poker/) (cards that land, turn over, confetti on consensus), [retro-board](retro-board/) (cards kept by id glide to a new order) |
+| draw charts with a library | [build-health](build-health/) (ECharts through `kit.chart`, in the theme's colours) |
 | keep what the server does not want to reveal | [retro-board](retro-board/) (authors never leave the server), [standup-wheel](standup-wheel/) (the server picks, not the page) |
 | store files or images | [whiteboard](whiteboard/) (binary objects, checked uploads, a gallery) |
 | handle an upload | [whiteboard](whiteboard/), [csv-explorer](csv-explorer/) |
@@ -179,9 +186,11 @@ efp-app dev examples/team-poll --prefix team-poll
 - **No timers that call the server.** A tab that polls keeps the app from
   ever being idle. Pages load on demand; the one live example says what its
   open WebSocket costs.
-- **Nothing from another host.** No CDN, no web font, no chart library:
-  charts are SVG or canvas written by hand, and every file a page needs is in
-  the example's directory.
+- **Nothing from another host.** No CDN, no web font from the internet.
+  Every file a page needs is in the example's directory or among the shared
+  libraries the gateway itself serves at `/_efp/lib/`
+  ([docs/UI_KIT.md](../docs/UI_KIT.md)): every example that draws its own
+  page is built on them.
 - **Only the framework in `requirements.txt`.** The host adds the SDK.
 
 ## Tests
@@ -227,7 +236,10 @@ of what follows.
 3. **ASCII only**, in every file. Text in another script is written as
    escapes.
 4. **Self-contained.** Nothing is loaded from another host; no build step.
-5. **Relative URLs**; `efp-app check` reports nothing.
+   The shared libraries at `/_efp/lib/` are the gateway's own and may be
+   used.
+5. **Relative URLs**, except `/_efp/lib/...`; `efp-app check` reports
+   nothing.
 6. **JavaScript** builds nodes with `createElement` and `textContent`: never
    `innerHTML`, `insertAdjacentHTML`, `document.write`, `localStorage`,
    `sessionStorage` or `setInterval`. Logic that can be separated from the
@@ -236,9 +248,11 @@ of what follows.
    all of them.
 8. **Validation.** Everything a visitor sends is checked before it becomes a
    key, a path, a query, a file or a prompt.
-9. **A finished page**: usable at a narrow width and with the keyboard,
-   readable in light and dark, quiet for a visitor who prefers reduced
-   motion, with an empty state and errors as sentences.
+9. **A finished page**: built on the UI kit and keeping its
+   [rules for a good page](../docs/UI_KIT.md#rules-for-a-good-page): usable
+   at a narrow width and with the keyboard, readable in light and dark,
+   quiet for a visitor who prefers reduced motion, every action showing that
+   it is working, with an empty state and errors as sentences.
 10. **Games are original.** A genre's mechanics, never a recreation of an
     existing game's name, characters, art, levels or look.
 11. **Tests** in `sdk/tests/test_example_<name>.py`: what each route answers,

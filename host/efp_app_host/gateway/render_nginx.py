@@ -17,7 +17,7 @@ from pathlib import Path
 from ..config import Settings, SettingsError
 from ..paths import HostPaths
 from .pages import PageRenderer, PagesError
-from .resources import nginx_dir
+from .resources import lib_dir, nginx_dir
 from .secret import access_log_key, load_or_create
 
 TEMPLATE_NAME = "nginx.conf.tmpl"
@@ -46,6 +46,10 @@ def values_for(settings: Settings, *, resources: Path | None = None) -> dict[str
     script = directory / SCRIPT_NAME
     if not script.is_file():
         raise RenderError(f"the njs script {script} is missing")
+    libraries = lib_dir()
+    if not (libraries / "MANIFEST.json").is_file():
+        # Every page that links /_efp/lib/ would lose its look: say so where the image is built.
+        raise RenderError(f"the shared browser libraries are missing: no MANIFEST.json in {libraries}")
     secret = load_or_create(paths.gateway_secret_file)
     return {
         "GATEWAY_PORT": str(int(settings.gateway_port)),
@@ -55,6 +59,7 @@ def values_for(settings: Settings, *, resources: Path | None = None) -> dict[str
         "ACCESS_LOG_SOCKET": _plain("the access-log socket", paths.access_log_socket.as_posix()),
         "PID_FILE": _plain("the pid file", (paths.run / "nginx.pid").as_posix()),
         "NJS_SCRIPT": _plain("the njs script", script.resolve().as_posix()),
+        "LIB_DIR": _plain("the shared browser libraries", libraries.resolve().as_posix()),
         "STATIC_HOST": STATIC_HOST,
     }
 

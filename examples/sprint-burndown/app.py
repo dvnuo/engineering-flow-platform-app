@@ -415,7 +415,8 @@ def show(sprint: dict, read: dict, address: str, now: datetime) -> None:
 
 
 def page() -> None:
-    st.set_page_config(page_title="Sprint burndown", layout="wide")
+    # A Material icon by name (ASCII, unlike an emoji) for the browser tab.
+    st.set_page_config(page_title="Sprint burndown", page_icon=":material/trending_down:", layout="wide")
 
     # The gateway signs the visitor into the request that opens the session.
     visitor = get_visitor()

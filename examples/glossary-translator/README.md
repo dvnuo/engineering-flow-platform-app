@@ -17,7 +17,17 @@ untranslated.
   (`applicable`);
 - a streamed model call (`llm.astream`) whose answer travels as lines of
   JSON, so the page can tell text from "which terms" and from an error;
-- checking afterwards whether the model did what it was told (`missed`).
+- checking afterwards whether the model did what it was told (`missed`);
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)): the
+  text and its translation side by side; the glossary terms marked in the
+  text as you type (a mirror behind the text area, built as elements, never
+  as HTML from data), so you see what will be sent along; the translation
+  arriving piece by piece behind a caret; then its terms lighting up one
+  after the other and each term's chip turning to "used" or "missing" (the
+  check, made visible); the two languages trading places with a glide when
+  they are swapped, and the finished translation flying over to be
+  translated back; rows of the glossary opening into a form where they
+  stand and folding away when removed.
 
 **Turn on in the Portal:** the language model, on the app's page.
 
@@ -41,7 +51,10 @@ gets. The local glossary is a file under `.efp-data/`.
 2. Put your own languages into `LANGUAGES` and `WRITTEN_AS` in `main.py`,
    and your starting terms into `glossary.sample.json` (ASCII: other scripts
    as `\uXXXX` escapes). Adapt `system_prompt()` to what your texts hold:
-   ticket numbers, product names that stay as they are.
+   ticket numbers, product names that stay as they are. For another look,
+   set `data-theme="nord"` (or any daisyUI theme) on `<html>`
+   ([docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours)); the marks of the
+   terms follow the theme's colours.
 3. `efp-app check`, push, register the directory as an app in the Portal,
    turn the model on and press Deploy. Then open the app and save your
    glossary, typed in or imported from a CSV file.

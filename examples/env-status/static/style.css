@@ -1,247 +1,372 @@
-:root {
-  color-scheme: light dark;
-  --ink: light-dark(#1f2633, #e9ecf2);
-  --muted: light-dark(#5b6676, #a3adbd);
-  --page: light-dark(#ffffff, #0f1216);
-  --surface: light-dark(#f6f7fa, #151920);
-  --line: light-dark(#d3d9e3, #2c3440);
-  --accent: light-dark(#2f5fc4, #8fb0f5);
-  --on-accent: light-dark(#ffffff, #0f1216);
-  --good: light-dark(#1d7a46, #6fd29a);
-  --bad: light-dark(#b3261e, #f2b8b5);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.5;
-  color: var(--ink);
-  background: var(--page);
+/*
+ * Environment status's own look, on top of daisyUI, Tailwind and the EFP kit
+ * (index.html loads them). Up is the theme's success colour, down its error
+ * colour: a daisyUI theme changes both. The shape of the mark says the same
+ * as its colour (a dot, a square, a ring), for whoever cannot tell them apart.
+ */
+
+[hidden] {
+  display: none !important;
 }
 
-body {
+/* ---- The summary --------------------------------------------------------------------------- */
+
+.es-summary {
+  display: grid;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  align-items: center;
+}
+
+@media (min-width: 900px) {
+  .es-summary {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 2rem;
+    padding: 1.5rem 1.75rem;
+  }
+}
+
+.es-verdict {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.es-verdict-icon {
+  --tone: var(--color-neutral);
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  flex-shrink: 0;
+  border-radius: 1rem;
+  font-size: 1.5rem;
+  color: color-mix(in oklab, var(--tone) 85%, var(--color-base-content));
+  background: color-mix(in oklab, var(--tone) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tone) 25%, transparent);
+}
+
+.es-verdict-icon[data-state="up"] { --tone: var(--color-success); }
+.es-verdict-icon[data-state="down"] { --tone: var(--color-error); }
+.es-verdict-icon[data-state="mixed"] { --tone: var(--color-warning); }
+.es-verdict-icon[data-state="checking"] { --tone: var(--color-primary); }
+
+.es-headline {
+  font-size: clamp(1.25rem, 3vw, 1.6rem);
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.es-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
   margin: 0;
 }
 
-main {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 4rem;
+@media (min-width: 900px) {
+  .es-counts {
+    grid-template-columns: repeat(3, 6.5rem);
+  }
 }
 
-h1 {
-  margin: 0;
-  font-size: 1.75rem;
+.es-count {
+  --tone: var(--color-base-content);
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-field);
+  background: color-mix(in oklab, var(--tone) 7%, var(--color-base-100));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tone) 14%, transparent);
 }
 
-h2 {
-  margin: 2rem 0 0.5rem;
-  font-size: 1.1rem;
-}
+.es-count[data-tone="up"] { --tone: var(--color-success); }
+.es-count[data-tone="down"] { --tone: var(--color-error); }
 
-header p {
-  margin: 0.15rem 0 0;
-}
-
-button {
-  padding: 0.5rem 1.25rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--surface);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
+.es-count dt {
+  white-space: nowrap;
+  font-size: 0.72rem;
   font-weight: 600;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
-:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+.es-count dd {
+  margin: 0;
+  font-size: 1.65rem;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: color-mix(in oklab, var(--tone) 80%, var(--color-base-content));
 }
 
-.muted {
-  color: var(--muted);
-}
+/* ---- The groups and their rows ----------------------------------------------------------- */
 
-.small {
-  margin-top: 2rem;
-  font-size: 0.85rem;
-}
-
-.bar {
+.es-group-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem 1.5rem;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 1.5rem;
+  gap: 0.5rem 1rem;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid var(--efp-line);
 }
 
-.headline {
-  margin: 0;
-  font-size: 1.4rem;
-  font-weight: 700;
+.es-columns,
+.es-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1.3fr) 6rem 3.75rem 8rem minmax(0, 1.4fr);
+  gap: 1.25rem;
+  align-items: center;
+  padding: 0.85rem 1.25rem;
 }
 
-#status {
-  min-height: 1.5rem;
-  margin: 0.4rem 0 0;
+.es-columns {
+  padding-block: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
+  background: color-mix(in oklab, var(--color-base-200) 60%, transparent);
 }
 
-/* One environment per row: state, name, latency, uptime, the last checks. */
-
-.targets {
+.es-rows {
   margin: 0;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
   list-style: none;
+}
+
+.es-row {
+  position: relative;
+  border-top: 1px solid var(--efp-line);
   overflow: hidden;
 }
 
-.target {
-  display: grid;
-  grid-template-columns: 6.5rem minmax(0, 1fr) 5rem 8rem 8rem;
-  gap: 0.25rem 1rem;
-  align-items: center;
-  padding: 0.7rem 0.9rem;
-  border-top: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.target:first-child {
+.es-rows > .es-row:first-child {
   border-top: 0;
 }
 
-.state {
+.es-row:hover {
+  background: color-mix(in oklab, var(--color-primary) 3%, transparent);
+}
+
+.es-name {
   display: flex;
-  gap: 0.5rem;
   align-items: center;
-  font-weight: 700;
-}
-
-/* The mark says the state by its shape; the colour only repeats it. */
-.mark {
-  flex: none;
-  width: 0.8rem;
-  height: 0.8rem;
-  border: 2px solid var(--muted);
-  border-radius: 50%;
-  box-sizing: border-box;
-}
-
-.up .mark {
-  border-color: var(--good);
-  background: var(--good);
-}
-
-.up .state {
-  color: var(--good);
-}
-
-.down .mark {
-  border-color: var(--bad);
-  border-radius: 0.1rem;
-  background: var(--bad);
-}
-
-.down .state {
-  color: var(--bad);
-}
-
-.name {
+  gap: 0.8rem;
   min-width: 0;
+}
+
+.es-name strong {
+  display: block;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-.name small {
+.es-url {
   display: block;
-  color: var(--muted);
-  font-weight: 400;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.number {
+.es-latency {
+  font-size: 1.05rem;
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
   text-align: right;
+  white-space: nowrap;
 }
 
-.uptime small {
+.es-latency small {
   display: block;
-  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
 }
 
-.spark {
+.es-uptime {
+  --size: 2.9rem;
+  --thickness: 4px;
+  justify-self: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+/* A faint track under the arc, so that 70% reads as 70% of a ring. */
+.es-uptime {
+  box-shadow: inset 0 0 0 4px color-mix(in oklab, var(--color-base-content) 8%, transparent);
+  border-radius: 999px;
+}
+
+/* No check yet, or never up: the track alone, without an arc that starts nowhere. */
+.es-uptime.is-empty::before,
+.es-uptime.is-empty::after,
+.es-uptime.is-zero::before,
+.es-uptime.is-zero::after {
+  display: none;
+}
+
+.es-uptime.is-empty {
+  color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+}
+
+.es-detail {
+  font-size: 0.82rem;
+  color: color-mix(in oklab, var(--color-base-content) 68%, transparent);
+  min-width: 0;
+}
+
+.es-detail .es-note {
   display: block;
-  width: 100%;
+  color: color-mix(in oklab, var(--color-error) 85%, var(--color-base-content));
+  font-weight: 550;
+}
+
+@media (max-width: 860px) {
+  .es-columns {
+    display: none;
+  }
+
+  .es-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "name name uptime"
+      "spark latency uptime"
+      "detail detail detail";
+    gap: 0.5rem 1rem;
+  }
+
+  .es-row > .es-name { grid-area: name; }
+  .es-row > .es-latency { grid-area: latency; }
+  .es-row > .es-uptime { grid-area: uptime; }
+  .es-row > .es-spark-cell { grid-area: spark; }
+  .es-row > .es-detail { grid-area: detail; }
+}
+
+/* ---- The mark: a dot is up, a square is down, a ring is not checked, a spinner is asking. --- */
+
+.es-mark {
+  position: relative;
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 2px solid color-mix(in oklab, var(--color-base-content) 35%, transparent);
+}
+
+.es-mark[data-state="up"] {
+  border: 0;
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-success) 20%, transparent);
+}
+
+.es-mark[data-state="down"] {
+  border: 0;
+  border-radius: 0.2rem;
+  background: var(--color-error);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-error) 20%, transparent);
+}
+
+.es-mark[data-state="checking"] {
+  border-color: color-mix(in oklab, var(--color-primary) 22%, transparent);
+  border-top-color: var(--color-primary);
+}
+
+/* ---- The sparkline ------------------------------------------------------------------------- */
+
+.es-spark {
+  display: block;
+  width: 8rem;
   height: 1.9rem;
+  overflow: visible;
 }
 
-.spark polyline {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 1.5;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-.spark circle {
-  fill: var(--accent);
-}
-
-.spark .miss {
-  stroke: var(--bad);
-  stroke-width: 2;
-}
-
-.spark .base {
-  stroke: var(--line);
+.es-spark .base {
+  stroke: color-mix(in oklab, var(--color-base-content) 14%, transparent);
   stroke-width: 1;
 }
 
-.detail {
-  grid-column: 2 / -1;
-  color: var(--muted);
-  font-size: 0.9rem;
+.es-spark .area {
+  fill: color-mix(in oklab, var(--color-primary) 13%, transparent);
+  stroke: none;
 }
 
-.down .detail .note {
-  color: var(--bad);
+.es-spark polyline {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
 }
 
-@media (max-width: 44rem) {
-  .target {
-    grid-template-columns: minmax(0, 1fr) auto;
+.es-spark circle {
+  fill: var(--color-primary);
+}
+
+.es-spark .latest {
+  stroke: var(--color-base-100);
+  stroke-width: 1.5;
+}
+
+.es-spark .miss {
+  stroke: var(--color-error);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.es-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+}
+
+.es-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+/* ---- Motion that runs by itself: only for visitors who did not ask for less ------------------ */
+
+@media (prefers-reduced-motion: no-preference) {
+  .es-mark[data-state="checking"] {
+    animation: es-turn 0.8s linear infinite;
   }
 
-  .name {
-    grid-row: 1;
-    grid-column: 1;
+  /* A row that is being asked: a light runs across it until its answer is in. */
+  .es-row.is-checking::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(100deg, transparent 30%, color-mix(in oklab, var(--color-primary) 9%, transparent) 50%, transparent 70%);
+    animation: es-sweep 1.3s var(--efp-ease-in-out) infinite;
+    animation-delay: calc(var(--i, 0) * 90ms);
+    pointer-events: none;
   }
+}
 
-  .state {
-    grid-row: 1;
-    grid-column: 2;
-    justify-content: flex-end;
+@keyframes es-turn {
+  to {
+    transform: rotate(360deg);
   }
+}
 
-  .number {
-    text-align: left;
+@keyframes es-sweep {
+  from {
+    transform: translateX(-100%);
   }
-
-  .uptime {
-    text-align: right;
-  }
-
-  .spark,
-  .detail {
-    grid-column: 1 / -1;
+  to {
+    transform: translateX(100%);
   }
 }

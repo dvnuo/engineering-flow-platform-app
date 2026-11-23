@@ -13,8 +13,18 @@ with links.
 - text a visitor types that becomes a connector path and a storage key;
 - answers kept in `efp_app.storage` per repository and chart for an hour,
   with a "Refresh" for signed-in members;
-- Flask under a path prefix (`url_for()` everywhere) and charts drawn by hand
-  as SVG.
+- Flask under a path prefix: `url_for()` for every URL of the app; the
+  shared libraries at `/_efp/lib/` are the one fixed path;
+- the calendar, the punch card and the ages drawn by hand as SVG (the
+  arithmetic is in `static/charts.mjs`, tested with node), and the weekly
+  line with ECharts through `kit.chart`, in the theme's colours;
+- a page built on the UI kit ([docs/UI_KIT.md](../../docs/UI_KIT.md)) whose
+  motion says something: the totals count up, the year fills in week by
+  week as a wave, the hours of the punch card light up along the day, the
+  columns of ages grow from their baseline and the bars of people and ages
+  run out, once, for a repository that was not on the page; a refresh of
+  the same one only moves the numbers. Contributors have avatars
+  (`kit.avatar`), and every age has the colour of how long it is.
 
 **Turn on in the Portal:** the GitHub connector (read-only is enough), on the
 app's page.
@@ -46,7 +56,10 @@ The app calls four endpoints. To see what your GitHub answers, try them in
 2. Set `OWNERS` at the top of `app.py` to the organisations whose
    repositories the app may show, and adapt `AGE_BUCKETS` to what "old" means
    for a pull request in your team.
-3. `efp-app check`, push, register the directory as an app in the Portal,
+3. Change the look if you like: a daisyUI theme on `<html>`
+   (`data-theme="nord"`, [docs/UI_KIT.md](../../docs/UI_KIT.md#make-it-yours))
+   recolours everything, the charts too; the template says where.
+4. `efp-app check`, push, register the directory as an app in the Portal,
    turn on GitHub and press Deploy.
 
 ## Things to notice
@@ -84,8 +97,10 @@ The app calls four endpoints. To see what your GitHub answers, try them in
   the whole list.
 - **Titles and names are data.** They reach the page through `textContent`;
   a link is used only when it starts with `https://` or `http://`.
-- **Every chart has its numbers.** The arrow keys read a chart mark by mark,
-  and "The numbers" under each one holds the same values as a table.
+- **Every chart has its numbers.** The arrow keys read the calendar, the
+  punch card and the columns of ages mark by mark, "The numbers" under each
+  one holds the same values as a table, and the contributors are a list of
+  names and counts.
 - GitHub Enterprise works the same way: the connector's address is then your
   server's API address. Hours of the punch card are those of each commit's
   own time zone; days of the calendar are counted in UTC.

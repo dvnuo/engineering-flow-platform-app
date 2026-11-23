@@ -111,6 +111,57 @@ export function counter(text, limit) {
   };
 }
 
+// --- Terms in a text ----------------------------------------------------------
+
+// What is not prose: fenced code, inline code, addresses. The same pattern as
+// NOT_PROSE in main.py, which leaves the terms inside them out of the prompt.
+const NOT_PROSE = /```[\s\S]*?(?:```|$)|`[^`\n]{0,400}`|https?:\/\/[^\s<>)\]]{1,2000}/g;
+
+function literal(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// The text in pieces, [{ text, term }], where term is the index in `terms` of
+// the term a piece is, or -1. The rule of occurs() in main.py: an English term
+// counts as whole words in any case, singular or plural; a Chinese one
+// anywhere. Terms inside code or an address do not count, and of two terms at
+// one place the longer wins ("test case" over "test"). The page marks the
+// pieces as elements with text in them, never as markup.
+export function highlight(text, terms, language) {
+  const value = String(text || "");
+  const skipped = Array.from(value.matchAll(NOT_PROSE), (match) => [match.index, match.index + match[0].length]);
+  const found = [];
+  terms.forEach((term, index) => {
+    if (!term) {
+      return;
+    }
+    const pattern =
+      language === "en"
+        ? new RegExp("(?<![A-Za-z0-9])" + literal(term) + "(?:e?s)?(?![A-Za-z0-9])", "gi")
+        : new RegExp(literal(term), "g");
+    for (const match of value.matchAll(pattern)) {
+      found.push({ start: match.index, end: match.index + match[0].length, term: index });
+    }
+  });
+  found.sort((a, b) => a.start - b.start || b.end - a.end);
+  const pieces = [];
+  let at = 0;
+  for (const hit of found) {
+    if (hit.start < at || skipped.some(([from, to]) => hit.start < to && hit.end > from)) {
+      continue;
+    }
+    if (hit.start > at) {
+      pieces.push({ text: value.slice(at, hit.start), term: -1 });
+    }
+    pieces.push({ text: value.slice(hit.start, hit.end), term: hit.term });
+    at = hit.end;
+  }
+  if (at < value.length) {
+    pieces.push({ text: value.slice(at), term: -1 });
+  }
+  return pieces;
+}
+
 // --- The glossary -----------------------------------------------------------
 
 function tidy(value) {

@@ -1,32 +1,38 @@
 import { describeCron, explainFields, nextRuns, parseCron } from "../lib/cron.js";
 import { isoUtc, isoWithOffset, localOffset, relativeTime } from "../lib/time.js";
-import { copyButton, el, field, message, radios, table } from "../ui.js";
+import { copyButton, el, empty, input, message, motion, pane, radios, row, table } from "../ui.js";
 
+// Shapes to start from, not data: one press puts the expression in the field.
 const EXAMPLES = ["*/15 * * * *", "0 9 * * 1-5", "30 2 * * 0", "0 0 1 * *", "0 8-18/2 * * MON-FRI"];
 const RUNS = 5;
 
 export default {
   id: "cron",
   title: "Cron",
+  icon: "calendar-clock",
+  keywords: "schedule crontab jenkins timer job",
   blurb: "A five-field cron expression in words, with its next " + RUNS + " run times.",
   mount(root) {
-    const input = el("input", { type: "text", class: "mono", autocomplete: "off", spellcheck: "false", placeholder: "minute hour day-of-month month day-of-week" });
+    const expression = input({ class: "input-lg dt-cron", "aria-label": "Cron expression", placeholder: "minute hour day-of-month month day-of-week" });
     const verdict = message();
-    const sentence = el("p", { class: "headline" });
-    const result = el("div", { class: "block" });
+    const sentence = el("p", { class: "dt-headline", "aria-live": "polite" });
+    const result = el("div", { class: "dt-stack" });
     let summary = "";
+    let drawn = ""; // the expression whose runs are on the page: only a new one makes them rise in
 
     function run() {
-      result.replaceChildren();
-      sentence.textContent = "";
       summary = "";
-      const parsed = parseCron(input.value);
+      const parsed = parseCron(expression.value);
       if (!parsed.ok) {
-        if (input.value.trim()) {
+        sentence.textContent = "";
+        if (expression.value.trim()) {
           verdict.fail(parsed.message);
+          result.replaceChildren();
         } else {
-          verdict.say(parsed.message);
+          verdict.say("");
+          result.replaceChildren(empty("calendar-clock", "Type a schedule", "Five fields (minute, hour, day of the month, month, day of the week), a macro such as @daily, or one of the shapes above."));
         }
+        drawn = "";
         return;
       }
       verdict.say("");
@@ -36,34 +42,43 @@ export default {
       const runs = nextRuns(parsed, now, RUNS, { utc });
       const stamp = (ms) => (utc ? isoUtc(ms) : isoWithOffset(ms, localOffset(ms)));
       const weekday = new Intl.DateTimeFormat("en", { weekday: "long", timeZone: utc ? "UTC" : undefined });
-      result.append(table(["Field", "Typed", "Allows"], explainFields(parsed).map((row) => [row.name, row.source, row.meaning]), "values"));
-      result.append(el("h3", { text: "Next runs, " + (utc ? "if the scheduler runs on UTC" : "if the scheduler runs on your time zone") }));
-      if (runs.length) {
-        const list = el("ol", { class: "runs" });
-        for (const ms of runs) {
-          list.append(el("li", {}, el("span", { class: "mono", text: stamp(ms) }), " " + weekday.format(ms) + ", " + relativeTime(ms, now)));
-        }
-        result.append(list);
-      } else {
-        result.append(el("p", { class: "muted", text: "It never runs: no such date comes in the next eight years." }));
+      const list = el("ol", { class: "dt-runs" });
+      for (const ms of runs) {
+        list.append(el("li", {}, el("span", { class: "dt-code", text: stamp(ms) }), el("span", { class: "dt-faint", text: weekday.format(ms) + ", " + relativeTime(ms, now) })));
       }
+      result.replaceChildren(
+        pane("Next runs, " + (utc ? "if the scheduler runs on UTC" : "if the scheduler runs on your time zone"), runs.length ? list : el("p", { class: "dt-note dt-pad", text: "It never runs: no such date comes in the next eight years." })),
+        pane("The five fields", table(["Field", "Typed", "Allows"], explainFields(parsed).map((field) => [field.name, field.source, field.meaning]), "dt-values")),
+      );
+      const key = parsed.expression + " " + zone.value;
+      if (key !== drawn) motion("rise", list.children, { stagger: 50, distance: 8 }); // a new schedule: its runs come in one after the other
+      drawn = key;
       summary = [parsed.expression, sentence.textContent, ...runs.map(stamp)].join("\n");
     }
 
     const zone = radios("cron-zone", "Read the times in", [["local", "My time zone"], ["utc", "UTC"]], run);
-    const examples = el("div", { class: "row" }, el("span", { class: "label", text: "Try" }));
-    for (const example of EXAMPLES) {
-      const button = el("button", { type: "button", class: "mono chip", text: example });
-      button.addEventListener("click", () => {
-        input.value = example;
-        run();
-      });
-      examples.append(button);
-    }
-    input.addEventListener("input", run);
-    input.value = EXAMPLES[1];
+    const shapes = EXAMPLES.map((example) =>
+      el("button", {
+        type: "button",
+        class: "btn btn-xs btn-ghost dt-chip",
+        text: example,
+        onclick: () => {
+          expression.value = example;
+          run();
+          expression.focus();
+        },
+      }),
+    );
+    expression.addEventListener("input", run);
 
-    root.append(field("Expression", input), examples, zone.node, verdict.node, sentence, result, el("div", { class: "row" }, copyButton(() => summary, "Copy explanation")));
+    root.append(
+      expression,
+      row(el("span", { class: "dt-label", text: "Try" }), ...shapes),
+      row(zone.node, copyButton(() => summary, "Copy explanation")),
+      verdict.node,
+      sentence,
+      result,
+    );
     run();
   },
 };

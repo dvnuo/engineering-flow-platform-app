@@ -4,52 +4,80 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Retro board</title>
-  <!-- Relative URLs only: the app is served under /{slug}/ once deployed. -->
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="pastel" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
   <link rel="stylesheet" href="static/style.css">
 </head>
-<body>
-  <main>
-    <header class="head">
-      <div>
-        <h1 id="board-title">Retro board</h1>
-        <p id="who" class="muted"></p>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="sticky-note"></i></span>
+    <div class="min-w-0">
+      <h1 id="board-title" class="font-semibold leading-tight truncate">Retro board</h1>
+      <p id="who" class="text-xs text-base-content/60 truncate">&nbsp;</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <div id="votes-left" class="rb-votes" hidden>
+        <span id="votes-dots" class="rb-dots" aria-hidden="true"></span>
+        <span id="votes-text" class="text-xs font-medium whitespace-nowrap hidden sm:inline"></span>
+        <span id="votes-count" class="text-xs font-semibold efp-number sm:hidden"></span>
       </div>
-      <p id="votes-left" class="votes-left" hidden></p>
-    </header>
+      <span id="me"></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
 
-    <div class="bar">
-      <label id="past-label" hidden>Past boards
-        <select id="past"></select>
+  <main class="rb-main">
+    <div class="rb-toolbar efp-rise">
+      <label id="past-label" class="flex items-center gap-2" hidden>
+        <i data-lucide="history" class="opacity-50"></i>
+        <span class="sr-only">Past boards</span>
+        <select id="past" class="select select-sm w-56"></select>
       </label>
-      <label>Order
-        <select id="sort">
-          <option value="time">As written</option>
-          <option value="votes">Most votes first</option>
-        </select>
-      </label>
-      <span id="totals" class="muted"></span>
-      <span class="spacer"></span>
-      <button type="button" id="reveal" hidden>Reveal the authors</button>
-      <button type="button" id="close" hidden>Close the board</button>
-      <button type="button" id="export">Export as Markdown</button>
-      <button type="button" id="refresh">Refresh</button>
+      <div class="join" role="group" aria-label="Order of the cards">
+        <button type="button" class="btn btn-sm join-item" data-sort="time" aria-pressed="true"><i data-lucide="clock"></i> As written</button>
+        <button type="button" class="btn btn-sm join-item" data-sort="votes" aria-pressed="false"><i data-lucide="flame"></i> Most votes</button>
+      </div>
+      <span id="totals" class="text-sm text-base-content/60 efp-number"></span>
+      <span class="grow"></span>
+      <button type="button" id="reveal" class="btn btn-sm btn-soft btn-secondary efp-press" hidden><i data-lucide="eye"></i> Reveal the authors</button>
+      <button type="button" id="close" class="btn btn-sm btn-soft efp-press" hidden><i data-lucide="lock"></i> <span>Close the board</span></button>
+      <button type="button" id="export" class="btn btn-sm btn-ghost efp-press" title="Export as Markdown"><i data-lucide="download"></i> Export</button>
+      <button type="button" id="refresh" class="btn btn-sm btn-ghost btn-square efp-press" title="Refresh" aria-label="Refresh"><i data-lucide="refresh-cw"></i></button>
     </div>
 
-    <p id="banner" class="banner" hidden></p>
-    <p id="status" class="status" role="status"></p>
+    <div id="banner" class="mt-4" role="note" hidden></div>
+    <div id="status" class="mt-4" role="status" hidden></div>
 
-    <div id="columns" class="columns"></div>
+    <div id="columns" class="rb-columns">
+      <div class="skeleton h-80 rounded-box"></div>
+      <div class="skeleton h-80 rounded-box"></div>
+      <div class="skeleton h-80 rounded-box"></div>
+      <div class="skeleton h-80 rounded-box"></div>
+    </div>
   </main>
 
-  <dialog id="confirm" aria-labelledby="confirm-title">
-    <form method="dialog">
-      <h2 id="confirm-title"></h2>
-      <p id="confirm-text"></p>
-      <div class="dialog-actions">
-        <button type="button" id="confirm-cancel">Cancel</button>
-        <button type="submit" id="confirm-ok" class="primary" value="ok">OK</button>
+  <dialog id="confirm" class="modal modal-bottom sm:modal-middle" aria-labelledby="confirm-title">
+    <form method="dialog" class="modal-box">
+      <div class="flex gap-4">
+        <span id="confirm-icon" class="rb-confirm-icon" aria-hidden="true"></span>
+        <div>
+          <h2 id="confirm-title" class="text-lg font-semibold"></h2>
+          <p id="confirm-text" class="text-sm text-base-content/70 mt-1"></p>
+        </div>
+      </div>
+      <div class="modal-action">
+        <button type="button" id="confirm-cancel" class="btn btn-ghost">Cancel</button>
+        <button type="submit" id="confirm-ok" class="btn btn-primary" value="ok">OK</button>
       </div>
     </form>
+    <form method="dialog" class="modal-backdrop"><button>Close</button></form>
   </dialog>
 
   <script type="module" src="static/app.js"></script>

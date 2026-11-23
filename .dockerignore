@@ -1,5 +1,5 @@
-# The image is built from the repository root. It takes host/, sdk/ and
-# templates/; nothing else needs to travel to the Docker daemon.
+# The image is built from the repository root. It takes host/, sdk/,
+# templates/ and lib/; nothing else needs to travel to the Docker daemon.
 .git
 .github
 .venv
