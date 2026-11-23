@@ -215,7 +215,9 @@ def build_launch(
         return Launch(argv, needs="streamlit")
 
     if found.type == "gradio":
-        env = {"GRADIO_SERVER_NAME": HOST, "GRADIO_SERVER_PORT": number}
+        # As on the host: no analytics, which also keeps launch() from
+        # failing on a theme whose fonts are strings (docs/CONTRACTS.md, 8.1).
+        env = {"GRADIO_SERVER_NAME": HOST, "GRADIO_SERVER_PORT": number, "GRADIO_ANALYTICS_ENABLED": "False"}
         if base:
             env["GRADIO_ROOT_PATH"] = base
         return Launch([python, entry], env=env, needs="gradio")

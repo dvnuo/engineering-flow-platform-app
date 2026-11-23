@@ -549,7 +549,7 @@ is `PORT`. The host and `efp-app dev` use the same command lines.
 | `fastapi` | `python -m uvicorn {entry} --host 127.0.0.1 --port {PORT} --root-path {BASE} --no-server-header` | | stripped |
 | `flask` | `python -m gunicorn {entry} --bind 127.0.0.1:{PORT} --workers 1 --threads 8 --timeout 120` | `SCRIPT_NAME={BASE}` | kept |
 | `streamlit` | `python -m streamlit run {entry} --server.port {PORT} --server.address 127.0.0.1 --server.baseUrlPath {BASE} --server.headless true --browser.gatherUsageStats false --server.enableCORS false --server.enableXsrfProtection false` | | kept |
-| `gradio` | `python {entry}` | `GRADIO_SERVER_NAME=127.0.0.1`, `GRADIO_SERVER_PORT={PORT}`, `GRADIO_ROOT_PATH={BASE}` | stripped |
+| `gradio` | `python {entry}` | `GRADIO_SERVER_NAME=127.0.0.1`, `GRADIO_SERVER_PORT={PORT}`, `GRADIO_ROOT_PATH={BASE}`, `GRADIO_ANALYTICS_ENABLED=False` | stripped |
 | `command` | `sh -c "{command}"` | | kept |
 | `static` | no process; the gateway serves the directory | | stripped |
 
@@ -558,6 +558,12 @@ is `PORT`. The host and `efp-app dev` use the same command lines.
   are left out.
 - The host installs the runner when the requirements do not name it:
   `uvicorn` for `fastapi`, `gunicorn` for `flask`.
+- Neither framework reports to its makers: `--browser.gatherUsageStats false`
+  for Streamlit, `GRADIO_ANALYTICS_ENABLED=False` for Gradio. With its
+  analytics on, Gradio also asks its servers for the latest version at every
+  start, and its `launch()` compares the page's theme with the built-in ones,
+  which fails ("'str' object has no attribute 'name'", Gradio 6.32) when a
+  theme names a font as a string.
 - On Windows `efp-app dev` starts `flask` apps with
   `python -m flask --app {entry} run --port {PORT}` (gunicorn needs a POSIX
   system). With `--prefix` it wraps the app so that Flask's own server

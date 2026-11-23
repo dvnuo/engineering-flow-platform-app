@@ -80,6 +80,10 @@ def build_command(manifest: Mapping[str, Any], *, python: str, port: int, base_p
         argv = [python, entry]
         env["GRADIO_SERVER_NAME"] = "127.0.0.1"
         env["GRADIO_SERVER_PORT"] = port_text
+        # Gradio's counterpart of --browser.gatherUsageStats false. With its
+        # analytics on, launch() also compares the theme with Gradio's own
+        # and fails on a font given as a string (docs/CONTRACTS.md, 8.1).
+        env["GRADIO_ANALYTICS_ENABLED"] = "False"
         if base_path:
             env["GRADIO_ROOT_PATH"] = base_path
     elif app_type == "command":

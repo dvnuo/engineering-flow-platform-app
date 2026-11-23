@@ -193,7 +193,7 @@ same one, without the prefix):
 | `fastapi` | `python -m uvicorn {entry} --host 127.0.0.1 --port $PORT --root-path /<slug> --no-server-header` | removed before the request arrives |
 | `flask` | `python -m gunicorn {entry} --bind 127.0.0.1:$PORT --workers 1 --threads 8 --timeout 120`, with `SCRIPT_NAME=/<slug>` | kept |
 | `streamlit` | `python -m streamlit run {entry} --server.port $PORT --server.address 127.0.0.1 --server.baseUrlPath /<slug> --server.headless true ...` | kept |
-| `gradio` | `python {entry}`, with `GRADIO_SERVER_NAME`, `GRADIO_SERVER_PORT`, `GRADIO_ROOT_PATH=/<slug>` | removed |
+| `gradio` | `python {entry}`, with `GRADIO_SERVER_NAME`, `GRADIO_SERVER_PORT`, `GRADIO_ROOT_PATH=/<slug>`, `GRADIO_ANALYTICS_ENABLED=False` | removed |
 | `command` | `sh -c "{command}"` | kept |
 | `static` | no process: the gateway serves the directory | removed |
 
@@ -245,6 +245,12 @@ The one mistake: passing them yourself. `demo.launch(server_port=7860)`,
 `demo.launch()` without `server_name`, `server_port`, `root_path` and
 `share`, inside `if __name__ == "__main__":`. Other arguments are fine: Gradio 6
 takes the page's theme there (`demo.launch(theme=...)`, docs/UI_KIT.md).
+
+The host turns Gradio's analytics off (`GRADIO_ANALYTICS_ENABLED=False`):
+no reports to Gradio's makers, and no failing `launch()` when a theme names
+its fonts as strings ("'str' object has no attribute 'name'" on Gradio
+6.32). Pass `analytics_enabled=False` to `gr.Blocks()` as well when the
+script is also started some other way than by the host or `efp-app dev`.
 
 ### Static
 

@@ -2965,7 +2965,7 @@ app's requirements must be installed in the same environment.
 | `fastapi` | `python -m uvicorn {entry} --host 127.0.0.1 --port {port} --no-server-header` | |
 | `flask` | `python -m gunicorn {entry} --bind 127.0.0.1:{port} --workers 1 --threads 8 --timeout 120`; on Windows `python -m flask --app {entry} run --port {port}`, because gunicorn needs a POSIX system | |
 | `streamlit` | `python -m streamlit run {entry} --server.port {port} --server.address 127.0.0.1 --server.headless true --browser.gatherUsageStats false --server.enableCORS false --server.enableXsrfProtection false` | |
-| `gradio` | `python {entry}` | `GRADIO_SERVER_NAME=127.0.0.1`, `GRADIO_SERVER_PORT={port}` |
+| `gradio` | `python {entry}` | `GRADIO_SERVER_NAME=127.0.0.1`, `GRADIO_SERVER_PORT={port}`, `GRADIO_ANALYTICS_ENABLED=False` |
 | `command` | `sh -c "{command}"` | |
 | `static` | `python -m http.server {port} --bind 127.0.0.1 --directory {entry}`: a local preview; on the host a static app has no process | |
 

@@ -642,6 +642,11 @@ and a widget round trip stay under the prefix. Not run on the real host.
   `share` or `auth`, inside `if __name__ == "__main__":`.
 - Visitor: add a `request: gr.Request` parameter to the event function and
   call `efp_app.integrations.gradio.get_visitor(request)`.
+- `gr.Blocks(..., analytics_enabled=False)`. The host and `efp-app dev` set
+  `GRADIO_ANALYTICS_ENABLED=False` already; the argument keeps the script
+  from reporting to Gradio when it is started some other way, and keeps
+  `launch(theme=...)` from failing on a theme whose fonts are strings
+  ("'str' object has no attribute 'name'", Gradio 6.32).
 
 - Behind a company proxy Gradio fails to start when its request to its own
   port goes to the proxy ("Couldn't start the app because ... failed (code
