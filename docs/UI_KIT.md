@@ -220,12 +220,18 @@ too (`AGENTS.md`).
 ## Streamlit and Gradio
 
 These pages are drawn by their framework, so the libraries above do not
-apply. Give them the same colours with the framework's own theme:
+apply, and a theme brings them only near the kit: the framework's own
+fields, sliders and layout stay. When a page should look like the rest,
+write it as a page of its own on the kit behind FastAPI or Flask, as
+[test-case-writer](../examples/test-case-writer/) does for what would be a
+typical Gradio tool (a form, a streamed answer, a download).
+
+Otherwise give them the same colours with the framework's own theme:
 `.streamlit/config.toml` (a `[theme]` section with
 `primaryColor = "#2f5fe0"` and `font = "sans serif"`, see
 [csv-explorer](../examples/csv-explorer/)) or, for Gradio 6,
-`demo.launch(theme=gr.themes.Soft(primary_hue="blue", font=[...system fonts...]))`
-([test-case-writer](../examples/test-case-writer/)). Gradio 6 takes the theme
+`demo.launch(theme=gr.themes.Soft(primary_hue="blue", font=[...system fonts...]))`.
+Gradio 6 takes the theme
 in `launch()`, not in `gr.Blocks()`; name the system's fonts, because the
 theme's default font is a web font from another host. Keep Gradio's
 analytics off (`gr.Blocks(analytics_enabled=False)`; the host sets

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test case writer</title>
+  <!-- The look: daisyUI, Tailwind and the EFP kit, which the host serves to every
+       app at /_efp/lib/ (docs/UI_KIT.md). For another look, link
+       /_efp/lib/daisyui@5.8.2/themes.css and set data-theme="dim" (or any
+       daisyUI theme) on <html>. -->
+  <link rel="stylesheet" href="/_efp/lib/daisyui@5.8.2/daisyui.css">
+  <link rel="stylesheet" href="/_efp/lib/efp-kit@1.0.0/efp-kit.css">
+  <script src="/_efp/lib/efp-kit@1.0.0/tailwind-theme.js"></script>
+  <script src="/_efp/lib/tailwindcss-browser@4.3.5/tailwindcss.js"></script>
+  <!-- The app's own files: relative URLs only, the app is served under /{slug}/ once deployed. -->
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body class="efp-page">
+  <header class="efp-appbar">
+    <span class="efp-mark" aria-hidden="true"><i data-lucide="list-checks"></i></span>
+    <div class="min-w-0">
+      <h1 class="font-semibold leading-tight">Test case writer</h1>
+      <p class="text-xs text-base-content/60 truncate">From a user story to test scenarios: the main path, the negative cases, the edges</p>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span id="model" class="tc-model" hidden></span>
+      <button type="button" id="theme" class="btn btn-ghost btn-square btn-sm"></button>
+    </div>
+  </header>
+
+  <main class="efp-container py-6 sm:py-10 grid gap-6">
+    <div id="notice" hidden></div>
+
+    <div class="grid gap-6 lg:grid-cols-2 items-stretch">
+      <!-- The story: read from Jira or pasted, and what to write from it. -->
+      <form id="write-form" class="efp-surface tc-panel efp-rise" aria-labelledby="story-title">
+        <div class="tc-head">
+          <h2 id="story-title" class="tc-title"><i data-lucide="book-open-text"></i> The story</h2>
+          <span id="size" class="tc-size efp-number" aria-live="polite"></span>
+        </div>
+
+        <div class="tc-issue">
+          <label class="input tc-key" for="key">
+            <i data-lucide="ticket" class="tc-key-icon"></i>
+            <input id="key" type="text" maxlength="40" spellcheck="false" autocomplete="off" placeholder="ABC-123"
+                   aria-label="Jira issue key" aria-describedby="issue-status">
+          </label>
+          <button type="button" id="read-button" class="btn btn-soft btn-primary efp-press"><i data-lucide="download"></i> Read the issue</button>
+        </div>
+        <p id="issue-status" class="tc-line" role="status">
+          <i data-lucide="info"></i>
+          <span>Optional. The issue is read with the app owner's Jira connector.</span>
+        </p>
+
+        <textarea id="story" class="textarea tc-story" rows="13" spellcheck="true"
+                  placeholder="As a ... I want ... so that ...&#10;&#10;Acceptance criteria:&#10;- ..."
+                  aria-label="The story" aria-describedby="story-note"></textarea>
+        <p id="story-note" class="tc-line">
+          <i data-lucide="shield-check" class="tc-safe"></i>
+          <span id="story-note-text">The first 6,000 characters go to the model, as data: instructions inside the story are not followed.</span>
+        </p>
+
+        <div class="tc-options">
+          <div class="tc-option">
+            <span class="tc-label" id="style-label">Write as</span>
+            <div class="join" role="radiogroup" aria-labelledby="style-label">
+              <input class="join-item btn btn-sm" type="radio" name="style" value="gherkin" aria-label="Gherkin" checked>
+              <input class="join-item btn btn-sm" type="radio" name="style" value="table" aria-label="Table">
+            </div>
+          </div>
+          <div class="tc-option tc-count">
+            <label class="tc-label" for="count">How many</label>
+            <input id="count" type="range" class="range range-primary range-xs" min="3" max="12" value="6" step="1" aria-describedby="count-value">
+            <output id="count-value" for="count" class="tc-count-value efp-number">6</output>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button type="submit" id="write-button" class="btn btn-primary efp-press efp-shine"><i data-lucide="sparkles"></i> Write</button>
+          <span class="hidden sm:inline text-xs text-base-content/50" aria-hidden="true"><kbd class="kbd kbd-xs">Ctrl</kbd> <kbd class="kbd kbd-xs">Enter</kbd></span>
+          <button type="button" id="clear" class="btn btn-ghost btn-sm ml-auto" hidden><i data-lucide="eraser"></i> Clear</button>
+        </div>
+      </form>
+
+      <!-- The answer, as it is written. -->
+      <section class="efp-surface tc-panel efp-rise" style="--i: 1" aria-labelledby="answer-title">
+        <div class="tc-head">
+          <h2 id="answer-title" class="tc-title"><i data-lucide="list-checks"></i> The scenarios</h2>
+          <div class="ml-auto flex items-center gap-1">
+            <span id="state" class="tc-state" role="status"></span>
+            <button type="button" id="stop" class="btn btn-xs btn-ghost" hidden><i data-lucide="square"></i> Stop <kbd class="kbd kbd-xs">Esc</kbd></button>
+            <button type="button" id="copy" class="btn btn-xs btn-ghost" hidden><i data-lucide="copy"></i> Copy</button>
+            <button type="button" id="download" class="btn btn-xs btn-ghost" hidden><i data-lucide="file-down"></i> <span id="download-name">Download</span></button>
+          </div>
+        </div>
+
+        <ul id="tally" class="tc-tally" aria-label="Kinds of cases" hidden></ul>
+
+        <div id="empty" class="efp-empty tc-grow">
+          <span class="efp-empty-icon"><i data-lucide="clipboard-list"></i></span>
+          <strong>The scenarios appear here</strong>
+          <span class="text-sm max-w-xs">Read an issue or paste a story, choose how many, and press Write. A draft to review, not a finished test plan.</span>
+        </div>
+        <div id="thinking" class="grid gap-3 py-2" aria-hidden="true" hidden>
+          <div class="skeleton h-4 w-1/2"></div>
+          <div class="skeleton h-4 w-11/12"></div>
+          <div class="skeleton h-4 w-4/5"></div>
+          <div class="skeleton h-4 w-2/3"></div>
+        </div>
+        <div id="problem" class="tc-grow" hidden></div>
+        <div id="answer" class="tc-answer" tabindex="0" aria-live="polite" aria-label="The scenarios" hidden></div>
+        <p id="outcome" class="tc-outcome" hidden></p>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

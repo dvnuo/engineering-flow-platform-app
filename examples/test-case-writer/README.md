@@ -2,25 +2,30 @@
 
 From a user story to test scenarios. Name a Jira issue or paste a story: the
 model writes scenarios in Gherkin (Feature, Scenario, Given / When / Then)
-for the main path, the negative cases and the edges, or a plain table of test
-cases. The answer streams into the page and can be downloaded as a `.feature`
-file. It is a draft for a tester to review, not a finished test plan.
+for the main path, the negative cases and the edges, or a table of test
+cases. The answer is shown while it is written, then in its form: Gherkin
+with its keywords and tags marked, or the table as a table, with a count of
+main, negative and edge cases. It can be copied or downloaded as a
+`.feature` (or `.md`) file. It is a draft for a tester to review, not a
+finished test plan.
 
 **It shows**
 
-- a Gradio page laid out with `gr.Blocks`, with an answer that streams (a
-  generator function);
-- the visitor inside an event function (`gr.Request` and `get_visitor`);
 - reading one Jira issue through a connector (`connectors.get`), with the
   key checked before it becomes a path;
-- a streamed model call (`llm.stream`) whose input is cut and whose output is
-  capped by what was asked for;
-- what a visitor sees while it works, when the model is off, when the budget
-  is used up and when there is nothing to do;
-- the look of the EFP kit through Gradio's own theme
-  (`gr.themes.Soft(primary_hue="blue")` with the system's fonts, see
-  [docs/UI_KIT.md](../../docs/UI_KIT.md#streamlit-and-gradio)). Gradio draws
-  the page, so the kit's style sheets and its motion do not apply here.
+- a streamed model call (`llm.astream`) whose input is cut and whose output
+  is capped by what was asked for;
+- an answer stream that says what each line is (lines of JSON: a start, the
+  pieces, then the finished text or an error), read by the page whatever
+  pieces the network cuts it into;
+- what the page learns before anybody types (`app.info()`: is the model on,
+  is the budget used up, is Jira on), and what a visitor sees while it
+  works, when the model is off, when the budget is used up and when there
+  is nothing to do;
+- what a model wrote shown in its form but always as text: `kit.h` and
+  `textContent`, never HTML, for marked Gherkin and for a table;
+- a file made in the browser from what is on the page, so the server keeps
+  nothing.
 
 **Turn on in the Portal:** the language model and, for reading issues by key,
 the Jira connector (read-only is enough), both on the app's page. Without
@@ -40,47 +45,37 @@ on your model provider, count against the app's budget and read your Jira.
 ## Make it yours
 
 1. Copy this directory into your own repository.
-2. Change the two `SYSTEM_PROMPTS` in `app.py` to your house style: your
+2. Change the two `SYSTEM_PROMPTS` in `main.py` to your house style: your
    tags, your step vocabulary, the language you write tests in. Add the Jira
    fields your stories keep their acceptance criteria in to `FIELDS` and to
    `story_of()`.
-3. Change the look in `THEME` in `app.py`: another hue, or another of
-   Gradio's themes (`gr.themes.Base`, `Glass`, `Monochrome`, ...). The kit's
-   `data-theme` belongs to the HTML examples; a Gradio page takes its theme
-   from `launch(theme=...)`. Keep the fonts the system's own: a theme that
-   names a web font makes every visitor's browser fetch it from another host.
-4. `efp-app check`, push, register the directory as an app in the Portal,
+3. Change what can be asked for: `MIN_SCENARIOS`, `DEFAULT_SCENARIOS`,
+   `MAX_SCENARIOS` and `OUTPUT_TOKENS` at the top of `main.py`. The page reads
+   the limits from `api/state`, so the slider follows.
+4. For another look, link `/_efp/lib/daisyui@5.8.2/themes.css` and set
+   `data-theme` on `<html>` (docs/UI_KIT.md); the colours of the kinds of
+   cases are in `static/style.css` (`.tc-main`, `.tc-negative`, `.tc-edge`).
+5. `efp-app check`, push, register the directory as an app in the Portal,
    turn on the model and Jira and press Deploy.
 
 ## Things to notice
 
-- **`demo.launch()` names no address.** The host passes the address, the
-  port and the path prefix in `GRADIO_SERVER_NAME`, `GRADIO_SERVER_PORT` and
-  `GRADIO_ROOT_PATH`, and `launch()` reads them. `launch(server_port=7860)`,
-  `launch(root_path="/")` or `share=True` would replace what the host set,
-  and the app would not answer under `/<slug>/`. The one argument it gets is
-  the theme, which Gradio 6 takes in `launch()` rather than in `gr.Blocks()`
-  (hence `gradio>=6` in `requirements.txt`). It stays inside
-  `if __name__ == "__main__":`, so the file can be imported by a test.
-- **`gr.Blocks(..., analytics_enabled=False)`.** Gradio otherwise reports
-  every start to its makers, and with analytics on its `launch()` compares
-  the theme with its built-in ones and fails on fonts given as strings
-  ("'str' object has no attribute 'name'", Gradio 6.32). The host and
-  `efp-app dev` set `GRADIO_ANALYTICS_ENABLED=False` too; the argument
-  keeps `python app.py` working.
-- **A generator is the stream.** `write_scenarios` yields the text so far, a
-  status line and the download button; every yield replaces what the three
-  outputs show. `llm.stream()` sends the request when it is called, so "the
-  budget is used up" or "the model is off" arrives before the first piece
-  and becomes the status line.
-- **The visitor comes with the event.** An event function that has a
-  `gr.Request` parameter gets the request of that click;
-  `get_visitor(request)` reads the visitor the gateway signed into it, and
-  `visitor=` on the Jira and model calls lets the Portal's usage page show
-  who caused them. There is no global "current visitor".
+- **The stream says what each line is.** `api/write` answers with lines of
+  JSON: `{"start": ...}`, then `{"text": ...}` for every piece, then
+  `{"done": true, ...}` with the finished text, or `{"error": ...}`. A
+  failure in the middle of an answer cannot change the status any more, and
+  a Gherkin file is no place to write an error message into, so it travels
+  as a line of its own. `llm.astream()` sends the request when it is
+  awaited, so "the budget is used up" or "the model is off" arrives before
+  the first line and becomes an ordinary JSON error with its status.
+- **The network cuts the stream wherever it likes.** `LineReader` in
+  `static/scenarios.js` keeps the half of a line until the rest arrives; a
+  half line at the very end is an error, not text. That file has no DOM and
+  no network in it, so the tests run it under node.
 - **Only a key becomes a path.** What is typed must match `ISSUE_KEY` before
   it is put into `/rest/api/2/issue/<KEY>`, and the same check decides
-  whether the key may name the downloaded file.
+  whether the key may name the downloaded file. The page checks with the
+  same rule first, only to spare a request the server would refuse.
 - **The connector is the owner's account.** Every visitor reads Jira as your
   connector does, so they can read any issue that account can read by typing
   its key. Think about who may open the app. Jira's own "no" (404 for an
@@ -92,18 +87,23 @@ on your model provider, count against the app's budget and read your Jira.
   tokens of instructions; the answer is capped at 300 tokens plus 170 for
   each scenario asked for (110 for a table row), so at most 1,320 output
   tokens for six scenarios and 2,340 for twelve. An empty story is answered
-  without a model call. The limits are the constants at the top of `app.py`
+  without a model call. The limits are the constants at the top of `main.py`
   (`MAX_STORY_CHARS`, `OUTPUT_TOKENS`); the daily budget on the app's page
   decides what a day can cost.
 - **The story is data, and so is the answer.** The system prompt tells the
-  model not to follow instructions inside the story. The answer goes into a
-  text box, not into `gr.Markdown`, so nothing the model wrote is rendered;
-  a Markdown fence around it is removed and the scenarios are counted,
+  model not to follow instructions inside the story. The page shows what the
+  model wrote in its form, but builds every element with `kit.h` and
+  `textContent`: a `<b>` in a table cell stays the text `<b>`, and only a
+  `<br>` inside a cell, which models write for a line break, becomes one. A
+  Markdown fence around the answer is removed and the scenarios are counted,
   because what was asked for is not always what was written.
-- **The download is a temporary file.** Gradio hands out files, so the
-  finished text is written to the temporary directory, which the host
-  empties on every restart. Nothing else is kept: no story and no answer is
-  stored by this app.
+- **Nothing is kept.** The download is made in the browser from the
+  finished text (`Blob`, `download=`); the server stores no story and no
+  answer, and a reload starts again from an empty page.
+- **When the model cannot be used, the page says so first.** `api/state`
+  asks the Portal on every page load: the owner may have turned the model
+  on since. Write is off while the model is, and reading an issue still
+  works.
 - The issue is read from `/rest/api/2/issue/<KEY>`, which Jira Server, Data
   Center and Cloud offer with the description as text. Jira Cloud's
   `/rest/api/3/` sends the description as a document tree instead.

@@ -1,8 +1,8 @@
 {
   "name": "Test case writer",
   "description": "Example: from a Jira story or a pasted one to test scenarios in Gherkin, written by the model.",
-  "type": "gradio",
-  "entry": "app.py",
+  "type": "fastapi",
+  "entry": "main:app",
   "requirements": "requirements.txt",
   "health_path": "/"
 }

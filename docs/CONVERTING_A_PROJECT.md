@@ -654,10 +654,13 @@ and a widget round trip stay under the prefix. Not run on the real host.
   proxy for every app; when you start the script some other way, set
   `NO_PROXY=127.0.0.1,localhost` yourself.
 
-Verified: [`examples/test-case-writer`](../examples/test-case-writer/) was
-run on Gradio 6.32 under `efp-app dev --prefix` and used in a browser: the
-page, its files and an event round trip stay under the prefix. Not run on
-the real host.
+Verified: a Gradio 6.32 app (the earlier, Gradio version of
+[`examples/test-case-writer`](../examples/test-case-writer/)) was run under
+`efp-app dev --prefix` and used in a browser: the page, its files and an
+event round trip stay under the prefix. Not run on the real host. The
+example is now a FastAPI page on the UI kit: a converted Gradio tool that
+should look like the other apps can take the same route, keeping its
+Python functions and replacing `gr.Blocks` with a page and a few routes.
 
 ### A static site or a built single-page app
 
