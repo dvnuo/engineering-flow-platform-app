@@ -142,7 +142,8 @@ function gherkin(text) {
   const lines = text.split("\n");
   return lines.flatMap((line, index) => [
     ...gherkinLine(line).map(([kind, piece]) => (kind === "plain" ? piece : h("span", { class: KIND_OF_TAG[kind] || "tc-g-" + kind, text: piece }))),
-    index < lines.length - 1 ? "\n" : null,
+    // Not null for "no newline": replaceChildren() would write it as the text "null".
+    ...(index < lines.length - 1 ? ["\n"] : []),
   ]);
 }
 
@@ -268,7 +269,7 @@ async function write() {
   $("outcome").replaceChildren(
     kit.icon(end.kind === "done" ? "circle-check" : end.kind === "warning" ? "triangle-alert" : "circle-alert", "size-4"),
     h("span", { text: end.text }),
-    used ? h("span.tc-used.efp-number", { text: used }) : null,
+    ...(used ? [h("span.tc-used.efp-number", { text: used })] : []), // no counts after Stop or a lost stream
   );
   const seconds = ((performance.now() - started) / 1000).toFixed(1);
   if (end.kind === "problem") setState("circle-alert", "Interrupted");
