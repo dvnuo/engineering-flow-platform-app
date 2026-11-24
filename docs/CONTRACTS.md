@@ -744,8 +744,12 @@ a connector is turned on.
   `424 connector_not_configured`: the owner has no Image analysis connector,
   it is switched off, or the deployment has no AI Platform address.
   `424 provider_auth_failed`: the connector's account was refused.
-  `502 provider_error`: AI Platform failed. `429 rate_limited` and
-  `429 budget_exceeded` as in 9.2.
+  `502 provider_error`: AI Platform failed. `504 upstream_timeout`: it did
+  not answer in time. `429 rate_limited` and `429 budget_exceeded` as in
+  9.2; `rate_limited` is also the answer when AI Platform itself asks the
+  caller to slow down. The checks come in this order: whether the app may
+  make the call (403), the request (400), the budget (429), the connector
+  (424), then the call.
 - It is counted as a model call of the app, against the daily budget of 9.2.
   A call under way counts as a quarter of the characters of `prompt` and
   `system`, plus 1,500 tokens for each image, plus its `max_output_tokens`.

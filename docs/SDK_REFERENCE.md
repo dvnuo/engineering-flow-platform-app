@@ -4598,9 +4598,10 @@ system: `answer.content` of a connector call, when `answer.ok` is true and
 | `ConnectorDisabledError` | Image analysis is not turned on for the app. |
 | `ConnectorNotConfiguredError` | The owner has no Image analysis connector, it is switched off, or the platform has no AI Platform address. |
 | `ProviderAuthFailedError` | AI Platform refused the account of the owner's Image analysis connector. |
-| `RateLimitedError` | Too many calls; or the calls the app has under way take up what is left of its daily tokens. `retry_after`. |
+| `RateLimitedError` | Too many calls; the calls the app has under way take up what is left of its daily tokens; or AI Platform itself asked the caller to slow down. `retry_after`. |
 | `BudgetExceededError` | The app's daily budget is used up. `retry_after`. |
 | `ProviderError` | AI Platform failed. |
+| `UpstreamTimeoutError` | AI Platform did not answer in time. |
 | `PortalUnreachableError`, `PortalTimeoutError` | The Portal could not be reached, or was silent for longer than the timeout. |
 | `UnexpectedResponseError` | The answer is not what the contract says: no `text`, not JSON, a redirect, an error page. Also the `404` of a Portal that is older than image analysis and does not have the call, and the `413` of a proxy that finds the request too large: `status` tells them apart. |
 
