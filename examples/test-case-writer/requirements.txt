@@ -1,3 +1,4 @@
 # The host installs these from its package index (wheels only) on every deployment.
 # efp-app-sdk is not listed: the host adds it by itself. On your own machine: pip install efp-app-sdk
-gradio>=6
+fastapi>=0.110
+uvicorn>=0.29

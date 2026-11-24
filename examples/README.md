@@ -12,8 +12,8 @@ to what you want to build. Not sure whether your setup works? Deploy
 [setup-check](setup-check/) first. Every example that draws its own page is
 built on the UI kit every gateway serves ([docs/UI_KIT.md](../docs/UI_KIT.md)):
 it looks finished in light and dark, on a phone and on a wide screen, and its
-look changes with one attribute. The Streamlit and Gradio examples take the
-same colours through their framework's theme.
+look changes with one attribute. The Streamlit examples take the same
+colours through their framework's theme.
 
 Contents: [The examples](#the-examples) -
 [Which example shows what](#which-example-shows-what) - [Run one](#run-one) -
@@ -74,7 +74,7 @@ Contents: [The examples](#the-examples) -
 | [log-explainer](log-explainer/) | paste a failing log, get it explained | FastAPI | model (streamed) | model |
 | [release-notes](release-notes/) | release notes drafted from commits | FastAPI | GitHub connector, model, storage | GitHub, model |
 | [confluence-ask](confluence-ask/) | answers from wiki pages, with sources | Streamlit | Confluence connector, model (streamed) | Confluence, model |
-| [test-case-writer](test-case-writer/) | from a Jira story (or a pasted one) to Gherkin test scenarios | Gradio | Jira connector, model (streamed) | model; Jira to read issues by key |
+| [test-case-writer](test-case-writer/) | from a Jira story (or a pasted one) to Gherkin test scenarios or a table of test cases | FastAPI | Jira connector, model (streamed) | model; Jira to read issues by key |
 | [incident-timeline](incident-timeline/) | from pasted incident notes to a timeline you can correct and export | FastAPI | model (JSON output), storage | model |
 | [glossary-translator](glossary-translator/) | translation between English and Chinese that keeps the team's terms | FastAPI | model (streamed), storage | model |
 | [csv-explorer](csv-explorer/) | look into a CSV file: summary, charts, questions about the data | Streamlit | model (optional) | model, if questions are wanted |
@@ -118,7 +118,8 @@ Contents: [The examples](#the-examples) -
 | draw on a canvas | [whiteboard](whiteboard/), [bug-squash](bug-squash/), [screenshot-diff](screenshot-diff/), [service-map](service-map/) |
 | write a Flask app (`url_for` everywhere) | [jira-digest](jira-digest/), [repo-pulse](repo-pulse/) |
 | write a Streamlit app (reruns, `st.cache_data`) | [confluence-ask](confluence-ask/), [sprint-burndown](sprint-burndown/), [csv-explorer](csv-explorer/) |
-| write a Gradio app | [test-case-writer](test-case-writer/) |
+| show what a model wrote in its own form, as text: marked Gherkin, a table as a table | [test-case-writer](test-case-writer/) |
+| write a Gradio app | the starter: `efp-app init gradio my-app` ([templates/gradio](../templates/gradio/)); no example uses Gradio, because a page on the UI kit looks like the rest |
 | run any other Python server as an app | [env-status](env-status/) (type `command`: the port, the prefix, the visitor, by hand) |
 | make requests from the server without letting a visitor choose the address | [env-status](env-status/) |
 | check a score or a result the browser reports | [bug-squash](bug-squash/), [type-sprint](type-sprint/) |
@@ -205,7 +206,7 @@ python -m pytest tests/test_examples.py tests/test_example_retro_board.py
 ```
 
 The FastAPI examples run for real, the Flask ones when Flask is installed,
-the Streamlit and Gradio ones against small stand-ins for the libraries, and
+the Streamlit ones against small stand-ins for the library, and
 logic written in JavaScript runs under node when node is installed. Read the
 tests when you want to see what a connector or the model answers on the
 wire.
