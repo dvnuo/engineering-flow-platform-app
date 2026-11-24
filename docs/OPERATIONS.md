@@ -342,7 +342,13 @@ gone.
   apps keep running and are adopted. A deployment that was running is marked
   failed ("the host restarted during the deployment"); deploy again.
 - **Upgrading the image.** Roll the Deployment. Because of `Recreate` all
-  apps are down until the new pod is up.
+  apps are down until the new pod is up. An image carries the SDK wheel of
+  its build (`/opt/efp/wheels`), and an app keeps the SDK it was deployed
+  with: it gets the new one with its next deployment. An app that needs
+  something of a newer SDK (`efp_app.images` came with 0.2.0) must be
+  deployed again after the upgrade; one that names `efp-app-sdk` in its
+  requirements gets the SDK from the package index instead, which then has
+  to carry that version.
 - **Rotating the host token.** Change the Secret and the Portal's setting
   together, restart both.
 - **An app that keeps crashing** is restarted after 2, 10 and 30 seconds;

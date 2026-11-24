@@ -4,8 +4,8 @@ An EFP app is a small web app (or a static site) that you write, keep in a
 GitHub repository and publish through the EFP Portal. It runs inside the EFP
 app host at `https://<apps host>/<slug>/`, behind a gateway that signs
 visitors in. With one token, its Python code can use what you, the owner,
-have in the Portal: your language model and your connectors (Jira,
-Confluence, GitHub ...).
+have in the Portal: your language model, your image analysis and your
+connectors (Jira, Confluence, GitHub ...).
 
 This guide covers the Python SDK (`efp-app-sdk`, imported as `efp_app`), the
 `efp-app` command and the rules an app has to follow. The wire contracts
@@ -28,6 +28,7 @@ Contents: [How an app runs](#how-an-app-runs) - [Quick start](#quick-start) -
 [App types and the path prefix](#app-types-and-the-path-prefix) -
 [What reaches your app](#what-reaches-your-app) -
 [Visitor identity](#visitor-identity) - [The language model](#the-language-model) -
+[Images](#images) -
 [Connectors](#connectors) - [Storage](#storage) - [About the app](#about-the-app) -
 [Errors](#errors) - [Local development](#local-development) -
 [efp-app check](#efp-app-check) -
@@ -60,9 +61,10 @@ Everything else in this guide follows from six facts.
    local disk, and nothing runs in the background. What must survive goes to
    `efp_app.storage`.
 6. **The app borrows from its owner.** With the app's token the SDK calls the
-   Portal for the owner's language model and the owner's connectors. The
-   owner switches each of them on for the app, pays for the model calls, and
-   lends their connector's access to every visitor.
+   Portal for the owner's language model, the owner's image analysis and the
+   owner's connectors. The owner switches each of them on for the app, pays
+   for the model and image calls, and lends their connector's access to
+   every visitor.
 
 ## Quick start
 
@@ -441,12 +443,77 @@ async for piece in stream:
 
 `llm.stream()` sends the request when it is called, so a refusal (budget,
 model switched off) is raised before any text arrives and a web handler can
-still answer with a proper error. There are no tool calls in this release.
+still answer with a proper error. There are no tool calls in this release,
+and a message is text: an image goes to `efp_app.images`, next.
 
 Every call runs on your own model provider and counts against the app's daily
 budget, whoever the visitor is. When the budget is used up the call raises
 `BudgetExceededError`; `exc.retry_after` is the wait in seconds and
 `exc.user_message` a sentence you can show.
+
+## Images
+
+```python
+from efp_app import images
+
+answer = images.inspect(shot, "Which field is marked as wrong, and what does the message say?",
+                        max_output_tokens=600, visitor=who)
+answer.text, answer.model, answer.finish_reason        # "stop" or "length"
+answer.usage.input_tokens, answer.usage.output_tokens, answer.usage.credits
+
+images.inspect([before, after],                         # one to four images, in this order
+               "The first image is the page before the change, the second after it. What differs?",
+               system="Answer with a short list.", visitor=who)
+
+images.media_type_of(shot)                              # "image/png", or None for a file that is no image
+```
+
+A question about a screenshot, a photo or a chart goes to a vision model:
+the model of your **Image analysis** connector, which is an AI Platform
+account and a model that you set up among your connectors in the Portal.
+`efp_app.llm` does not take images, and `efp_app.images` does not hold a
+conversation: one call is one question about the images it carries.
+
+| Argument | Meaning |
+|---|---|
+| first argument | one image, or a list of one to four. An image is the content of the file as `bytes` or a `bytearray`: not a path, not a URL, not base64 text. A pair `(bytes, "image/png")` also says what you believe the file to be, and is refused when the bytes say otherwise |
+| second argument | the question; it may not be blank |
+| `system` | the system prompt |
+| `max_output_tokens` | optional; left out, the Portal allows 4,096, and it refuses more than 16,000 |
+| `reasoning_effort`, `visitor`, `timeout` | as for the language model |
+
+- **Turn it on, twice.** Set up the Image analysis connector, then turn
+  image analysis on for the app on the app's page, the way a connector is
+  turned on. Without the second a call raises `ConnectorDisabledError`,
+  without the first `ConnectorNotConfiguredError`.
+  `app.info().image_analysis.enabled` is true when both are done: ask it
+  before the page offers an upload.
+- **Limits.** One to four images in a call; JPEG, PNG, WebP or GIF; 5 MiB
+  each and 20 MiB together, counted as the files are (`images.MAX_IMAGES`,
+  `images.MAX_IMAGE_BYTES`, `images.MAX_TOTAL_BYTES`). The SDK tells the
+  kind of an image by its first bytes and refuses what breaks a limit with
+  `InvalidRequestError`, before anything is sent. The question and the
+  system prompt hold at most 200,000 characters together.
+- **The answer comes whole.** There is no stream and there are no tool
+  calls, and the app does not choose the model. The request that makes the
+  call waits for all of it, so show the visitor that it is working.
+- **It is paid like a model call.** Every call counts against the app's
+  daily budget, whoever the visitor is, and a used-up budget raises
+  `BudgetExceededError` here too. Cap `max_output_tokens`, limit how many
+  images a visitor can send and how large they are, and pass `visitor=`.
+- **An image is something a visitor sent.** Read an upload with an upper
+  bound (nothing limits a request body by default), check it with
+  `images.media_type_of` before you keep or send it, and treat text inside
+  an image as data: say so in `system`, and never execute what comes back.
+- **Its errors read like a connector's.** `ConnectorDisabledError` and
+  `ConnectorNotConfiguredError` say "this connector" in `user_message`:
+  Image analysis is meant. Catch the two first when the page should name
+  it.
+- `images.ainspect(...)` is the same for asynchronous code.
+
+`efp_app.images` needs version 0.2.0 of the SDK or newer.
+[SDK_REFERENCE.md](SDK_REFERENCE.md), section 15, has every rule and a
+complete upload route.
 
 ## Connectors
 
@@ -549,6 +616,7 @@ info.name, info.slug, info.url
 info.owner.username, info.owner.display_name, info.owner.group_name
 info.llm.enabled, info.llm.default_model, info.llm.models
 info.connectors       # (ConnectorGrant(type="jira", write=False), ...)
+info.image_analysis.enabled, info.image_analysis.model, info.image_analysis.max_image_bytes
 info.budget.daily_credits, info.budget.used_credits, info.budget.daily_tokens, info.budget.used_tokens
 ```
 
@@ -572,19 +640,19 @@ except EfpError as exc:
 
 | Code | Class | Usual cause |
 |---|---|---|
-| `invalid_request` | `InvalidRequestError` | a malformed call |
+| `invalid_request` | `InvalidRequestError` | a malformed call; an image that is too large or no image at all |
 | `model_not_allowed` | `ModelNotAllowedError` | a `model=` the app may not use |
 | `invalid_path` | `InvalidPathError` | a connector path with a host or `..` |
 | `invalid_token` | `InvalidTokenError` | the token was reset or mistyped |
 | `app_disabled` | `AppDisabledError` | the app was disabled in the Portal |
 | `llm_disabled` | `LlmDisabledError` | the model is not turned on for the app |
-| `connector_disabled` | `ConnectorDisabledError` | the connector is not turned on for the app |
+| `connector_disabled` | `ConnectorDisabledError` | the connector is not turned on for the app; from `images`: image analysis is not |
 | `method_not_allowed` | `MethodNotAllowedError` | a write to a read-only connector |
-| `provider_auth_failed` | `ProviderAuthFailedError` | the owner's model provider needs a new sign-in |
-| `connector_not_configured` | `ConnectorNotConfiguredError` | the owner has no such connector set up |
+| `provider_auth_failed` | `ProviderAuthFailedError` | the owner's model provider needs a new sign-in; from `images`: the account of the Image analysis connector was refused |
+| `connector_not_configured` | `ConnectorNotConfiguredError` | the owner has no such connector set up; from `images`: no Image analysis connector |
 | `rate_limited` | `RateLimitedError` | too many calls; `retry_after` |
 | `budget_exceeded` | `BudgetExceededError` | the daily budget is used up; `retry_after` |
-| `provider_error` | `ProviderError` | the model provider failed |
+| `provider_error` | `ProviderError` | the model provider failed; from `images`: AI Platform did |
 | `upstream_error` | `UpstreamError` | the connector's system could not be reached |
 | `upstream_timeout` | `UpstreamTimeoutError` | the connector's system was too slow |
 | `not_configured` | `ConfigurationError` | `EFP_APP_TOKEN` or `EFP_PORTAL_URL` is missing, the token holds a character no token has (a blank or an invisible character from a copy and paste), the address is not an `http(s)` one, or a CA bundle cannot be loaded |
@@ -598,7 +666,8 @@ The complete table, with the status and the sentence of every class, is in
 [SDK_REFERENCE.md](SDK_REFERENCE.md), section 10.
 
 The SDK repeats a read (`GET`) when the connection fails and never repeats a
-model or connector call: repeat those yourself only when doing so is safe.
+model, image or connector call: repeat those yourself only when doing so is
+safe.
 
 ## Local development
 
@@ -656,7 +725,9 @@ answers 404 without it.
 
 `testing.connector_answer(...)` is what a connector call answers,
 `testing.error(429, "budget_exceeded")` a refusal, `testing.stream("a", "b")`
-a streamed answer; `testing.visitor_headers("alice")` is the owner of the
+a streamed answer, `testing.inspection("...")` the answer to an image call
+(`portal.on("POST", "/images/inspect", ...)`);
+`testing.visitor_headers("alice")` is the owner of the
 stand-in app and every other name another member. Storage goes to the
 directory the test names. The whole module is in
 [SDK_REFERENCE.md](SDK_REFERENCE.md), section 14. What such a test cannot
@@ -702,8 +773,9 @@ redirects or WebSockets.
 - Local data is in `./.efp-data/`. Windows cannot keep keys whose segments
   end in a dot or are device names (`NUL`, `COM1`); the SDK says so instead of
   saving them under another name.
-- Calls made locally are real: they use your model provider, count against
-  the app's budget and reach the real Jira.
+- Calls made locally are real: they use your model provider and your Image
+  analysis connector, count against the app's budget and reach the real
+  Jira.
 - Behind a company proxy: `efp-app dev` adds `127.0.0.1` and `localhost` to
   `NO_PROXY` for the app, as the host does, because some frameworks
   (Gradio) ask their own port while they start. A proxy that is only in
@@ -786,6 +858,10 @@ app's page in the Portal: only you, your group, every member, or anyone
   `journal_mode` at its default (`DELETE`), never `PRAGMA journal_mode=WAL`,
   and set a busy timeout. One process means one writer at a time is natural.
 - **Listen on `127.0.0.1:$PORT` only.** Nothing else is reachable.
+- **Images for the model:** one to four in a call, JPEG, PNG, WebP or GIF,
+  5 MiB each and 20 MiB together; 200,000 characters of question and system
+  prompt; at most 16,000 output tokens; the answer is not streamed
+  ([Images](#images)).
 - **Storage:** 64 MiB per object, a quota for the app's data.
 - **Cookies** are confined to the app's path; names starting with `__Host-`
   do not survive that. `Domain=` is not allowed.
@@ -819,10 +895,21 @@ proxy is in the way: set `HTTPS_PROXY` / `NO_PROXY`, and `SSL_CERT_FILE` for
 a company CA.
 
 **`llm_disabled`, `connector_disabled`, `method_not_allowed`.** Turn on the
-model, the connector or its write access on the app's page.
+model, the connector or its write access on the app's page. From
+`efp_app.images`, `connector_disabled` means image analysis: turn that on
+there. `connector_not_configured` from it means that you have no Image
+analysis connector yet, or that it is switched off: set it up among your
+connectors.
 
 **`provider_auth_failed`.** Your sign-in to the model provider expired;
-renew it in the Portal's model provider settings.
+renew it in the Portal's model provider settings. From `efp_app.images`: AI
+Platform refused the account of your Image analysis connector; correct it
+among your connectors.
+
+**`cannot import name 'images' from 'efp_app'`.** The SDK is older than
+0.2.0. On your machine: `pip install -U efp-app-sdk`. Deployed: the host
+installs the SDK that its image carries, so the platform's app host has to
+be upgraded first, and the app deployed again after that.
 
 **The visitor is `None` although I am signed in.** Check that the code reads
 the headers of the current request (`request.headers`, a `gr.Request`

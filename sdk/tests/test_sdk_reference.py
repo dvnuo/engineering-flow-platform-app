@@ -49,7 +49,7 @@ LINES = TEXT.splitlines()
 pytestmark = pytest.mark.skipif(not REFERENCE.is_file(), reason="needs a checkout of the repository (docs/)")
 
 #: The modules an app calls: every function of these has a runnable example.
-APP_FACING = ("app", "client", "config", "connectors", "errors", "llm", "manifest", "storage", "visitor")
+APP_FACING = ("app", "client", "config", "connectors", "errors", "images", "llm", "manifest", "storage", "visitor")
 #: A Python example that is not marked as runnable must need one of these.
 FRAMEWORKS = ("fastapi", "flask", "streamlit", "gradio", "starlette")
 
@@ -250,10 +250,14 @@ APP = {
     "owner": {"id": 5, "username": "alice", "display_name": "Alice", "group_id": 3, "group_name": "QA"},
     "llm": {"enabled": True, "default_model": "gpt-5.4", "models": ["gpt-5.4"]},
     "connectors": [{"type": kind, "write": write} for kind, (_address, write) in sorted(TURNED_ON.items())],
+    "image_analysis": {"enabled": True, "model": "gpt-5.4", "max_images": 4, "max_image_bytes": 5242880, "max_total_bytes": 20971520},
     "budget": {"daily_credits": 50.0, "used_credits": 1.2, "daily_tokens": 2000000, "used_tokens": 3400},
 }
+#: What ``GET /app`` says of image analysis when the owner has not turned it on: no model, the limits all the same.
+IMAGES_OFF = dict(APP["image_analysis"], enabled=False, model=None)
 USAGE = {"input_tokens": 12, "output_tokens": 3, "credits": 0.002}
 COMPLETION = {"text": "Hello.", "model": "gpt-5.4", "finish_reason": "stop", "usage": USAGE}
+INSPECTION = {"text": "A sign-in form.", "model": "gpt-5.4", "finish_reason": "stop", "usage": {"input_tokens": 1530, "output_tokens": 5, "credits": None}}
 DONE = {"type": "done", "model": "gpt-5.4", "finish_reason": "stop", "usage": USAGE}
 STREAMED = ({"type": "delta", "text": "Hel"}, {"type": "delta", "text": "lo."}, DONE)
 BROKEN = ({"type": "delta", "text": "Hel"}, {"type": "error", "error": {"code": "provider_error", "message": "the provider hung up"}})
@@ -279,7 +283,7 @@ def other_system(kind, method, path):
     return connector_answer({"message": "Not Found"}, status=404)
 
 
-def connect(portal, budget_used_up=False, stream_fails=False):
+def connect(portal, budget_used_up=False, stream_fails=False, images_off=False):
     """Give the fake Portal the answers of section 9 of the contract, for the app of the examples."""
 
     def model(request):
@@ -288,6 +292,13 @@ def connect(portal, budget_used_up=False, stream_fails=False):
         if json.loads(request.content)["stream"]:
             return sse(*(BROKEN if stream_fails else STREAMED))
         return COMPLETION
+
+    def picture(request):
+        if images_off:
+            return envelope(403, "connector_disabled", "image analysis is not turned on for this app")
+        if budget_used_up:  # an image call is a model call for the budget
+            return envelope(429, "budget_exceeded", "daily budget of 50 credits used", headers={"Retry-After": "3600"})
+        return INSPECTION
 
     def connector(kind):
         def answer(request):
@@ -300,7 +311,8 @@ def connect(portal, budget_used_up=False, stream_fails=False):
 
         return answer
 
-    portal.on("GET", "/app", APP).on("POST", "/llm/complete", model)
+    portal.on("GET", "/app", dict(APP, image_analysis=IMAGES_OFF) if images_off else APP)
+    portal.on("POST", "/llm/complete", model).on("POST", "/images/inspect", picture)
     listed = [{"type": kind, "base_url": address, "write": write} for kind, (address, write) in sorted(TURNED_ON.items())]
     portal.on("GET", "/connectors", {"connectors": listed})
     for kind in ("jira", "confluence", "github", "jenkins", "nexus", "splunk"):
@@ -327,6 +339,7 @@ ENVIRONMENTS = {
     "no-token": lambda request, monkeypatch: {},
     "budget-used-up": lambda request, monkeypatch: a_developers_machine(request, monkeypatch, budget_used_up=True),
     "stream-fails": lambda request, monkeypatch: a_developers_machine(request, monkeypatch, stream_fails=True),
+    "images-off": lambda request, monkeypatch: a_developers_machine(request, monkeypatch, images_off=True),
 }
 
 

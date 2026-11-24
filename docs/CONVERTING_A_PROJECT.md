@@ -39,8 +39,9 @@ Contents: [The procedure](#the-procedure) - [Does it fit?](#1-does-it-fit) -
 7. Move secrets and settings to environment variables (section 7).
 8. Move everything that must survive a restart into `efp_app.storage`
    (section 8).
-9. Replace model calls and calls to Jira, Confluence, GitHub, Jenkins, Nexus
-   or Splunk with the SDK (sections 9 and 10).
+9. Replace model calls (those that send images too) and calls to Jira,
+   Confluence, GitHub, Jenkins, Nexus or Splunk with the SDK (sections 9 and
+   10).
 10. Remove background jobs, schedulers and polling (section 11).
 11. Reduce the dependencies to wheels (section 12).
 12. Verify (the [checklist](#verify)), then write down what the owner has to
@@ -71,6 +72,7 @@ signed in. Check the project against this table before changing anything.
 | needs its own domain, TLS certificate, port, or raw TCP/UDP | does not fit |
 | holds more than about 1 GiB of data, single files over 64 MiB, or more than about 1 GiB of memory | does not fit by default; these are the platform's limits and only its operators can raise them |
 | needs a relational database | fits with changes: `efp_app.storage` objects, or SQLite in the app's data directory on a host in sandbox mode (no WAL), or an existing database server reachable from the cluster with its address and password in environment variables |
+| sends images to a vision model (screenshots, photos, charts) | fits: `efp_app.images`, one to four images in a call, no stream (section 9); the owner needs the Image analysis connector |
 
 The limits in one place (defaults; the platform can change them): Python
 3.11; wheels from the platform's package index; one process; about 1 GiB of
@@ -387,6 +389,7 @@ the app until the owner has imported it.
 
 Calls to a model provider's own SDK become calls to `efp_app.llm`, which runs
 on the owner's model provider through the Portal. The app needs no API key.
+Calls that send an image become calls to `efp_app.images` (below the table).
 
 | Found in the project | Replace with |
 |---|---|
@@ -396,22 +399,48 @@ on the owner's model provider through the Portal. The app needs no API key.
 | a fixed model name | leave `model` out (the app's default), or choose from `app.info().llm.models` |
 | an API key in the environment | remove it |
 | retry loops around the call | remove them, or keep one retry for a failed connection; the SDK never repeats a model call by itself |
+| a message with an image in it (`{"type": "image_url", ...}`, a `data:` URL, an `images=[...]` argument), or a command-line tool that reads an image | `images.inspect(data, prompt, system=..., max_output_tokens=..., visitor=who)` from `efp_app.images`; `data` is the content of the image file as bytes, and the text is `answer.text` |
 
-What `efp_app.llm` does not offer in this release: tool or function calls,
-images or files as input, embeddings, audio, a JSON mode enforced by the
-provider. A project that depends on one of these needs a redesign for that
-part (ask for JSON in the prompt and validate it:
+Images go to a model of their own. A project that sends images to a vision
+model uses `efp_app.images`, which asks the model of the owner's Image
+analysis connector, not the app's text model:
+
+- One call is one question about one to four images (JPEG, PNG, WebP or
+  GIF; 5 MiB each), and its answer comes whole: no stream, no tool calls,
+  no choice of model, no earlier turns. What the model must know goes into
+  the prompt and `system` of that call.
+- An image is given as its bytes. Where the project passed a path, a URL or
+  base64 text, read the file, fetch the address or decode the text first.
+- More than four images for one question: ask in several calls, or join
+  them into fewer images before the call (with a library that comes as a
+  wheel). Say in the hand-over which of the two you did.
+- The provider's own framing is gone. A tool that wrapped the prompt in
+  instructions of its own, or returned an envelope around the answer, did
+  that outside the model: the Portal sends the app's prompt as it is and
+  returns the model's text as it is. Ask for the form you need in the
+  prompt and validate what comes back.
+- `app.info().image_analysis.enabled` says whether the owner has turned it
+  on; a page that offers an upload asks it first, and the call's errors end
+  as sentences all the same.
+
+What the SDK does not offer in this release: tool or function calls, files
+other than images as input (a PDF, a spreadsheet), images as output,
+embeddings, audio, a JSON mode enforced by the provider. A project that
+depends on one of these needs a redesign for that part (ask for JSON in the
+prompt and validate it:
 [`examples/incident-timeline`](../examples/incident-timeline/)), or its own
 provider key in an environment variable and a network path to that provider.
 Say so instead of pretending.
 
 Every call is paid for by the app's owner, whoever the visitor is, and counts
-against the app's daily budget. A converted app therefore must: cap
-`max_output_tokens`; bound the input it sends; skip the call when there is
-nothing to do; pass `visitor=`; catch `EfpError` and show `exc.user_message`
-(a used-up budget is a sentence for the visitor, not a stack trace). Text
-that comes from a visitor, a log or another system is data: say so in the
-system prompt, and never execute what a model returns.
+against the app's daily budget; an image call counts against the same one. A
+converted app therefore must: cap `max_output_tokens`; bound the input it
+sends (for images: how many a visitor can send, and how large); skip the
+call when there is nothing to do; pass `visitor=`; catch `EfpError` and show
+`exc.user_message` (a used-up budget is a sentence for the visitor, not a
+stack trace). Text that comes from a visitor, a log, an image or another
+system is data: say so in the system prompt, and never execute what a model
+returns.
 
 Where the sentence goes depends on who asked. A route that a script calls
 answers JSON (`{"error": {"code": exc.code, "message": exc.user_message}}`,
@@ -427,7 +456,9 @@ threads, so eight such requests at once occupy the whole app; its
 `--timeout 120` does not end a long request, because with threads gunicorn
 applies it to the worker as a whole and not to one request (gunicorn's
 documented behaviour; not run for this guide). Stream the answer
-(`llm.stream`) when a visitor would otherwise watch a blank page.
+(`llm.stream`) when a visitor would otherwise watch a blank page. An image
+call cannot be streamed: the page shows that it is working until the answer
+is there.
 
 ## 10. Calls to other systems
 
@@ -971,10 +1002,10 @@ Do all of these, in this order. Each has a pass condition.
 1. `efp-app check --strict` exits with 0.
 2. `efp-app dev` with `EFP_DEV_VISITOR=<a username>` in `.env` and no
    `EFP_APP_TOKEN`: the app starts, the front page loads, and features that
-   need the Portal (the model, a connector, the owner check) say "not set up
-   yet" instead of failing. Without `EFP_DEV_VISITOR` and without a token
-   there is no visitor at all, and a 401 from `require_visitor` is then the
-   right answer, not a failure.
+   need the Portal (the model, image analysis, a connector, the owner check)
+   say "not set up yet" instead of failing. Without `EFP_DEV_VISITOR` and
+   without a token there is no visitor at all, and a 401 from
+   `require_visitor` is then the right answer, not a failure.
 3. `efp-app dev --prefix my-app`: open `http://127.0.0.1:8000/my-app/`, use
    every page and every button once. The console shows no "outside the app"
    line and no 404 of the app for a file of a page, and the browser's
@@ -982,11 +1013,11 @@ Do all of these, in this order. Each has a pass condition.
    line does not count: `outside the app: GET /favicon.ico`. A browser asks
    for that address by itself when a page names no icon; give the page
    `<link rel="icon" href="static/icon.png">` (or `href="data:,"`) to be rid
-   of it. A button that calls the model or a connector cannot succeed
-   without the app's token, which only the owner has: without one, such a
-   button must end in the "not set up" sentence here, and what it does when
-   the call works is shown by the tests of item 7. Say in the report which
-   buttons were used live and which only in tests.
+   of it. A button that calls the model, image analysis or a connector
+   cannot succeed without the app's token, which only the owner has:
+   without one, such a button must end in the "not set up" sentence here,
+   and what it does when the call works is shown by the tests of item 7.
+   Say in the report which buttons were used live and which only in tests.
 4. Identity, as far as the app has it. If it keeps data per visitor: with
    `EFP_DEV_VISITOR=alice` and then `EFP_DEV_VISITOR=bob`, each sees their
    own data and cannot change the other's. If visitors share data: what bob
@@ -1016,12 +1047,13 @@ Do all of these, in this order. Each has a pass condition.
 7. The project's own tests still pass, and the converted parts have tests
    that run without a Portal: `efp_app.testing`, which is part of the SDK
    ([SDK_REFERENCE.md](SDK_REFERENCE.md), section 14), gives a test the
-   environment of a deployed app, a stand-in Portal that answers the model
-   and connector calls with what the test says, and the signed header of a
-   visitor. At least: one test per route that calls the model or a
-   connector (the call works; the call is refused), one for every check of
-   identity (a member, another member, the owner, a guest if there can be
-   one).
+   environment of a deployed app, a stand-in Portal that answers the model,
+   image and connector calls with what the test says, and the signed header
+   of a visitor. At least: one test per route that calls the model, image
+   analysis or a connector (the call works; the call is refused; for an
+   image call also: a file that is no image, one that is too large), one
+   for every check of identity (a member, another member, the owner, a
+   guest if there can be one).
 8. After the first deployment, on the app's page in the Portal: every step of
    the deployment succeeded; the app answers at its address; **Logs** shows
    no error; a second member (and, if intended, a guest) sees what they
@@ -1063,11 +1095,11 @@ def test_the_summary(tmp_path):
 - [ ] No secret is in the repository; every setting the owner must enter is listed in the README.
 - [ ] Nothing that must survive lives in memory, in the code directory, `HOME` or `TMPDIR`.
 - [ ] No two requests can lose each other's writes.
-- [ ] Every model call is bounded (input and `max_output_tokens`), passes `visitor=`, and its errors end as sentences.
+- [ ] Every model call is bounded (input and `max_output_tokens`), passes `visitor=`, and its errors end as sentences. The same for every image call, with the number and the size of the images bounded.
 - [ ] Every connector call names people explicitly, validates what a visitor typed, and handles the other system's status.
 - [ ] No background thread, scheduler, queue or polling timer is left.
 - [ ] `requirements.txt` holds only what is imported, as wheels.
-- [ ] The parts that call the model, a connector or check identity have tests that run without a Portal (`efp_app.testing`).
+- [ ] The parts that call the model, image analysis, a connector or check identity have tests that run without a Portal (`efp_app.testing`).
 - [ ] The verification list above passed, and the README says how to run the app locally and what to turn on in the Portal.
 - [ ] Everything that was left out of the conversion is written down, with the reason.
 
@@ -1082,7 +1114,12 @@ these; list them in the README or the pull request:
    entry directory, a name. **Create and deploy**.
 3. On the app's page, **Settings**: turn on the model and each connector the
    app uses (and writing, where the app writes); enter the environment
-   variables; choose the audience.
+   variables; choose the audience. When the app reads images
+   (`efp_app.images`): first set up the **Image analysis** connector among
+   your own connectors in the Portal (an AI Platform account and a model),
+   then turn image analysis on for the app here, the way a connector is
+   turned on. Until both are done the app's image features answer "not
+   turned on".
 4. For local development with the real model and connectors: copy the token
    from **Settings > App token** into `.env` as `EFP_APP_TOKEN`, with
    `EFP_PORTAL_URL`.

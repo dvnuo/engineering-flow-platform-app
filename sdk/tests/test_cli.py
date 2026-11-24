@@ -959,7 +959,7 @@ def test_python_dash_m_runs_the_tool():
 
     result = subprocess.run([sys.executable, "-m", "efp_app", "--version"], cwd=str(SDK_ROOT), capture_output=True, text=True)
     assert result.returncode == 0
-    assert result.stdout.strip().startswith("efp-app 0.1.0")
+    assert result.stdout.strip().startswith("efp-app 0.2.0")
 
 
 # --- what efp-app dev protects the app's environment from --------------------------------------

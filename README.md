@@ -7,7 +7,7 @@ their own. This repository holds everything outside the Portal.
 |---|---|
 | [`host/`](host/) | the app host: one container that runs every app behind a gateway that signs visitors in, and its unit tests |
 | [`Dockerfile`](Dockerfile) | the image of the app host; build it from this directory: `docker build -t efp-app-host .` |
-| [`sdk/`](sdk/) | `efp-app-sdk`, the Python SDK an app uses (visitor, language model, connectors, storage), the `efp-app` command, and its tests |
+| [`sdk/`](sdk/) | `efp-app-sdk`, the Python SDK an app uses (visitor, language model, image analysis, connectors, storage), the `efp-app` command, and its tests |
 | [`templates/`](templates/) | the starters `efp-app init` copies: FastAPI, Flask, Streamlit, Gradio, static |
 | [`examples/`](examples/) | twenty-six complete apps to copy and learn from: tools, dashboards, drawing boards, games, model-backed helpers |
 | [`k8s/`](k8s/) | Kubernetes manifests for the app host, the probe that says which isolation a cluster allows, the AppArmor profile |

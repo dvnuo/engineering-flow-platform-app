@@ -5,10 +5,11 @@ write, that run inside the EFP app host and that use, with one token, what
 their owner has in the EFP Portal.
 
 ```python
-from efp_app import llm, connectors, storage, visitor, app
+from efp_app import llm, images, connectors, storage, visitor, app
 
 who = visitor.current(request.headers)            # the signed-in visitor, or None
 answer = llm.complete("Hello", visitor=who)       # the owner's language model
+seen = images.inspect(upload, "What is shown?")   # a vision model, for images
 issue = connectors.get("jira", "/rest/api/2/issue/ABC-1")
 storage.save_json("state.json", {"count": 1})     # survives restarts and deployments
 app.base_path()                                   # the path prefix the app is served under
@@ -31,7 +32,7 @@ contracts are in `docs/CONTRACTS.md`.
 | `efp_app/errors.py` | one exception per error code, all derived from `EfpError` |
 | `efp_app/client.py` | the HTTP clients (sync and async) of the Portal's SDK API |
 | `efp_app/visitor.py` | the `X-EFP-Visitor` header |
-| `efp_app/llm.py`, `connectors.py`, `app.py` | the calls |
+| `efp_app/llm.py`, `images.py`, `connectors.py`, `app.py` | the calls |
 | `efp_app/storage.py` | files, the host's storage service, or a local folder |
 | `efp_app/integrations/` | FastAPI / Starlette, Flask, Streamlit, Gradio |
 | `efp_app/manifest.py`, `_check.py`, `cli.py` | `efp-app.json` and the command-line tool |

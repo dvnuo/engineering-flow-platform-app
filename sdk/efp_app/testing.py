@@ -1,8 +1,8 @@
 """Test an app without a Portal and without a host.
 
 Deployed, an app gets three things from outside: the environment the host
-starts it in, a Portal that answers its model and connector calls, and the
-signed header by which the gateway names the visitor. This module has a
+starts it in, a Portal that answers its model, image and connector calls, and
+the signed header by which the gateway names the visitor. This module has a
 stand-in for each, so an app can be tested in its own repository with nothing
 installed but the SDK and the app's own requirements::
 
@@ -39,6 +39,7 @@ import httpx
 
 from . import client as _client
 from . import config as _config
+from . import images as _images
 from . import visitor as _visitor
 
 #: The id the stand-in environment gives the app.
@@ -93,9 +94,10 @@ class FakePortal:
     """A Portal for tests: canned answers for the routes an app calls, and a record of what it sent.
 
     Routes are named as the SDK's API has them, below ``/api/app-sdk/v1``:
-    ``("POST", "/llm/complete")``, ``("POST", "/connectors/jira/request")``,
-    ``("GET", "/app")``. A route without an answer gets ``404 not_found``,
-    which the SDK raises as an ``EfpError`` with the code ``not_found``.
+    ``("POST", "/llm/complete")``, ``("POST", "/images/inspect")``,
+    ``("POST", "/connectors/jira/request")``, ``("GET", "/app")``. A route
+    without an answer gets ``404 not_found``, which the SDK raises as an
+    ``EfpError`` with the code ``not_found``.
     """
 
     def __init__(self) -> None:
@@ -177,10 +179,14 @@ class FakePortal:
 
 
 def app_info(owner: str = "alice", **changes: Any) -> Dict[str, Any]:
-    """What ``GET /app`` answers: an app of ``owner``, the model on, no connector, budget left.
+    """What ``GET /app`` answers: an app of ``owner``, the model and image analysis on, no connector, budget left.
 
     ``changes`` replace keys of the answer, for example
     ``connectors=[{"type": "jira", "write": False}]`` or ``llm={"enabled": False}``.
+    An app whose owner has not turned image analysis on is
+    ``image_analysis={"enabled": False}``; give its route
+    ``error(403, "connector_disabled")`` as well, for the Portal here refuses
+    nothing by itself.
     """
     found: Dict[str, Any] = {
         "id": APP_ID,
@@ -196,6 +202,13 @@ def app_info(owner: str = "alice", **changes: Any) -> Dict[str, Any]:
         },
         "llm": {"enabled": True, "default_model": "gpt-5.4", "models": ["gpt-5.4"]},
         "connectors": [],
+        "image_analysis": {
+            "enabled": True,
+            "model": "gpt-5.4",
+            "max_images": _images.MAX_IMAGES,
+            "max_image_bytes": _images.MAX_IMAGE_BYTES,
+            "max_total_bytes": _images.MAX_TOTAL_BYTES,
+        },
         "budget": {"daily_credits": 50.0, "used_credits": 0.0, "daily_tokens": 2000000, "used_tokens": 0},
     }
     found.update(changes)
@@ -209,6 +222,22 @@ def completion(text: str = "Hello.", **changes: Any) -> Dict[str, Any]:
         "model": "gpt-5.4",
         "finish_reason": "stop",
         "usage": {"input_tokens": 12, "output_tokens": 4, "credits": 0.001},
+    }
+    found.update(changes)
+    return found
+
+
+def inspection(text: str = "A red square.", **changes: Any) -> Dict[str, Any]:
+    """What ``POST /images/inspect`` answers: the model's answer about the images.
+
+    ``changes`` replace keys of the answer (``finish_reason="length"``).
+    """
+    found: Dict[str, Any] = {
+        "text": text,
+        "model": "gpt-5.4",
+        "finish_reason": "stop",
+        # No credits: the provider behind image analysis may report none, and an app must cope with that.
+        "usage": {"input_tokens": 1530, "output_tokens": 6, "credits": None},
     }
     found.update(changes)
     return found
@@ -251,7 +280,7 @@ def error(status: int, code: str, message: str = "refused by the test", headers:
 
     ``error(429, "budget_exceeded", headers={"Retry-After": "3600"})`` is a
     used-up budget; ``error(403, "connector_disabled")`` a connector the
-    owner has not turned on.
+    owner has not turned on (on ``/images/inspect``: image analysis).
     """
     return httpx.Response(status, json={"error": {"code": code, "message": message}}, headers=headers)
 

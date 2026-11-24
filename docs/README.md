@@ -34,7 +34,8 @@ opening apps, the app center at the apps address) and "Building apps"
  |        |  import efp_app                                            |
  +--------|------------------------------------------------------------+
           v
-       Portal:  the owner's language model, the owner's connectors
+       Portal:  the owner's language model, the owner's image analysis,
+                the owner's connectors
                 (Jira, Confluence, GitHub, Jenkins, Nexus, Splunk),
                 who owns the app, who may open it, its budget
 ```
