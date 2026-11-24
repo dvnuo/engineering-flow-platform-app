@@ -45,8 +45,9 @@ code.
   dependencies installed as wheels from `requirements.txt`.
 - Visitors are signed in by a gateway in front of it. The SDK tells the app
   who is visiting. The app has no login of its own.
-- The SDK (`import efp_app`) gives it the owner's language model
-  (`efp_app.llm`), the owner's connectors to Jira, Confluence, GitHub,
+- The SDK (`import efp_app`) gives it the owner's language model, for text
+  (`efp_app.llm`), a vision model for questions about images
+  (`efp_app.images`), the owner's connectors to Jira, Confluence, GitHub,
   Jenkins, Nexus and Splunk (`efp_app.connectors`), and durable storage
   (`efp_app.storage`).
 - It is stopped when nobody uses it and started by the next visit: nothing
@@ -73,7 +74,9 @@ reviewer. The reason for each is in the guide.
    system's 404 or 401 is an answer, not an exception.
 4. **Every model call is bounded and attributed**: a capped input, a
    `max_output_tokens`, `visitor=who`. Never execute or `eval` what a model
-   returns; text from elsewhere is data and the prompt says so.
+   returns; text from elsewhere is data and the prompt says so. An image
+   call (`efp_app.images`) is a model call: bound the number and the size of
+   the images too, and treat what an image shows as data.
 5. **Every SDK error ends as a sentence**: catch `efp_app.errors.EfpError`,
    log it, show `exc.user_message`. A used-up budget or a switched-off
    connector must not produce a stack trace or a blank page.
@@ -117,27 +120,30 @@ install from it: `pip install <checkout>/sdk`. That build leaves
 both, so they are not a change of yours to that repository.
 
 Local settings go in `.env` in the app's directory (never committed):
-`EFP_APP_TOKEN` and `EFP_PORTAL_URL` (needed only for the model and the
-connectors), `EFP_DEV_VISITOR=<username>` or `anonymous` to choose who is
-visiting. You will usually have no token: set `EFP_DEV_VISITOR`, or there is
-no visitor at all and `require_visitor` answers 401. Without a token every
-model and connector call raises `ConfigurationError`; the app must turn that
-into its "not set up yet" sentence, and what happens when the call works is
-shown by tests (below), not by clicking.
+`EFP_APP_TOKEN` and `EFP_PORTAL_URL` (needed only for the model, image
+analysis and the connectors), `EFP_DEV_VISITOR=<username>` or `anonymous` to
+choose who is visiting. You will usually have no token: set
+`EFP_DEV_VISITOR`, or there is no visitor at all and `require_visitor`
+answers 401. Without a token every model, image and connector call raises
+`ConfigurationError`; the app must turn that into its "not set up yet"
+sentence, and what happens when the call works is shown by tests (below),
+not by clicking.
 
 ### What to deliver
 
 - The app's directory: `efp-app.json`, the code, `requirements.txt`,
   `.env.example`, `.gitignore`.
 - A `README.md` in it: what the app does, how to run it locally, what the
-  owner must turn on in the Portal (model, connectors, writing), every
-  environment variable it needs, and what was left out of a conversion and
-  why.
-- Tests, in the app's own repository, for every route that calls the model
-  or a connector and for every check of identity. `efp_app.testing` is part
-  of the SDK and needs nothing from this repository: `testing.deployed(...)`
-  gives a test the environment of a deployed app and a stand-in Portal
-  (`portal.on("POST", "/llm/complete", testing.completion("..."))`),
+  owner must turn on in the Portal (model, image analysis, connectors,
+  writing), every environment variable it needs, and what was left out of a
+  conversion and why.
+- Tests, in the app's own repository, for every route that calls the model,
+  image analysis or a connector and for every check of identity.
+  `efp_app.testing` is part of the SDK and needs nothing from this
+  repository: `testing.deployed(...)` gives a test the environment of a
+  deployed app and a stand-in Portal
+  (`portal.on("POST", "/llm/complete", testing.completion("..."))`,
+  `portal.on("POST", "/images/inspect", testing.inspection("..."))`),
   `testing.visitor_headers("alice")` the signed header of a visitor
   ([docs/SDK_REFERENCE.md](docs/SDK_REFERENCE.md), section 14; an example is
   under "Verify" in the conversion guide).

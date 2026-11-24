@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "efp-app-sdk"
-version = "0.1.0"
-description = "Python SDK and command-line tool for EFP Apps: LLM, connectors, storage and visitor identity."
+version = "0.2.0"
+description = "Python SDK and command-line tool for EFP Apps: LLM, image analysis, connectors, storage and visitor identity."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [

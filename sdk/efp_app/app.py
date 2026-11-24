@@ -5,6 +5,7 @@
     app.base_path()      # "/mindmap" when deployed, "" on a developer's machine
     app.public_url()     # "https://app.example.com/mindmap/"
     app.info().owner     # who owns the app, what the Portal lets it use
+    app.info().image_analysis.enabled    # whether efp_app.images can be used
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from . import client as _client
 from . import config
+from . import images as _images
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,23 @@ class ConnectorGrant:
 
 
 @dataclass(frozen=True)
+class ImageAnalysis:
+    """Whether ``efp_app.images`` can be used, and the limits of one call.
+
+    ``enabled`` is true when the owner turned image analysis on for the app
+    and has an Image analysis connector that is set up. The limits are the
+    ones the Portal sent, for a page to show; where it sent none they are
+    the ones ``efp_app.images`` checks.
+    """
+
+    enabled: bool = False
+    model: Optional[str] = None
+    max_images: int = _images.MAX_IMAGES
+    max_image_bytes: int = _images.MAX_IMAGE_BYTES
+    max_total_bytes: int = _images.MAX_TOTAL_BYTES
+
+
+@dataclass(frozen=True)
 class Budget:
     daily_credits: Optional[float] = None
     used_credits: Optional[float] = None
@@ -57,6 +76,7 @@ class AppInfo:
     owner: Owner = field(default_factory=Owner)
     llm: LlmInfo = field(default_factory=LlmInfo)
     connectors: Tuple[ConnectorGrant, ...] = ()
+    image_analysis: ImageAnalysis = field(default_factory=ImageAnalysis)
     budget: Budget = field(default_factory=Budget)
     raw: Dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
@@ -65,10 +85,17 @@ def _dict(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _limit(value: Any, default: int) -> int:
+    """A limit as the Portal sent it; the SDK's own when it sent none, or something that is not a count."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else default
+
+
 def _parse(payload: Any) -> AppInfo:
     data = _dict(payload)
     owner = _dict(data.get("owner"))
     llm = _dict(data.get("llm"))
+    # A Portal from before image analysis sends no such object: then it is off.
+    analysis = _dict(data.get("image_analysis"))
     budget = _dict(data.get("budget"))
     models = llm.get("models")
     connectors = data.get("connectors")
@@ -94,6 +121,13 @@ def _parse(payload: Any) -> AppInfo:
             for item in (connectors if isinstance(connectors, (list, tuple)) else ())
             if isinstance(item, dict) and item.get("type")
         ),
+        image_analysis=ImageAnalysis(
+            enabled=bool(analysis.get("enabled")),
+            model=analysis.get("model"),
+            max_images=_limit(analysis.get("max_images"), _images.MAX_IMAGES),
+            max_image_bytes=_limit(analysis.get("max_image_bytes"), _images.MAX_IMAGE_BYTES),
+            max_total_bytes=_limit(analysis.get("max_total_bytes"), _images.MAX_TOTAL_BYTES),
+        ),
         budget=Budget(
             daily_credits=budget.get("daily_credits"),
             used_credits=budget.get("used_credits"),
@@ -105,7 +139,7 @@ def _parse(payload: Any) -> AppInfo:
 
 
 def info(*, cached: bool = False, client: Optional[_client.Client] = None) -> AppInfo:
-    """Ask the Portal about this app: owner, model, connectors, today's budget.
+    """Ask the Portal about this app: owner, model, connectors, image analysis, today's budget.
 
     ``cached=True`` returns the previous answer when there is one (the budget
     in it may be out of date).

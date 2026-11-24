@@ -10,8 +10,11 @@ import pytest
 
 from efp_app import app as sdk_app
 from efp_app import client as sdk_client
-from efp_app import config, connectors, errors, llm, storage, testing, visitor
+from efp_app import config, connectors, errors, images, llm, storage, testing, visitor
 from example_support import load_module
+
+#: How a PNG file begins, which is all the SDK looks at.
+PNG = b"\x89PNG\r\n\x1a\n" + bytes(24)
 
 
 # --- The environment -----------------------------------------------------------------------------
@@ -130,6 +133,50 @@ def test_a_streamed_completion(tmp_path):
             assert reply.text == "Three bugs." and reply.finish_reason == "stop"
         portal.on("POST", "/llm/complete", testing.stream("Cut", finish_reason="length"))
         assert llm.stream("Again.").completion().finish_reason == "length"
+
+
+def test_an_inspection_and_what_the_app_sent(tmp_path):
+    assert testing.inspection() == {
+        "text": "A red square.",
+        "model": "gpt-5.4",
+        "finish_reason": "stop",
+        "usage": {"input_tokens": 1530, "output_tokens": 6, "credits": None},
+    }
+    with testing.deployed(tmp_path) as portal:
+        portal.on("POST", "/images/inspect", testing.inspection("A sign-in form with two fields."))
+        bob = testing.visitor_headers("bob")
+        answer = images.inspect(PNG, "What is shown?", max_output_tokens=300, visitor=visitor.current(bob))
+        assert (answer.text, answer.model, answer.finish_reason) == ("A sign-in form with two fields.", "gpt-5.4", "stop")
+        assert (answer.usage.input_tokens, answer.usage.output_tokens, answer.usage.credits) == (1530, 6, None)
+        sent = portal.sent_to("/images/inspect")
+        assert len(sent) == 1 and sent[0]["prompt"] == "What is shown?" and sent[0]["max_output_tokens"] == 300
+        assert [item["media_type"] for item in sent[0]["images"]] == ["image/png"]
+        assert portal.count("POST", "/images/inspect") == 1
+        assert portal.last.headers["X-EFP-Visitor"] == bob["X-EFP-Visitor"]
+
+        cut = testing.inspection("A sign-in", finish_reason="length", usage={"input_tokens": 1530, "output_tokens": 300, "credits": 0.02})
+        portal.on("POST", "/images/inspect", cut)
+        answer = images.inspect(PNG, "What is shown?")
+        assert (answer.finish_reason, answer.usage.output_tokens, answer.usage.credits) == ("length", 300, 0.02)
+
+
+def test_image_analysis_is_on_unless_the_test_turns_it_off(tmp_path):
+    assert testing.app_info()["image_analysis"] == {
+        "enabled": True,
+        "model": "gpt-5.4",
+        "max_images": 4,
+        "max_image_bytes": 5242880,
+        "max_total_bytes": 20971520,
+    }
+    with testing.deployed(tmp_path):
+        assert sdk_app.info().image_analysis == sdk_app.ImageAnalysis(enabled=True, model="gpt-5.4")
+    with testing.deployed(tmp_path, info=testing.app_info(image_analysis={"enabled": False})) as portal:
+        assert sdk_app.info().image_analysis == sdk_app.ImageAnalysis(enabled=False, model=None)
+        # The fake Portal refuses nothing by itself: the refusal is the test's to give.
+        portal.on("POST", "/images/inspect", testing.error(403, "connector_disabled", "image analysis is not turned on"))
+        with pytest.raises(errors.ConnectorDisabledError) as caught:
+            images.inspect(PNG, "What is shown?")
+        assert str(caught.value) == "connector_disabled: image analysis is not turned on"
 
 
 def test_a_connector_answer(tmp_path):

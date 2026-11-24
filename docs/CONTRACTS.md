@@ -607,9 +607,17 @@ An app may pass the `X-EFP-Visitor` value it received as the request header
   "owner": {"id": 5, "username": "alice", "display_name": "Alice", "group_id": 3, "group_name": "QA"},
   "llm": {"enabled": true, "default_model": "gpt-5.4", "models": ["gpt-5.4"]},
   "connectors": [{"type": "jira", "write": false}],
+  "image_analysis": {"enabled": true, "model": "gpt-5.4", "max_images": 4,
+                     "max_image_bytes": 5242880, "max_total_bytes": 20971520},
   "budget": {"daily_credits": 50.0, "used_credits": 1.2, "daily_tokens": 2000000, "used_tokens": 3400}
 }
 ```
+
+`image_analysis.enabled` is true when the owner turned image analysis on for
+the app and the owner's Image analysis connector is configured (9.4);
+otherwise it is false and `model` is `null`. The three limits are sent in
+both cases. Image analysis is not one of the `connectors`: it has no address
+an app could call through 9.3.
 
 ### 9.2 `POST /llm/complete`
 
@@ -686,3 +694,64 @@ finished calls alone have used the day's budget.
   over 5 MiB is cut and `truncated` is true.
 - The upstream's own status is returned in `status`; the HTTP status of this
   endpoint is `200` whenever the upstream answered.
+
+### 9.4 `POST /images/inspect`
+
+One question about one to four images, answered by the model of the owner's
+Image analysis connector (in the Portal: the connector `image_analysis`, an
+AI Platform account and a model). The owner turns it on for the app the way
+a connector is turned on.
+
+```json
+{
+  "images": [{"media_type": "image/png", "data_base64": "iVBORw0KGgo..."}],
+  "prompt": "Which field is highlighted, and what does the message under it say?",
+  "system": null,
+  "max_output_tokens": 4096,
+  "reasoning_effort": "medium"
+}
+```
+
+```json
+{"text": "...", "model": "gpt-5.4", "finish_reason": "stop|length",
+ "usage": {"input_tokens": 1830, "output_tokens": 210, "credits": null}}
+```
+
+- `images` has 1 to 4 items. `media_type` is `image/jpeg`, `image/png`,
+  `image/webp` or `image/gif`. The Portal goes by the first bytes of the
+  decoded data, as the SDK does: `FF D8 FF` is JPEG, the eight bytes
+  `89 50 4E 47 0D 0A 1A 0A` are PNG, `RIFF`, four bytes of any value and
+  `WEBP` are WebP, `GIF87a` and `GIF89a` are GIF. Data that is none of the
+  four, or a `media_type` that disagrees with it, is `400 invalid_request`.
+  So is an image without bytes and a `data_base64` that is not standard
+  base64. One image holds at most 5 MiB decoded (5,242,880 bytes), all of
+  them together at most 20 MiB.
+- `prompt` is a string that is not blank. `system` is a string or `null`.
+  Together they hold at most 200,000 characters.
+- `max_output_tokens` is a whole number from 1 to 16,000; left out or `null`
+  it is 4,096. `reasoning_effort` is as in 9.2, and may be left out or
+  `null`. A field the contract does not name is ignored.
+- There is no `model` field and no stream: the model is the connector's, and
+  the answer comes whole.
+- Image analysis is a switch of its own. It does not need the model of 9.2
+  to be turned on for the app, and `llm_disabled` is never its answer.
+- A request with four full images is about 28 MB of JSON. The Portal reads a
+  body of that size on this route; whatever stands in front of the Portal
+  (an ingress) has to let it through.
+- The Portal adds no instruction of its own. The model receives `system`
+  (when given) and one user message: the prompt, then the images in order.
+- `403 connector_disabled`: image analysis is not turned on for the app.
+  `424 connector_not_configured`: the owner has no Image analysis connector,
+  it is switched off, or the deployment has no AI Platform address.
+  `424 provider_auth_failed`: the connector's account was refused.
+  `502 provider_error`: AI Platform failed. `504 upstream_timeout`: it did
+  not answer in time. `429 rate_limited` and `429 budget_exceeded` as in
+  9.2; `rate_limited` is also the answer when AI Platform itself asks the
+  caller to slow down. The checks come in this order: whether the app may
+  make the call (403), the request (400), the budget (429), the connector
+  (424), then the call.
+- It is counted as a model call of the app, against the daily budget of 9.2.
+  A call under way counts as a quarter of the characters of `prompt` and
+  `system`, plus 1,500 tokens for each image, plus its `max_output_tokens`.
+  `usage` is what AI Platform reported; `credits` is `null` when it reports
+  none.

@@ -106,6 +106,22 @@ def _prepare(messages: Messages, system: Optional[str]) -> Tuple[List[Dict[str, 
     return prepared, system
 
 
+def _check_reasoning_effort(reasoning_effort: Optional[str]) -> None:
+    """Refuse a level the contract does not have.
+
+    A ``ValueError`` and not an ``EfpError``: the level is written in the
+    app's code, it does not come from a visitor. ``efp_app.images`` checks
+    its own argument here too, so the two calls cannot drift apart.
+    """
+    if reasoning_effort is not None and (
+        not isinstance(reasoning_effort, str) or reasoning_effort not in REASONING_EFFORTS
+    ):
+        raise ValueError(
+            "reasoning_effort must be one of %s, or None; got %r"
+            % (", ".join(repr(level) for level in REASONING_EFFORTS), reasoning_effort)
+        )
+
+
 def _body(
     messages: Messages,
     system: Optional[str],
@@ -115,13 +131,7 @@ def _body(
     reasoning_effort: Optional[str],
     stream: bool,
 ) -> Dict[str, Any]:
-    if reasoning_effort is not None and (
-        not isinstance(reasoning_effort, str) or reasoning_effort not in REASONING_EFFORTS
-    ):
-        raise ValueError(
-            "reasoning_effort must be one of %s, or None; got %r"
-            % (", ".join(repr(level) for level in REASONING_EFFORTS), reasoning_effort)
-        )
+    _check_reasoning_effort(reasoning_effort)
     prepared, system = _prepare(messages, system)
     body: Dict[str, Any] = {
         "messages": prepared,

@@ -16,10 +16,10 @@ A small synchronous client and an asynchronous twin over httpx. Both
   developer's machine: a deployed app talks to the Portal inside the cluster
   and must not go through a proxy.
 
-The modules ``llm``, ``connectors`` and ``app`` use one shared client per
-process (:func:`get_client`, :func:`get_async_client`); pass ``client=`` to
-any of their functions to use your own. The token is never logged or put in
-an error message.
+The modules ``llm``, ``images``, ``connectors`` and ``app`` use one shared
+client per process (:func:`get_client`, :func:`get_async_client`); pass
+``client=`` to any of their functions to use your own. The token is never
+logged or put in an error message.
 """
 
 from __future__ import annotations
